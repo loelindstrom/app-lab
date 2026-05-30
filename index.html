@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>App Lab</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div class="host-shell">
+      <header class="host-bar" aria-label="Workspace controls">
+        <div>
+          <p class="eyebrow">App Lab</p>
+          <h1 id="active-app-title">Loading</h1>
+        </div>
+        <nav class="host-actions" aria-label="System navigation">
+          <button id="system-home" type="button">Home</button>
+        </nav>
+      </header>
+
+      <main class="viewport">
+        <iframe
+          id="app-sandbox"
+          title="App viewport"
+          sandbox="allow-scripts"
+          referrerpolicy="no-referrer"
+        ></iframe>
+      </main>
+
+      <footer class="status-bar" aria-live="polite">
+        <span id="kernel-status">Starting kernel</span>
+      </footer>
+    </div>
+
+    <script src="kernel.js"></script>
+  </body>
+</html>
