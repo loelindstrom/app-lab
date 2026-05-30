@@ -36,15 +36,20 @@
 
 ## Phase 3: Manager AI
 
-- [ ] Add host-owned settings.
-  - [ ] Store AI provider configuration locally.
-  - [ ] Keep API keys outside iframe memory.
-- [ ] Add the Manager AI harness.
-  - [ ] Implement provider adapter.
-  - [ ] Implement `list_apps`.
-  - [ ] Implement `read_app_code`.
-  - [ ] Implement `write_app_code`.
-  - [ ] Implement `create_app`.
+- [x] Add host-owned settings.
+  - [x] Store OpenRouter configuration locally.
+  - [x] Keep API keys outside iframe memory.
+- [x] Add the per-app Builder Agent.
+  - [x] Add host-level builder chat UI.
+  - [x] Keep builder conversation history in memory only.
+  - [x] Implement OpenRouter Chat Completions calls.
+  - [x] Implement `read_current_app_code`.
+  - [x] Implement `write_current_app`.
+  - [x] Auto-reload the iframe after writes.
+- [x] Add blank app creation.
+  - [x] Add a host-level New App button.
+  - [x] Create a blank registry app.
+  - [x] Open the builder for the new app.
 
 ## Later
 

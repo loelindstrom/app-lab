@@ -45,6 +45,26 @@ button:hover {
   background: var(--accent-strong);
 }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: .62;
+}
+
+input,
+textarea {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--ink);
+  font: inherit;
+  padding: 10px 12px;
+}
+
+input:focus,
+textarea:focus {
+  border-color: var(--accent);
+  outline: 3px solid rgb(15 109 92 / 16%);
+}
+
 .host-shell {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
@@ -70,8 +90,11 @@ button:hover {
 }
 
 .host-actions {
+  align-items: center;
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
+  justify-content: flex-end;
 }
 
 .eyebrow {
@@ -89,6 +112,17 @@ h1 {
   margin: 0;
 }
 
+.workspace {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 0;
+}
+
+.workspace:has(.builder-panel:not([hidden])) {
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 390px);
+}
+
 .viewport {
   min-height: 0;
 }
@@ -102,6 +136,137 @@ h1 {
   height: 100%;
   min-height: 560px;
   width: 100%;
+}
+
+.builder-panel,
+.settings-dialog {
+  background: rgb(255 250 240 / 94%);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+.builder-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-height: 560px;
+  overflow: hidden;
+}
+
+.builder-panel[hidden] {
+  display: none;
+}
+
+.panel-header {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  padding: 14px;
+}
+
+h2 {
+  font-size: 22px;
+  line-height: 1.1;
+  margin: 0;
+}
+
+.ghost-button {
+  background: transparent;
+  color: var(--accent);
+}
+
+.ghost-button:hover {
+  background: rgb(15 109 92 / 10%);
+}
+
+.builder-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  list-style: none;
+  margin: 0;
+  overflow: auto;
+  padding: 14px;
+}
+
+.builder-message {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  line-height: 1.45;
+  padding: 10px 12px;
+  white-space: pre-wrap;
+}
+
+.builder-message[data-role="user"] {
+  align-self: flex-end;
+  background: var(--accent);
+  color: white;
+  max-width: 92%;
+}
+
+.builder-message[data-role="assistant"] {
+  align-self: flex-start;
+  background: white;
+  max-width: 92%;
+}
+
+.builder-message[data-role="system"] {
+  align-self: stretch;
+  background: rgb(15 109 92 / 9%);
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.builder-form {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+
+.builder-form label {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.builder-form textarea {
+  min-height: 94px;
+  resize: vertical;
+}
+
+.settings-dialog {
+  color: var(--ink);
+  max-width: min(520px, calc(100vw - 28px));
+  padding: 0;
+  width: 520px;
+}
+
+.settings-dialog::backdrop {
+  background: rgb(31 37 34 / 42%);
+}
+
+.settings-dialog form {
+  display: grid;
+  gap: 16px;
+}
+
+.settings-dialog label {
+  display: grid;
+  gap: 6px;
+  font-weight: 800;
+  padding: 0 16px;
+}
+
+.settings-dialog menu {
+  border-top: 1px solid var(--line);
+  display: flex;
+  justify-content: flex-end;
+  margin: 0;
+  padding: 14px 16px;
 }
 
 .status-bar {
@@ -126,5 +291,14 @@ h1 {
   .host-actions,
   .host-actions button {
     width: 100%;
+  }
+
+  .workspace,
+  .workspace:has(.builder-panel:not([hidden])) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .builder-panel {
+    min-height: 420px;
   }
 }

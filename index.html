@@ -14,23 +14,82 @@
           <h1 id="active-app-title">Loading</h1>
         </div>
         <nav class="host-actions" aria-label="System navigation">
+          <button id="new-app" type="button">New App</button>
+          <button id="toggle-builder" type="button">Builder</button>
+          <button id="open-settings" type="button">Settings</button>
           <button id="system-home" type="button">Home</button>
         </nav>
       </header>
 
-      <main class="viewport">
+      <main class="workspace">
+        <section class="viewport" aria-label="Active app">
         <iframe
           id="app-sandbox"
           title="App viewport"
           sandbox="allow-scripts"
           referrerpolicy="no-referrer"
         ></iframe>
+        </section>
+
+        <aside id="builder-panel" class="builder-panel" aria-label="Builder agent" hidden>
+          <header class="panel-header">
+            <div>
+              <p class="eyebrow">Builder</p>
+              <h2 id="builder-title">Current app</h2>
+            </div>
+            <button id="close-builder" class="ghost-button" type="button">Close</button>
+          </header>
+
+          <ol id="builder-messages" class="builder-messages" aria-live="polite"></ol>
+
+          <form id="builder-form" class="builder-form">
+            <label for="builder-input">Message</label>
+            <textarea
+              id="builder-input"
+              rows="4"
+              placeholder="What do you want to do with this app?"
+            ></textarea>
+            <button id="builder-send" type="submit">Send</button>
+          </form>
+        </aside>
       </main>
 
       <footer class="status-bar" aria-live="polite">
         <span id="kernel-status">Starting kernel</span>
       </footer>
     </div>
+
+    <dialog id="settings-dialog" class="settings-dialog">
+      <form id="settings-form" method="dialog">
+        <header class="panel-header">
+          <div>
+            <p class="eyebrow">Settings</p>
+            <h2>OpenRouter</h2>
+          </div>
+          <button class="ghost-button" value="cancel" type="submit">Close</button>
+        </header>
+
+        <label>
+          API key
+          <input id="openrouter-key" name="openrouter-key" type="password" autocomplete="off">
+        </label>
+
+        <label>
+          Model id
+          <input
+            id="openrouter-model"
+            name="openrouter-model"
+            type="text"
+            placeholder="anthropic/claude-3.5-sonnet"
+            autocomplete="off"
+          >
+        </label>
+
+        <menu>
+          <button id="save-settings" value="default" type="submit">Save</button>
+        </menu>
+      </form>
+    </dialog>
 
     <script src="kernel.js"></script>
   </body>
