@@ -16,16 +16,9 @@ const SEED_APPS = [
     seedVersion: 1,
   },
   {
-    appId: "sandbox-check",
-    name: "Sandbox Check",
-    description: "A tiny app loaded from IndexedDB to verify iframe switching.",
-    sourcePath: "seed-apps/sandbox-check.html",
-    seedVersion: 1,
-  },
-  {
     appId: "notes",
     name: "Notes",
-    description: "A small persistence test app backed by apps_data.",
+    description: "A small example app.",
     sourcePath: "seed-apps/notes.html",
     seedVersion: 1,
   },
