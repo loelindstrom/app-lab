@@ -9,15 +9,12 @@
   <body>
     <div class="host-shell">
       <header class="host-bar" aria-label="Workspace controls">
-        <div>
-          <p class="eyebrow">App Lab</p>
-          <h1 id="active-app-title">Loading</h1>
-        </div>
-        <nav class="host-actions" aria-label="System navigation">
+        <button id="system-home" class="nav-icon-button" type="button" aria-label="Open menu">☰</button>
+        <h1 id="active-app-title">Loading</h1>
+        <nav class="host-actions" aria-label="Context actions">
           <button id="new-app" type="button">New App</button>
-          <button id="toggle-builder" type="button">Builder</button>
+          <button id="toggle-builder" type="button">BuilderAI</button>
           <button id="open-settings" type="button">Settings</button>
-          <button id="system-home" type="button">Home</button>
         </nav>
       </header>
 
@@ -34,10 +31,10 @@
         <aside id="builder-panel" class="builder-panel" aria-label="Builder agent" hidden>
           <header class="panel-header">
             <div>
-              <p class="eyebrow">Builder</p>
+              <p class="eyebrow">BuilderAI</p>
               <h2 id="builder-title">Current app</h2>
             </div>
-            <button id="close-builder" class="ghost-button" type="button">Close</button>
+            <button id="close-builder" class="nav-icon-button" type="button" aria-label="Close BuilderAI">×</button>
           </header>
 
           <ol id="builder-messages" class="builder-messages" aria-live="polite"></ol>
@@ -54,10 +51,18 @@
         </aside>
       </main>
 
-      <footer class="status-bar" aria-live="polite">
-        <span id="kernel-status">Starting kernel</span>
+      <footer id="mobile-builder-bar" class="mobile-builder-bar" hidden>
+        <button id="mobile-builder-toggle" type="button" hidden>BuilderAI ↑</button>
       </footer>
     </div>
+
+    <aside id="side-menu" class="side-menu" aria-label="Menu" hidden>
+      <header class="side-menu-header">
+        <button id="close-menu" class="nav-icon-button" type="button" aria-label="Close menu">×</button>
+        <h2>Menu</h2>
+      </header>
+      <button id="side-menu-settings" class="side-menu-item" type="button">Settings</button>
+    </aside>
 
     <dialog id="settings-dialog" class="settings-dialog">
       <form id="settings-form" method="dialog">
@@ -80,9 +85,12 @@
             id="openrouter-model"
             name="openrouter-model"
             type="text"
-            placeholder="anthropic/claude-3.5-sonnet"
+            list="openrouter-models"
+            placeholder="inclusionai/ling-2.6-flash"
             autocomplete="off"
           >
+          <datalist id="openrouter-models"></datalist>
+          <small id="models-status">Tool-capable models load when settings open.</small>
         </label>
 
         <menu>

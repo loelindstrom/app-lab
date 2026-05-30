@@ -4,6 +4,7 @@ const DB_VERSION = 2;
 const MENU_APP_ID = "menu";
 const CONFIG_KEY = "openrouter";
 const OPENROUTER_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions";
+const OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models?supported_parameters=tools";
 const MAX_TOOL_ROUNDS = 4;
 
 const SEED_APPS = [
@@ -31,13 +32,18 @@ const SEED_APPS = [
 ];
 
 const iframe = document.querySelector("#app-sandbox");
+const hostShell = document.querySelector(".host-shell");
 const homeButton = document.querySelector("#system-home");
 const newAppButton = document.querySelector("#new-app");
 const toggleBuilderButton = document.querySelector("#toggle-builder");
+const mobileBuilderBar = document.querySelector("#mobile-builder-bar");
+const mobileBuilderToggle = document.querySelector("#mobile-builder-toggle");
 const closeBuilderButton = document.querySelector("#close-builder");
 const openSettingsButton = document.querySelector("#open-settings");
+const sideMenu = document.querySelector("#side-menu");
+const closeMenuButton = document.querySelector("#close-menu");
+const sideMenuSettingsButton = document.querySelector("#side-menu-settings");
 const activeTitle = document.querySelector("#active-app-title");
-const statusLine = document.querySelector("#kernel-status");
 const builderPanel = document.querySelector("#builder-panel");
 const builderTitle = document.querySelector("#builder-title");
 const builderMessages = document.querySelector("#builder-messages");
@@ -48,6 +54,8 @@ const settingsDialog = document.querySelector("#settings-dialog");
 const settingsForm = document.querySelector("#settings-form");
 const openRouterKeyInput = document.querySelector("#openrouter-key");
 const openRouterModelInput = document.querySelector("#openrouter-model");
+const openRouterModelsList = document.querySelector("#openrouter-models");
+const modelsStatus = document.querySelector("#models-status");
 
 const state = {
   db: null,
@@ -59,10 +67,6 @@ const state = {
     busy: false,
   },
 };
-
-function setStatus(message) {
-  statusLine.textContent = message;
-}
 
 // Kernel Module: Storage Manager
 function openDatabase() {
@@ -234,7 +238,7 @@ async function loadApp(appId) {
   const app = await getApp(appId);
 
   if (!app) {
-    setStatus(`App not found: ${appId}`);
+    console.warn(`App not found: ${appId}`);
     return;
   }
 
@@ -242,12 +246,45 @@ async function loadApp(appId) {
   state.activeApp = app;
   activeTitle.textContent = app.name;
   builderTitle.textContent = app.name;
+  updateTopBar(app.appId);
   iframe.srcdoc = app.sourceCode;
-  setStatus(`Loaded ${app.name}`);
 
   if (state.builder.appId !== app.appId) {
     resetBuilderSession(app.appId);
   }
+}
+
+function updateTopBar(appId) {
+  const isHome = appId === MENU_APP_ID;
+  hostShell.classList.toggle("is-home", isHome);
+  hostShell.classList.toggle("is-app", !isHome);
+  homeButton.textContent = isHome ? "☰" : "‹";
+  homeButton.setAttribute("aria-label", isHome ? "Open menu" : "Back to home");
+  newAppButton.hidden = !isHome;
+  toggleBuilderButton.hidden = isHome;
+  mobileBuilderBar.hidden = isHome;
+  mobileBuilderToggle.hidden = isHome;
+  updateBuilderToggleLabel();
+  openSettingsButton.hidden = true;
+}
+
+function handleHomeButton() {
+  if (state.activeAppId === MENU_APP_ID) {
+    sideMenu.hidden = false;
+    return;
+  }
+
+  closeBuilder();
+  loadApp(MENU_APP_ID);
+}
+
+function closeSideMenu() {
+  sideMenu.hidden = true;
+}
+
+function openSettingsFromMenu() {
+  closeSideMenu();
+  openSettings();
 }
 
 // Kernel Module: RPC Message Router
@@ -330,11 +367,32 @@ function resetBuilderSession(appId) {
 
 function openBuilder() {
   builderPanel.hidden = false;
+  hostShell.classList.add("builder-open");
+  toggleBuilderButton.hidden = true;
+  mobileBuilderToggle.hidden = state.activeAppId === MENU_APP_ID;
+  updateBuilderToggleLabel();
   builderInput.focus();
 }
 
 function closeBuilder() {
   builderPanel.hidden = true;
+  hostShell.classList.remove("builder-open");
+  toggleBuilderButton.hidden = state.activeAppId === MENU_APP_ID;
+  mobileBuilderToggle.hidden = state.activeAppId === MENU_APP_ID;
+  updateBuilderToggleLabel();
+}
+
+function toggleBuilder() {
+  if (builderPanel.hidden) {
+    openBuilder();
+  } else {
+    closeBuilder();
+  }
+}
+
+function updateBuilderToggleLabel() {
+  toggleBuilderButton.textContent = "BuilderAI";
+  mobileBuilderToggle.textContent = builderPanel.hidden ? "BuilderAI ↑" : "BuilderAI ↓";
 }
 
 function addBuilderMessage(role, content, persist = false) {
@@ -563,6 +621,47 @@ async function openSettings() {
   openRouterKeyInput.value = config.apiKey;
   openRouterModelInput.value = config.model;
   settingsDialog.showModal();
+  loadOpenRouterModels();
+}
+
+async function loadOpenRouterModels() {
+  modelsStatus.textContent = "Loading tool-capable models...";
+
+  try {
+    const response = await fetch(OPENROUTER_MODELS_URL);
+    if (!response.ok) throw new Error(`Model list failed with ${response.status}`);
+
+    const body = await response.json();
+    const models = (body.data || [])
+      .filter((model) => model.supported_parameters?.includes("tools"))
+      .sort((a, b) => {
+        const aCost = Number(a.pricing?.prompt || 0) + Number(a.pricing?.completion || 0);
+        const bCost = Number(b.pricing?.prompt || 0) + Number(b.pricing?.completion || 0);
+        return aCost - bCost || a.name.localeCompare(b.name);
+      });
+
+    openRouterModelsList.replaceChildren(...models.map(createModelOption));
+    modelsStatus.textContent = `${models.length} tool-capable models available. Prices are USD per 1M tokens.`;
+  } catch (error) {
+    console.error(error);
+    modelsStatus.textContent = "Could not load models. You can still type a model id manually.";
+  }
+}
+
+function createModelOption(model) {
+  const option = document.createElement("option");
+  const inputCost = formatTokenPrice(model.pricing?.prompt);
+  const outputCost = formatTokenPrice(model.pricing?.completion);
+  option.value = model.id;
+  option.label = `${model.name} (${inputCost} in / ${outputCost} out)`;
+  return option;
+}
+
+function formatTokenPrice(pricePerToken) {
+  const price = Number(pricePerToken);
+  if (!Number.isFinite(price)) return "?";
+  if (price === 0) return "$0";
+  return `$${(price * 1_000_000).toFixed(price * 1_000_000 < 1 ? 2 : 1)}`;
 }
 
 async function submitSettings(event) {
@@ -578,7 +677,6 @@ async function submitSettings(event) {
     model: openRouterModelInput.value,
   });
   settingsDialog.close();
-  setStatus("OpenRouter settings saved");
 }
 
 // Kernel Module: Boot
@@ -587,19 +685,20 @@ async function boot() {
     state.db = await openDatabase();
     await seedApps();
     await loadApp(MENU_APP_ID);
-    setStatus("Kernel ready");
   } catch (error) {
     console.error(error);
     activeTitle.textContent = "Kernel error";
-    setStatus(error?.message || "Kernel failed to start");
   }
 }
 
-homeButton.addEventListener("click", () => loadApp(MENU_APP_ID));
+homeButton.addEventListener("click", handleHomeButton);
 newAppButton.addEventListener("click", createBlankApp);
-toggleBuilderButton.addEventListener("click", openBuilder);
+toggleBuilderButton.addEventListener("click", toggleBuilder);
+mobileBuilderToggle.addEventListener("click", toggleBuilder);
 closeBuilderButton.addEventListener("click", closeBuilder);
 openSettingsButton.addEventListener("click", openSettings);
+closeMenuButton.addEventListener("click", closeSideMenu);
+sideMenuSettingsButton.addEventListener("click", openSettingsFromMenu);
 builderForm.addEventListener("submit", submitBuilderMessage);
 settingsForm.addEventListener("submit", submitSettings);
 window.addEventListener("message", handleMessage);
