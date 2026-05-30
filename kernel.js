@@ -64,6 +64,7 @@ const state = {
   builder: {
     appId: null,
     messages: [],
+    activity: [],
     busy: false,
   },
 };
@@ -404,8 +405,16 @@ function addBuilderMessage(role, content, persist = false) {
   item.className = "builder-message";
   item.dataset.role = role;
   item.textContent = content;
-  builderMessages.append(item);
-  builderMessages.scrollTop = builderMessages.scrollHeight;
+
+  const progressItem = builderMessages.querySelector(".builder-progress");
+  if (progressItem) {
+    builderMessages.insertBefore(item, progressItem);
+  } else {
+    builderMessages.append(item);
+  }
+
+  scrollBuilderMessages();
+  return item;
 }
 
 function renderBuilderMessages() {
@@ -427,6 +436,64 @@ function setBuilderBusy(isBusy) {
   state.builder.busy = isBusy;
   builderSend.disabled = isBusy;
   builderInput.disabled = isBusy;
+
+  if (isBusy) {
+    state.builder.activity = [];
+    updateBuilderActivity("Thinking...");
+  } else {
+    clearBuilderProgress();
+  }
+}
+
+function scrollBuilderMessages() {
+  builderMessages.scrollTop = builderMessages.scrollHeight;
+}
+
+function updateBuilderActivity(message) {
+  if (!state.builder.busy || !message) return;
+
+  if (state.builder.activity.at(-1) !== message) {
+    state.builder.activity.push(message);
+  }
+
+  renderBuilderProgress();
+}
+
+function renderBuilderProgress() {
+  clearBuilderProgress(false);
+
+  if (!state.builder.busy) return;
+
+  const item = document.createElement("li");
+  item.className = "builder-progress";
+  item.setAttribute("aria-live", "polite");
+
+  const lines = document.createElement("div");
+  lines.className = "builder-progress-lines";
+
+  for (const message of state.builder.activity.slice(-4)) {
+    const line = document.createElement("p");
+    line.textContent = message;
+    lines.append(line);
+  }
+
+  const loader = document.createElement("div");
+  loader.className = "builder-loader";
+  loader.innerHTML = '<span></span><span></span><span></span><strong>Working</strong>';
+
+  item.append(lines, loader);
+  builderMessages.append(item);
+  scrollBuilderMessages();
+}
+
+function clearBuilderProgress(resetActivity = true) {
+  for (const item of builderMessages.querySelectorAll(".builder-progress")) {
+    item.remove();
+  }
+
+  if (resetActivity) {
+    state.builder.activity = [];
+  }
 }
 
 // Kernel Module: Manager AI Harness
@@ -490,7 +557,7 @@ function getBuilderTools() {
   ];
 }
 
-async function callOpenRouter(messages, tools) {
+async function callOpenRouter(messages, tools, handlers = {}) {
   const config = await getOpenRouterConfig();
 
   if (!config.apiKey || !config.model) {
@@ -510,16 +577,125 @@ async function callOpenRouter(messages, tools) {
       messages,
       tools,
       tool_choice: "auto",
+      stream: true,
     }),
   });
 
-  const body = await response.json().catch(() => null);
-
   if (!response.ok) {
+    const body = await response.json().catch(() => null);
     throw new Error(body?.error?.message || `OpenRouter request failed with ${response.status}`);
   }
 
-  return body.choices?.[0]?.message;
+  if (!response.body) {
+    const body = await response.json().catch(() => null);
+    return body?.choices?.[0]?.message;
+  }
+
+  return readOpenRouterStream(response.body, handlers);
+}
+
+async function readOpenRouterStream(body, handlers) {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  const assistantMessage = {
+    role: "assistant",
+    content: "",
+    tool_calls: [],
+  };
+  let buffer = "";
+  let sawReasoning = false;
+
+  while (true) {
+    const { value, done } = await reader.read();
+    buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+    buffer = buffer.replace(/\r\n/g, "\n");
+
+    let eventBoundary = buffer.indexOf("\n\n");
+    while (eventBoundary !== -1) {
+      const rawEvent = buffer.slice(0, eventBoundary);
+      buffer = buffer.slice(eventBoundary + 2);
+      processOpenRouterStreamEvent(rawEvent, assistantMessage, handlers, () => {
+        if (!sawReasoning) {
+          sawReasoning = true;
+          handlers.onThinking?.();
+        }
+      });
+      eventBoundary = buffer.indexOf("\n\n");
+    }
+
+    if (done) break;
+  }
+
+  if (buffer.trim()) {
+    processOpenRouterStreamEvent(buffer, assistantMessage, handlers, () => {
+      if (!sawReasoning) {
+        sawReasoning = true;
+        handlers.onThinking?.();
+      }
+    });
+  }
+
+  if (!assistantMessage.tool_calls.length) {
+    delete assistantMessage.tool_calls;
+  }
+
+  return assistantMessage;
+}
+
+function processOpenRouterStreamEvent(rawEvent, assistantMessage, handlers, markThinking) {
+  const data = rawEvent
+    .split("\n")
+    .filter((line) => line.startsWith("data:"))
+    .map((line) => line.slice(5).trimStart())
+    .join("\n")
+    .trim();
+
+  if (!data || data === "[DONE]") return;
+
+  let payload;
+  try {
+    payload = JSON.parse(data);
+  } catch (error) {
+    console.warn("Could not parse OpenRouter stream event", error);
+    return;
+  }
+
+  const delta = payload.choices?.[0]?.delta;
+  if (!delta) return;
+
+  if (delta.reasoning || delta.reasoning_content || delta.reasoning_details) {
+    markThinking();
+  }
+
+  if (typeof delta.content === "string") {
+    assistantMessage.content += delta.content;
+    handlers.onContent?.(delta.content, assistantMessage.content);
+  }
+
+  for (const toolDelta of delta.tool_calls || []) {
+    const index = toolDelta.index ?? assistantMessage.tool_calls.length;
+    const toolCall = ensureToolCallDelta(assistantMessage.tool_calls, index);
+    if (toolDelta.id) toolCall.id = toolDelta.id;
+    if (toolDelta.type) toolCall.type = toolDelta.type;
+    if (toolDelta.function?.name) toolCall.function.name += toolDelta.function.name;
+    if (toolDelta.function?.arguments) toolCall.function.arguments += toolDelta.function.arguments;
+    handlers.onToolDelta?.(toolCall);
+  }
+}
+
+function ensureToolCallDelta(toolCalls, index) {
+  if (!toolCalls[index]) {
+    toolCalls[index] = {
+      id: "",
+      type: "function",
+      function: {
+        name: "",
+        arguments: "",
+      },
+    };
+  }
+
+  return toolCalls[index];
 }
 
 async function executeBuilderTool(toolCall) {
@@ -566,7 +742,32 @@ async function runBuilderAgent() {
   const tools = getBuilderTools();
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
-    const assistantMessage = await callOpenRouter(messages, tools);
+    let liveAssistantItem = null;
+    let sawToolCall = false;
+    const assistantMessage = await callOpenRouter(messages, tools, {
+      onThinking: () => updateBuilderActivity("Thinking through the request..."),
+      onToolDelta: (toolCall) => {
+        sawToolCall = true;
+        updateBuilderActivity(getToolActivityLabel(toolCall.function?.name));
+
+        if (liveAssistantItem) {
+          liveAssistantItem.remove();
+          liveAssistantItem = null;
+        }
+      },
+      onContent: (_chunk, content) => {
+        if (sawToolCall) return;
+
+        if (!liveAssistantItem) {
+          updateBuilderActivity("Writing response...");
+          liveAssistantItem = addBuilderMessage("assistant", "");
+          liveAssistantItem.dataset.streaming = "true";
+        }
+
+        liveAssistantItem.textContent = content;
+        scrollBuilderMessages();
+      },
+    });
 
     if (!assistantMessage) {
       throw new Error("OpenRouter returned an empty response.");
@@ -576,12 +777,25 @@ async function runBuilderAgent() {
 
     if (!assistantMessage.tool_calls?.length) {
       const content = assistantMessage.content || "Done.";
-      addBuilderMessage("assistant", content, true);
+      if (liveAssistantItem) {
+        liveAssistantItem.textContent = content;
+        delete liveAssistantItem.dataset.streaming;
+        state.builder.messages.push({ role: "assistant", content });
+        scrollBuilderMessages();
+      } else {
+        addBuilderMessage("assistant", content, true);
+      }
       return;
     }
 
+    if (liveAssistantItem) {
+      liveAssistantItem.remove();
+    }
+
     for (const toolCall of assistantMessage.tool_calls) {
+      updateBuilderActivity(getToolActivityLabel(toolCall.function?.name, true));
       const result = await executeBuilderTool(toolCall);
+      updateBuilderActivity(getToolActivityLabel(toolCall.function?.name, false));
       messages.push({
         role: "tool",
         tool_call_id: toolCall.id,
@@ -592,6 +806,15 @@ async function runBuilderAgent() {
   }
 
   throw new Error("Builder stopped after too many tool rounds.");
+}
+
+function getToolActivityLabel(toolName, completed = null) {
+  const labels = {
+    read_current_app_code: ["Reading current app...", "Read current app."],
+    write_current_app: ["Editing app...", "Edited app."],
+  };
+  const [activeLabel, doneLabel] = labels[toolName] || ["Using a tool...", "Tool finished."];
+  return completed === false ? doneLabel : activeLabel;
 }
 
 async function submitBuilderMessage(event) {
