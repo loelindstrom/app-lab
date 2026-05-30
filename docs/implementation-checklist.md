@@ -21,23 +21,20 @@
   - [x] Validate messages by iframe `contentWindow`.
   - [x] Let apps request the app list.
   - [x] Let apps request navigation without trusting iframe-provided app identity.
+- [x] Prepare the kernel for iteration.
+  - [x] Move built-in app HTML out of `kernel.js`.
+  - [x] Mark `kernel.js` sections by kernel module.
+  - [x] Add seed versioning for built-in registry apps.
 
 ## Phase 2: App Data Plumbing
 
-- [ ] Add app-owned data access.
-  - [ ] Implement `GET_MY_DATA`.
-  - [ ] Implement `SAVE_MY_DATA`.
-  - [ ] Bind data access to the kernel's active app id.
-  - [ ] Add a test notes app that persists text.
+- [x] Add app-owned data access.
+  - [x] Implement `GET_MY_DATA`.
+  - [x] Implement `SAVE_MY_DATA`.
+  - [x] Bind data access to the kernel's active app id.
+  - [x] Add a test notes app that persists text.
 
-## Phase 3: Versioned Editing
-
-- [ ] Add app code versioning.
-  - [ ] Store previous HTML versions before overwrites.
-  - [ ] Add rollback support.
-  - [ ] Add a simple manual edit path before AI generation.
-
-## Phase 4: Manager AI
+## Phase 3: Manager AI
 
 - [ ] Add host-owned settings.
   - [ ] Store AI provider configuration locally.

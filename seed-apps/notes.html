@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      :root {
+        --bg: #fffaf0;
+        --ink: #1f2522;
+        --muted: #68726c;
+        --line: #d8d0c1;
+        --accent: #0f6d5c;
+        --saved: #3c7a25;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        background:
+          linear-gradient(145deg, rgb(15 109 92 / 11%), transparent 38%),
+          var(--bg);
+        color: var(--ink);
+        font-family: "Aptos", "Segoe UI", sans-serif;
+        margin: 0;
+        min-height: 100vh;
+        padding: 24px;
+      }
+
+      main {
+        display: grid;
+        gap: 18px;
+        margin: 0 auto;
+        max-width: 780px;
+      }
+
+      h1 {
+        font-size: clamp(36px, 8vw, 72px);
+        line-height: .95;
+        margin: 0;
+      }
+
+      p {
+        color: var(--muted);
+        line-height: 1.55;
+        margin: 0;
+        max-width: 620px;
+      }
+
+      textarea {
+        background: white;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        color: inherit;
+        font: inherit;
+        min-height: 300px;
+        padding: 16px;
+        resize: vertical;
+        width: 100%;
+      }
+
+      textarea:focus {
+        border-color: var(--accent);
+        outline: 3px solid rgb(15 109 92 / 16%);
+      }
+
+      .toolbar {
+        align-items: center;
+        display: flex;
+        gap: 12px;
+        justify-content: space-between;
+      }
+
+      button {
+        background: var(--accent);
+        border: 0;
+        border-radius: 7px;
+        color: white;
+        cursor: pointer;
+        font: inherit;
+        font-weight: 800;
+        min-height: 44px;
+        padding: 0 18px;
+      }
+
+      output {
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      output[data-state="saved"] {
+        color: var(--saved);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Notes</h1>
+        <p>This app stores its content through the host kernel, not through direct browser storage access.</p>
+      </header>
+
+      <textarea id="note" spellcheck="true" placeholder="Write something here..."></textarea>
+
+      <div class="toolbar">
+        <button id="save" type="button">Save</button>
+        <output id="status">Loading</output>
+      </div>
+    </main>
+
+    <script>
+      const note = document.querySelector("#note");
+      const saveButton = document.querySelector("#save");
+      const status = document.querySelector("#status");
+      const pendingRequests = new Map();
+
+      function sendKernelRequest(type, payload = {}) {
+        const requestId = crypto.randomUUID();
+        window.parent.postMessage({ type, requestId, payload }, "*");
+        return requestId;
+      }
+
+      function setStatus(message, state = "") {
+        status.textContent = message;
+        status.dataset.state = state;
+      }
+
+      window.addEventListener("message", (event) => {
+        const message = event.data;
+        if (!message || typeof message !== "object") return;
+
+        if (message.type === "MY_DATA" && pendingRequests.get(message.requestId) === "load") {
+          note.value = message.payload.data?.text || "";
+          pendingRequests.delete(message.requestId);
+          setStatus("Ready");
+        }
+
+        if (message.type === "MY_DATA_SAVED" && pendingRequests.get(message.requestId) === "save") {
+          pendingRequests.delete(message.requestId);
+          setStatus("Saved", "saved");
+        }
+      });
+
+      saveButton.addEventListener("click", () => {
+        setStatus("Saving");
+        const requestId = sendKernelRequest("SAVE_MY_DATA", { data: { text: note.value } });
+        pendingRequests.set(requestId, "save");
+      });
+
+      note.addEventListener("input", () => setStatus("Unsaved changes"));
+
+      pendingRequests.set(sendKernelRequest("GET_MY_DATA"), "load");
+    </script>
+  </body>
+</html>

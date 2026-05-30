@@ -1,6 +1,31 @@
+// Kernel Module: Constants & Host Bindings
 const DB_NAME = "app-lab";
 const DB_VERSION = 1;
 const MENU_APP_ID = "menu";
+
+const SEED_APPS = [
+  {
+    appId: MENU_APP_ID,
+    name: "Home",
+    description: "Local app launcher",
+    sourcePath: "seed-apps/menu.html",
+    seedVersion: 1,
+  },
+  {
+    appId: "sandbox-check",
+    name: "Sandbox Check",
+    description: "A tiny app loaded from IndexedDB to verify iframe switching.",
+    sourcePath: "seed-apps/sandbox-check.html",
+    seedVersion: 1,
+  },
+  {
+    appId: "notes",
+    name: "Notes",
+    description: "A small persistence test app backed by apps_data.",
+    sourcePath: "seed-apps/notes.html",
+    seedVersion: 1,
+  },
+];
 
 const iframe = document.querySelector("#app-sandbox");
 const homeButton = document.querySelector("#system-home");
@@ -17,6 +42,7 @@ function setStatus(message) {
   statusLine.textContent = message;
 }
 
+// Kernel Module: Storage Manager
 function openDatabase() {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
@@ -54,6 +80,7 @@ async function getApp(appId) {
   return requestToPromise(transaction("apps_registry").get(appId));
 }
 
+// Kernel Module: Apps Registry
 async function listApps() {
   const apps = await requestToPromise(transaction("apps_registry").getAll());
   return apps
@@ -78,6 +105,23 @@ async function putApp(app) {
   await requestToPromise(transaction("apps_registry", "readwrite").put(record));
 }
 
+// Kernel Module: Apps Data
+async function getActiveAppData() {
+  const record = await requestToPromise(transaction("apps_data").get(state.activeAppId));
+  return record?.data ?? null;
+}
+
+async function saveActiveAppData(data) {
+  await requestToPromise(
+    transaction("apps_data", "readwrite").put({
+      appId: state.activeAppId,
+      data,
+      updatedAt: new Date().toISOString(),
+    }),
+  );
+}
+
+// Kernel Module: App Loader
 function postToApp(message) {
   iframe.contentWindow?.postMessage(message, "*");
 }
@@ -97,6 +141,7 @@ async function loadApp(appId) {
   setStatus(`Loaded ${app.name}`);
 }
 
+// Kernel Module: RPC Message Router
 async function handleMessage(event) {
   if (event.source !== iframe.contentWindow) return;
   if (!event.data || typeof event.data !== "object") return;
@@ -112,6 +157,25 @@ async function handleMessage(event) {
     return;
   }
 
+  if (type === "GET_MY_DATA") {
+    postToApp({
+      type: "MY_DATA",
+      requestId,
+      payload: { data: await getActiveAppData() },
+    });
+    return;
+  }
+
+  if (type === "SAVE_MY_DATA") {
+    await saveActiveAppData(payload?.data ?? null);
+    postToApp({
+      type: "MY_DATA_SAVED",
+      requestId,
+      payload: { ok: true },
+    });
+    return;
+  }
+
   if (type === "NAVIGATE_APP") {
     const nextAppId = payload?.appId;
     if (typeof nextAppId === "string") {
@@ -120,245 +184,34 @@ async function handleMessage(event) {
   }
 }
 
-function createMenuAppHtml() {
-  return `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <style>
-      :root {
-        --bg: #fffaf0;
-        --ink: #202723;
-        --muted: #66706a;
-        --line: #ddd4c4;
-        --accent: #0f6d5c;
-        --accent-soft: #d9eee8;
-      }
+// Kernel Module: Seed Apps
+async function fetchSeedSource(sourcePath) {
+  const response = await fetch(sourcePath, { cache: "no-store" });
 
-      * { box-sizing: border-box; }
+  if (!response.ok) {
+    throw new Error(`Could not load seed app: ${sourcePath}`);
+  }
 
-      body {
-        margin: 0;
-        min-height: 100vh;
-        background:
-          linear-gradient(160deg, rgb(15 109 92 / 10%), transparent 34%),
-          var(--bg);
-        color: var(--ink);
-        font-family: "Aptos", "Segoe UI", sans-serif;
-      }
-
-      main {
-        margin: 0 auto;
-        max-width: 980px;
-        padding: 36px 22px;
-      }
-
-      header {
-        margin-bottom: 28px;
-      }
-
-      p {
-        color: var(--muted);
-        line-height: 1.55;
-        margin: 8px 0 0;
-        max-width: 680px;
-      }
-
-      h1 {
-        font-size: clamp(34px, 8vw, 68px);
-        line-height: .96;
-        margin: 0;
-      }
-
-      .grid {
-        display: grid;
-        gap: 12px;
-        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      }
-
-      button {
-        background: white;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        color: inherit;
-        cursor: pointer;
-        display: grid;
-        gap: 10px;
-        min-height: 148px;
-        padding: 18px;
-        text-align: left;
-        width: 100%;
-      }
-
-      button:hover,
-      button:focus-visible {
-        border-color: var(--accent);
-        box-shadow: 0 12px 32px rgb(15 109 92 / 16%);
-        outline: none;
-      }
-
-      .name {
-        font-size: 20px;
-        font-weight: 800;
-      }
-
-      .description {
-        color: var(--muted);
-        line-height: 1.45;
-      }
-
-      .tag {
-        align-self: end;
-        background: var(--accent-soft);
-        border-radius: 999px;
-        color: #09483d;
-        display: inline-block;
-        font-size: 12px;
-        font-weight: 800;
-        padding: 5px 9px;
-        width: fit-content;
-      }
-    </style>
-  </head>
-  <body>
-    <main>
-      <header>
-        <h1>Your app shelf</h1>
-        <p>Open a generated app from the local registry. The host controls storage and navigation outside this sandbox.</p>
-      </header>
-      <section id="apps" class="grid" aria-label="Available apps"></section>
-    </main>
-
-    <script>
-      const appsRoot = document.querySelector("#apps");
-      const requestId = crypto.randomUUID();
-
-      window.addEventListener("message", (event) => {
-        if (event.data?.type !== "APPS_LIST" || event.data.requestId !== requestId) return;
-        renderApps(event.data.payload.apps);
-      });
-
-      function renderApps(apps) {
-        appsRoot.replaceChildren(...apps
-          .filter((app) => app.appId !== "menu")
-          .map((app) => {
-            const button = document.createElement("button");
-            button.type = "button";
-            button.innerHTML = "<span class='name'></span><span class='description'></span><span class='tag'>Open</span>";
-            button.querySelector(".name").textContent = app.name;
-            button.querySelector(".description").textContent = app.description || "Local app";
-            button.addEventListener("click", () => {
-              window.parent.postMessage({ type: "NAVIGATE_APP", payload: { appId: app.appId } }, "*");
-            });
-            return button;
-          }));
-      }
-
-      window.parent.postMessage({ type: "LIST_APPS", requestId }, "*");
-    </script>
-  </body>
-</html>`;
-}
-
-function createDemoAppHtml() {
-  return `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <style>
-      * { box-sizing: border-box; }
-
-      body {
-        align-items: center;
-        background: #f8fbf6;
-        color: #17211d;
-        display: grid;
-        font-family: "Aptos", "Segoe UI", sans-serif;
-        margin: 0;
-        min-height: 100vh;
-        padding: 24px;
-      }
-
-      main {
-        max-width: 720px;
-      }
-
-      h1 {
-        font-size: clamp(38px, 9vw, 86px);
-        line-height: .92;
-        margin: 0 0 18px;
-      }
-
-      p {
-        color: #5f6a64;
-        font-size: 18px;
-        line-height: 1.55;
-        margin: 0 0 24px;
-      }
-
-      button {
-        background: #17211d;
-        border: 0;
-        border-radius: 7px;
-        color: white;
-        cursor: pointer;
-        font: inherit;
-        font-weight: 800;
-        min-height: 44px;
-        padding: 0 18px;
-      }
-
-      output {
-        display: block;
-        font-size: 48px;
-        font-weight: 900;
-        margin-top: 22px;
-      }
-    </style>
-  </head>
-  <body>
-    <main>
-      <h1>Sandbox check</h1>
-      <p>This dummy app is a complete HTML document loaded from IndexedDB into an isolated iframe.</p>
-      <button id="increment" type="button">Increment local counter</button>
-      <output id="count">0</output>
-    </main>
-    <script>
-      let count = 0;
-      const output = document.querySelector("#count");
-      document.querySelector("#increment").addEventListener("click", () => {
-        count += 1;
-        output.textContent = count;
-      });
-    </script>
-  </body>
-</html>`;
+  return response.text();
 }
 
 async function seedApps() {
-  const seeds = [
-    {
-      appId: MENU_APP_ID,
-      name: "Home",
-      description: "Local app launcher",
-      sourceCode: createMenuAppHtml(),
-    },
-    {
-      appId: "sandbox-check",
-      name: "Sandbox Check",
-      description: "A tiny app loaded from IndexedDB to verify iframe switching.",
-      sourceCode: createDemoAppHtml(),
-    },
-  ];
+  for (const seed of SEED_APPS) {
+    const existing = await getApp(seed.appId);
+    if (existing && existing.seedVersion === seed.seedVersion) continue;
 
-  for (const app of seeds) {
-    const existing = await getApp(app.appId);
-    if (!existing) await putApp(app);
+    const sourceCode = await fetchSeedSource(seed.sourcePath);
+    await putApp({
+      appId: seed.appId,
+      name: seed.name,
+      description: seed.description,
+      seedVersion: seed.seedVersion,
+      sourceCode,
+    });
   }
 }
 
+// Kernel Module: Boot
 async function boot() {
   try {
     state.db = await openDatabase();
