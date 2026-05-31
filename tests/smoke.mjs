@@ -236,6 +236,18 @@ async function smoke() {
     assert(preparedHtml.includes("Content-Security-Policy"), "Prepared app HTML should include a CSP meta tag");
     assert(preparedHtml.includes("connect-src 'none'"), "App CSP should block network connections");
     assert(!preparedHtml.includes("navigate-to"), "App CSP should avoid unsupported navigate-to warnings");
+    const preparedBypassHtml = await evaluate(page, `(() => {
+      const html = window.__appLabTest.prepareSandboxHtml('<!-- <head> --><html><head><title>x</title></head><body>ok</body></html>');
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      return {
+        csp: doc.head.querySelector('meta[http-equiv="Content-Security-Policy"]')?.content || "",
+        title: doc.title,
+        bodyText: doc.body.textContent.trim()
+      };
+    })()`);
+    assert(preparedBypassHtml.csp.includes("connect-src 'none'"), "CSP injection should not be bypassed by commented head markup");
+    assert(preparedBypassHtml.title === "x", "DOM-based CSP injection should preserve document head content");
+    assert(preparedBypassHtml.bodyText === "ok", "DOM-based CSP injection should preserve document body content");
     const cspFetchResult = await evaluate(page, `new Promise((resolve) => {
       const iframe = document.createElement("iframe");
       iframe.setAttribute("sandbox", "allow-scripts");
@@ -253,7 +265,11 @@ async function smoke() {
     assert(cspFetchResult === "blocked", `Injected app CSP should block fetch from sandboxed content, got ${cspFetchResult}`);
     await evaluate(page, `window.__appLabTest.handleMessage({
       source: document.querySelector("#app-sandbox").contentWindow,
-      data: { type: "NAVIGATE_APP", payload: { appId: "notes" } }
+      data: {
+        type: "NAVIGATE_APP",
+        appLabCapability: window.__appLabTest.getActiveFrameCapability(),
+        payload: { appId: "notes" }
+      }
     })`);
     await waitForTitle(page, "Notes");
     const iframePolicy = await evaluate(page, `document.querySelector("#app-sandbox").srcdoc`);
@@ -275,16 +291,37 @@ async function smoke() {
 
     await evaluate(page, `window.__appLabTest.handleMessage({
       source: document.querySelector("#app-sandbox").contentWindow,
-      data: { type: "SAVE_MY_DATA", requestId: "save-smoke", payload: { data: { text: "Smoke test note" } } }
+      data: {
+        type: "SAVE_MY_DATA",
+        requestId: "save-smoke",
+        appLabCapability: window.__appLabTest.getActiveFrameCapability(),
+        payload: { data: { text: "Smoke test note" } }
+      }
     })`);
     const savedData = await evaluate(page, `window.__appLabTest.getActiveAppData()`);
     assert(savedData.text === "Smoke test note", "Notes data should save through the RPC path");
     await evaluate(page, `window.__appLabTest.handleMessage({
       source: document.querySelector("#app-sandbox").contentWindow,
-      data: { type: "SAVE_MY_DATA", requestId: "save-huge", payload: { data: { text: "x".repeat(1_048_577) } } }
+      data: {
+        type: "SAVE_MY_DATA",
+        requestId: "save-huge",
+        appLabCapability: window.__appLabTest.getActiveFrameCapability(),
+        payload: { data: { text: "x".repeat(1_048_577) } }
+      }
     })`);
     const dataAfterHugeSave = await evaluate(page, `window.__appLabTest.getActiveAppData()`);
     assert(dataAfterHugeSave.text === "Smoke test note", "Oversized app data should be rejected without overwriting existing data");
+    await evaluate(page, `window.__appLabTest.handleMessage({
+      source: document.querySelector("#app-sandbox").contentWindow,
+      data: {
+        type: "SAVE_MY_DATA",
+        requestId: "save-invalid-capability",
+        appLabCapability: "invalid",
+        payload: { data: { text: "Invalid token write" } }
+      }
+    })`);
+    const dataAfterInvalidCapability = await evaluate(page, `window.__appLabTest.getActiveAppData()`);
+    assert(dataAfterInvalidCapability.text === "Smoke test note", "RPC with invalid capability should be ignored");
 
     await evaluate(page, `document.querySelector("#mobile-builder-toggle").click()`);
     await waitFor(

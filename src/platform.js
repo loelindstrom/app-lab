@@ -3,6 +3,8 @@ export const DB_VERSION = 2;
 export const MENU_APP_ID = "menu";
 export const CONFIG_KEY = "openrouter";
 export const MAX_APP_DATA_BYTES = 1_048_576;
+export const APP_CAPABILITY_GLOBAL = "__APP_LAB_CAPABILITY__";
+export const APP_CAPABILITY_FIELD = "appLabCapability";
 
 const SANDBOX_CSP = [
   "default-src 'none'",
@@ -26,14 +28,14 @@ const SEED_APPS = [
     name: "Home",
     description: "Local app launcher",
     sourcePath: "seed-apps/menu.html",
-    seedVersion: 1,
+    seedVersion: 2,
   },
   {
     appId: "notes",
     name: "Notes",
     description: "A small example app.",
     sourcePath: "seed-apps/notes.html",
-    seedVersion: 2,
+    seedVersion: 3,
   },
 ];
 
@@ -46,6 +48,8 @@ export function createPlatform({ dom }) {
   };
   let onAppLoaded = () => {};
   let expectedIframeLoad = false;
+  let activeFrameAppId = null;
+  let activeFrameCapability = null;
 
   function setAppLoadedHandler(handler) {
     onAppLoaded = handler;
@@ -139,9 +143,13 @@ export function createPlatform({ dom }) {
   }
 
   // Section: Active app data
-  async function getActiveAppData() {
-    const record = await requestToPromise(transaction("apps_data").get(state.activeAppId));
+  async function getAppData(appId) {
+    const record = await requestToPromise(transaction("apps_data").get(appId));
     return record?.data ?? null;
+  }
+
+  async function getActiveAppData() {
+    return getAppData(state.activeAppId);
   }
 
   function validateAppData(data) {
@@ -165,11 +173,11 @@ export function createPlatform({ dom }) {
     return data;
   }
 
-  async function saveActiveAppData(data) {
+  async function saveAppData(appId, data) {
     const validatedData = validateAppData(data);
     await requestToPromise(
       transaction("apps_data", "readwrite").put({
-        appId: state.activeAppId,
+        appId,
         data: validatedData,
         updatedAt: new Date().toISOString(),
       }),
@@ -177,28 +185,52 @@ export function createPlatform({ dom }) {
   }
 
   // Section: Iframe app loading
-  function escapeHtmlAttribute(value) {
-    return String(value).replaceAll("&", "&amp;").replaceAll('"', "&quot;");
+  function createFrameCapability() {
+    return crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   }
 
-  function createCspMetaTag() {
-    return `<meta http-equiv="Content-Security-Policy" content="${escapeHtmlAttribute(SANDBOX_CSP)}">`;
+  function createCspMetaElement(document) {
+    const meta = document.createElement("meta");
+    meta.setAttribute("http-equiv", "Content-Security-Policy");
+    meta.setAttribute("content", SANDBOX_CSP);
+    return meta;
   }
 
-  function prepareSandboxHtml(sourceCode) {
-    const cspMeta = createCspMetaTag();
-    if (/<head[\s>]/i.test(sourceCode)) {
-      return sourceCode.replace(/<head([^>]*)>/i, `<head$1>${cspMeta}`);
+  function createCapabilityScriptElement(document, capability) {
+    const script = document.createElement("script");
+    script.textContent = `Object.defineProperty(window, ${JSON.stringify(APP_CAPABILITY_GLOBAL)}, {
+  value: ${JSON.stringify(capability)},
+  configurable: false,
+  enumerable: false,
+  writable: false
+});`;
+    return script;
+  }
+
+  function serializeDoctype(doctype) {
+    if (!doctype) return "<!doctype html>";
+
+    let serialized = `<!doctype ${doctype.name}`;
+    if (doctype.publicId) serialized += ` PUBLIC "${doctype.publicId}"`;
+    if (doctype.systemId) serialized += doctype.publicId ? ` "${doctype.systemId}"` : ` SYSTEM "${doctype.systemId}"`;
+    return `${serialized}>`;
+  }
+
+  function prepareSandboxHtml(sourceCode, capability = "") {
+    const document = new DOMParser().parseFromString(String(sourceCode), "text/html");
+
+    for (const meta of document.querySelectorAll("meta[http-equiv]")) {
+      if (meta.getAttribute("http-equiv")?.toLowerCase() === "content-security-policy") {
+        meta.remove();
+      }
     }
 
-    if (/<html[\s>]/i.test(sourceCode)) {
-      return sourceCode.replace(/<html([^>]*)>/i, `<html$1><head>${cspMeta}</head>`);
-    }
+    document.head.prepend(
+      createCspMetaElement(document),
+      createCapabilityScriptElement(document, capability),
+    );
 
-    const doctypeMatch = sourceCode.match(/^\s*<!doctype[^>]*>/i);
-    const doctype = doctypeMatch?.[0] ?? "<!doctype html>";
-    const body = doctypeMatch ? sourceCode.slice(doctype.length) : sourceCode;
-    return `${doctype}<html><head>${cspMeta}</head><body>${body}</body></html>`;
+    return `${serializeDoctype(document.doctype)}\n${document.documentElement.outerHTML}`;
   }
 
   function postToApp(message) {
@@ -213,10 +245,13 @@ export function createPlatform({ dom }) {
       return;
     }
 
+    const capability = createFrameCapability();
     state.activeAppId = app.appId;
     state.activeApp = app;
+    activeFrameAppId = app.appId;
+    activeFrameCapability = capability;
     expectedIframeLoad = true;
-    dom.iframe.srcdoc = prepareSandboxHtml(app.sourceCode);
+    dom.iframe.srcdoc = prepareSandboxHtml(app.sourceCode, capability);
     onAppLoaded(app);
   }
 
@@ -228,22 +263,35 @@ export function createPlatform({ dom }) {
 
     if (state.activeAppId) {
       console.warn("Unexpected iframe navigation detected; reloading active app.");
+      activeFrameAppId = null;
+      activeFrameCapability = null;
       loadApp(state.activeAppId);
     }
   }
 
   // Section: Host/app RPC boundary
+  function getActiveFrameCapability() {
+    return activeFrameCapability;
+  }
+
+  function getValidatedFrameAppId(message) {
+    if (!activeFrameAppId || !activeFrameCapability) return null;
+    return message?.[APP_CAPABILITY_FIELD] === activeFrameCapability ? activeFrameAppId : null;
+  }
+
   async function handleMessage(event) {
     if (event.source !== dom.iframe.contentWindow) return;
     if (!event.data || typeof event.data !== "object") return;
 
     const { type, requestId, payload } = event.data;
+    const frameAppId = getValidatedFrameAppId(event.data);
+    if (!frameAppId) return;
 
     if (type === "LIST_APPS") {
       postToApp({
         type: "APPS_LIST",
         requestId,
-        payload: { apps: await listApps(), activeAppId: state.activeAppId },
+        payload: { apps: await listApps(), activeAppId: frameAppId },
       });
       return;
     }
@@ -252,14 +300,14 @@ export function createPlatform({ dom }) {
       postToApp({
         type: "MY_DATA",
         requestId,
-        payload: { data: await getActiveAppData() },
+        payload: { data: await getAppData(frameAppId) },
       });
       return;
     }
 
     if (type === "SAVE_MY_DATA") {
       try {
-        await saveActiveAppData(payload?.data ?? null);
+        await saveAppData(frameAppId, payload?.data ?? null);
         postToApp({
           type: "MY_DATA_SAVED",
           requestId,
@@ -313,6 +361,7 @@ export function createPlatform({ dom }) {
   return {
     state,
     getActiveAppData,
+    getActiveFrameCapability,
     getApp,
     getOpenRouterConfig,
     handleMessage,

@@ -13,6 +13,7 @@ const app = createAppLab();
 window.__appLabTest = {
   addBuilderMessage: app.builderUi.addBuilderMessage,
   getActiveAppData: app.platform.getActiveAppData,
+  getActiveFrameCapability: app.platform.getActiveFrameCapability,
   handleMessage: app.platform.handleMessage,
   listApps: app.platform.listApps,
   prepareSandboxHtml: app.platform.prepareSandboxHtml,

@@ -34,8 +34,8 @@ Sections:
 - `Host-owned system configuration`: reads and writes OpenRouter settings in `system_config`.
 - `App registry`: lists, reads, and writes app records in `apps_registry`.
 - `Active app data`: reads and writes JSON data in `apps_data` for the current active app, with a 1MB serialized payload limit.
-- `Iframe app loading`: injects the enforced app CSP, puts the active app HTML into the sandbox iframe via `srcdoc`, and reloads the active app after unexpected iframe navigation.
-- `Host/app RPC boundary`: accepts only messages from the active iframe `contentWindow`, then handles `LIST_APPS`, `NAVIGATE_APP`, `GET_MY_DATA`, and `SAVE_MY_DATA`.
+- `Iframe app loading`: parses app HTML, removes app-supplied CSP meta tags, injects the enforced app CSP and per-load RPC capability, puts the active app HTML into the sandbox iframe via `srcdoc`, and reloads the active app after unexpected iframe navigation.
+- `Host/app RPC boundary`: accepts only messages from the active iframe `contentWindow` with the current per-load capability, then handles `LIST_APPS`, `NAVIGATE_APP`, `GET_MY_DATA`, and `SAVE_MY_DATA`.
 - `Seed app installation`: fetches built-in app HTML and installs or updates seed records.
 
 Design rule: `platform.js` exposes capabilities; other modules should call it rather than reaching directly into IndexedDB or the iframe.
@@ -101,8 +101,8 @@ Design rule: OpenRouter wire format details belong here. The agent loop should c
 
 Seed apps are ordinary iframe apps. They are not trusted just because they are bundled with the repository.
 
-- `menu.html`: asks the host for `LIST_APPS` and renders app launch buttons.
-- `notes.html`: asks for `GET_MY_DATA`, saves with `SAVE_MY_DATA`, and keeps all persistence behind host RPC.
+- `menu.html`: asks the host for `LIST_APPS` and renders app launch buttons, including the injected per-load capability in each RPC message.
+- `notes.html`: asks for `GET_MY_DATA`, saves with `SAVE_MY_DATA`, includes the injected per-load capability in each RPC message, and keeps all persistence behind host RPC.
 
 Design rule: seed apps should follow the same RPC contract as generated apps.
 

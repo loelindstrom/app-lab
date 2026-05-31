@@ -34,13 +34,15 @@ Important properties:
 - The iframe receives an opaque origin.
 - App code cannot directly read host DOM, host IndexedDB, host local storage, cookies, or settings inputs.
 - The host injects app HTML through `srcdoc`, not by navigating to arbitrary remote URLs.
-- Before assignment to `srcdoc`, the host injects a Content Security Policy meta tag into the app document.
+- Before assignment to `srcdoc`, the host parses the app HTML, removes app-supplied CSP meta tags, injects a host-owned Content Security Policy meta tag, and injects a per-load RPC capability.
 
 The sandbox does not make app code harmless. It limits browser capabilities and forces app interaction through the host RPC boundary.
 
 ## App Content Security Policy
 
-`src/platform.js` injects an enforced app-document CSP before every iframe load. The policy is intentionally restrictive:
+`src/platform.js` injects an enforced app-document CSP before every iframe load. The host uses `DOMParser` and DOM serialization for injection rather than regex replacement, so commented or malformed textual `<head>` fragments cannot absorb the CSP meta tag. App-supplied CSP meta tags are removed before the host CSP is prepended.
+
+The policy is intentionally restrictive:
 
 ```text
 default-src 'none';
@@ -76,9 +78,12 @@ Apps communicate with the host through `window.parent.postMessage`.
 
 ```js
 event.source === iframe.contentWindow
+message.appLabCapability === activeFrameCapability
 ```
 
-This prevents other windows, stale frames, or unrelated scripts from using the app RPC API.
+The capability is generated for each `loadApp()` call and injected into the app document as `window.__APP_LAB_CAPABILITY__`. Seed apps and generated apps include it as `appLabCapability` in each host RPC message.
+
+This prevents ordinary stale-frame and document-confusion cases: other windows, old iframe documents, and unrelated scripts cannot use the app RPC API after the host has loaded a different app document and rotated the capability. It is not a secrecy boundary against the currently running app itself, because that app can read and deliberately disclose its own current capability before navigating away.
 
 Supported message types are intentionally small:
 
@@ -91,13 +96,13 @@ There is no generic "run command" API. Unknown message types are ignored.
 
 ## Data Isolation
 
-App data is keyed by the host's active app id, not by an app-provided id. For `GET_MY_DATA` and `SAVE_MY_DATA`, the host chooses the storage row from `state.activeAppId`.
+App data is keyed by the host's frame-bound app id, not by an app-provided id. For `GET_MY_DATA` and `SAVE_MY_DATA`, the host chooses the storage row from the active validated frame capability.
 
 This prevents an app from claiming another app id in the payload to read or overwrite that app's data.
 
 `SAVE_MY_DATA` accepts only JSON-serializable payloads up to 1MB after serialization. Oversized or non-serializable payloads are rejected and return `MY_DATA_SAVE_FAILED`.
 
-Current limitation: the model is single-active-iframe. If App Lab later supports multiple simultaneous iframes, storage routing must be changed from active-app state to a frame-to-app mapping.
+Current limitation: the model is single-active-iframe. If App Lab later supports multiple simultaneous iframes, storage routing must be changed from a single active frame capability to a frame-to-app capability map.
 
 ## API Key Handling
 
@@ -127,6 +132,14 @@ The BuilderAI prompt also instructs generated apps not to use:
 - IndexedDB
 
 These prompt-level constraints are backed by the iframe sandbox, host RPC boundary, and injected app CSP. Browser policy is the primary control for network and navigation restrictions; the prompt is defense in depth and guidance for generation quality.
+
+## Remaining Navigation Limitation
+
+The browser sandbox and CSP do not fully prevent a script-enabled iframe from navigating itself in all supported browsers. App Lab intentionally does not rely on `navigate-to` because major browsers either do not support it or report it as unrecognized.
+
+That means a malicious app that already has app-owned data can still navigate its own iframe to a remote URL with that data in the query string. The host reloads after unexpected navigation, but the outbound request may already have happened. The per-load capability reduces stale-frame and data-confusion risk, but it does not make arbitrary app JavaScript unable to leak data, messages, or capabilities it already received.
+
+Treat generated app code as able to see and potentially disclose its own app data. The host API key, host DOM, host IndexedDB, and other apps' data remain outside the intended app boundary.
 
 ## Streaming and Progress UI
 

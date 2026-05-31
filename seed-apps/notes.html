@@ -119,10 +119,11 @@
       const saveButton = document.querySelector("#save");
       const status = document.querySelector("#status");
       const pendingRequests = new Map();
+      const appLabCapability = window.__APP_LAB_CAPABILITY__;
 
       function sendKernelRequest(type, payload = {}) {
         const requestId = crypto.randomUUID();
-        window.parent.postMessage({ type, requestId, payload }, "*");
+        window.parent.postMessage({ type, requestId, appLabCapability, payload }, "*");
         return requestId;
       }
 

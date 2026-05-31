@@ -111,6 +111,7 @@
 
     <script>
       const appsRoot = document.querySelector("#apps");
+      const appLabCapability = window.__APP_LAB_CAPABILITY__;
       const requestId = crypto.randomUUID();
 
       window.addEventListener("message", (event) => {
@@ -128,13 +129,17 @@
             button.querySelector(".name").textContent = app.name;
             button.querySelector(".description").textContent = app.description || "Local app";
             button.addEventListener("click", () => {
-              window.parent.postMessage({ type: "NAVIGATE_APP", payload: { appId: app.appId } }, "*");
+              window.parent.postMessage({
+                type: "NAVIGATE_APP",
+                appLabCapability,
+                payload: { appId: app.appId },
+              }, "*");
             });
             return button;
           }));
       }
 
-      window.parent.postMessage({ type: "LIST_APPS", requestId }, "*");
+      window.parent.postMessage({ type: "LIST_APPS", requestId, appLabCapability }, "*");
     </script>
   </body>
 </html>

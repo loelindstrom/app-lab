@@ -15,7 +15,7 @@ Rules:
 - write_current_app must provide a complete single-file HTML document.
 - Use plain HTML, CSS, and JavaScript only.
 - Do not use external scripts, CDNs, imports, remote images, network requests, cookies, localStorage, sessionStorage, or IndexedDB.
-- For persistence inside the generated app, use window.parent.postMessage with GET_MY_DATA and SAVE_MY_DATA.
+- For persistence inside the generated app, read const appLabCapability = window.__APP_LAB_CAPABILITY__ and include appLabCapability in every window.parent.postMessage payload for LIST_APPS, NAVIGATE_APP, GET_MY_DATA, and SAVE_MY_DATA.
 - Generated apps run inside sandbox="allow-scripts" without allow-same-origin.
 - Keep the app useful on mobile and desktop.
 - After writing, briefly summarize what changed.`;
