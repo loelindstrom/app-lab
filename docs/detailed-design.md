@@ -33,7 +33,7 @@ Sections:
 - `IndexedDB connection and request helpers`: opens database `app-lab`, creates stores, wraps IDB requests, and creates transactions.
 - `Host-owned system configuration`: reads and writes OpenRouter settings in `system_config`.
 - `App registry`: lists, reads, and writes app records in `apps_registry`.
-- `Active app data`: reads and writes JSON data in `apps_data` for the current active app, with a 1MB serialized payload limit.
+- `Active app data`: reads and writes normalized JSON data in `apps_data` for the current active app, with a 1MB serialized payload limit.
 - `Iframe app loading`: parses app HTML, removes app-supplied CSP meta tags, injects the enforced app CSP and per-load RPC capability, puts the active app HTML into the sandbox iframe via `srcdoc`, and reloads the active app after unexpected iframe navigation.
 - `Host/app RPC boundary`: accepts only messages from the active iframe `contentWindow` with the current per-load capability, then handles `LIST_APPS`, `NAVIGATE_APP`, `GET_MY_DATA`, and `SAVE_MY_DATA`.
 - `Seed app installation`: fetches built-in app HTML and installs or updates seed records.

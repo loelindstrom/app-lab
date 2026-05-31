@@ -40,7 +40,9 @@ The sandbox does not make app code harmless. It limits browser capabilities and 
 
 ## App Content Security Policy
 
-`src/platform.js` injects an enforced app-document CSP before every iframe load. The host uses `DOMParser` and DOM serialization for injection rather than regex replacement, so commented or malformed textual `<head>` fragments cannot absorb the CSP meta tag. App-supplied CSP meta tags are removed before the host CSP is prepended.
+The host page has a separate CSP in `index.html`. It allows same-origin scripts, styles, icons, and manifest files, plus `connect-src` access to OpenRouter for model lists and chat completions. It also allows inline scripts and styles because `srcdoc` app documents inherit host CSP restrictions before their own app CSP can run, and generated apps currently rely on inline HTML/CSS/JavaScript. Even with that compatibility allowance, the host CSP blocks plugins, workers, unexpected connection targets, and unexpected form targets as defense in depth if a future host UI bug creates an injection path.
+
+`src/platform.js` injects an enforced app-document CSP before every iframe load. The host uses `DOMParser` and DOM serialization for injection rather than regex replacement, so commented or malformed textual `<head>` fragments cannot absorb the CSP meta tag. App-supplied CSP meta tags are removed before the app CSP is prepended.
 
 The policy is intentionally restrictive:
 
@@ -100,7 +102,7 @@ App data is keyed by the host's frame-bound app id, not by an app-provided id. F
 
 This prevents an app from claiming another app id in the payload to read or overwrite that app's data.
 
-`SAVE_MY_DATA` accepts only JSON-serializable payloads up to 1MB after serialization. Oversized or non-serializable payloads are rejected and return `MY_DATA_SAVE_FAILED`.
+`SAVE_MY_DATA` stores only the normalized JSON value produced by serializing and parsing the payload. Values that JSON cannot represent are dropped, converted according to JSON rules, or rejected when the top-level value cannot be represented. The 1MB limit is measured after JSON serialization. Oversized or rejected payloads return `MY_DATA_SAVE_FAILED`.
 
 Current limitation: the model is single-active-iframe. If App Lab later supports multiple simultaneous iframes, storage routing must be changed from a single active frame capability to a frame-to-app capability map.
 

@@ -27,7 +27,9 @@ resources/icons/        Favicon and web manifest assets
 
 The host page is trusted. It contains the top bar, side menu, settings dialog, BuilderAI chat, and the single app iframe.
 
-Apps are untrusted. They are loaded through `iframe.srcdoc` with `sandbox="allow-scripts"` and without `allow-same-origin`. This gives app code a unique opaque origin and prevents direct access to host DOM, cookies, local storage, IndexedDB, and settings fields. Before loading, the host parses the app HTML, removes app-supplied CSP meta tags, injects the host CSP, and injects a per-load RPC capability. The CSP blocks network connections, remote resources, forms, frames, workers, and base URL rewriting. The host also reloads the active app after unexpected iframe navigation.
+Apps are untrusted. They are loaded through `iframe.srcdoc` with `sandbox="allow-scripts"` and without `allow-same-origin`. This gives app code a unique opaque origin and prevents direct access to host DOM, cookies, local storage, IndexedDB, and settings fields. Before loading, the host parses the app HTML, removes app-supplied CSP meta tags, injects the app CSP, and injects a per-load RPC capability. The app CSP blocks network connections, remote resources, forms, frames, workers, and base URL rewriting. The host also reloads the active app after unexpected iframe navigation.
+
+The host page has its own CSP in `index.html`. It allows same-origin modules/assets, inline code needed by `srcdoc` app documents, and OpenRouter API requests, while blocking objects, workers, and unexpected network targets as defense in depth for host code.
 
 The platform boundary in `src/platform.js` is the stable privileged API. It owns:
 
@@ -68,7 +70,7 @@ Supported app-to-host messages:
 - `LIST_APPS`: returns `APPS_LIST` with registry summaries and the active app id.
 - `NAVIGATE_APP`: loads another app by `appId`.
 - `GET_MY_DATA`: returns `MY_DATA` for the active app.
-- `SAVE_MY_DATA`: writes up to 1MB of JSON data for the active app and returns `MY_DATA_SAVED`, or `MY_DATA_SAVE_FAILED` when validation fails.
+- `SAVE_MY_DATA`: writes up to 1MB of normalized JSON data for the active app and returns `MY_DATA_SAVED`, or `MY_DATA_SAVE_FAILED` when validation fails.
 
 Apps never receive the OpenRouter API key and cannot request arbitrary host capabilities. The per-load RPC capability is an app/document binding guard, not a data-loss-prevention mechanism against the currently running app.
 

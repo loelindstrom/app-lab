@@ -170,7 +170,7 @@ export function createPlatform({ dom }) {
       throw new Error(`App data exceeds the ${MAX_APP_DATA_BYTES} byte limit.`);
     }
 
-    return data;
+    return JSON.parse(serialized);
   }
 
   async function saveAppData(appId, data) {

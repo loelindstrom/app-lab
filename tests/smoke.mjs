@@ -322,6 +322,49 @@ async function smoke() {
     })`);
     const dataAfterInvalidCapability = await evaluate(page, `window.__appLabTest.getActiveAppData()`);
     assert(dataAfterInvalidCapability.text === "Smoke test note", "RPC with invalid capability should be ignored");
+    await evaluate(page, `window.__appLabTest.handleMessage({
+      source: document.querySelector("#app-sandbox").contentWindow,
+      data: {
+        type: "SAVE_MY_DATA",
+        requestId: "save-structured-clone-values",
+        appLabCapability: window.__appLabTest.getActiveFrameCapability(),
+        payload: {
+          data: {
+            text: "Normalized data",
+            removed: undefined,
+            list: [undefined, 1],
+            map: new Map([["hidden", "value"]]),
+            set: new Set(["hidden"]),
+            buffer: new ArrayBuffer(2048),
+            blob: new Blob(["hidden"])
+          }
+        }
+      }
+    })`);
+    const normalizedData = await evaluate(page, `window.__appLabTest.getActiveAppData().then((data) => ({
+      text: data.text,
+      hasRemoved: Object.prototype.hasOwnProperty.call(data, "removed"),
+      list: data.list,
+      mapIsStructuredClone: data.map instanceof Map,
+      setIsStructuredClone: data.set instanceof Set,
+      bufferIsStructuredClone: data.buffer instanceof ArrayBuffer,
+      blobIsStructuredClone: data.blob instanceof Blob,
+      mapKeys: Object.keys(data.map || {}),
+      setKeys: Object.keys(data.set || {}),
+      bufferKeys: Object.keys(data.buffer || {}),
+      blobKeys: Object.keys(data.blob || {})
+    }))`);
+    assert(normalizedData.text === "Normalized data", "Plain JSON fields should survive data normalization");
+    assert(!normalizedData.hasRemoved, "Undefined object fields should not persist");
+    assert(normalizedData.list[0] === null && normalizedData.list[1] === 1, "Undefined array entries should normalize to null");
+    assert(!normalizedData.mapIsStructuredClone, "Map should not persist as a structured-clone value");
+    assert(!normalizedData.setIsStructuredClone, "Set should not persist as a structured-clone value");
+    assert(!normalizedData.bufferIsStructuredClone, "ArrayBuffer should not persist as a structured-clone value");
+    assert(!normalizedData.blobIsStructuredClone, "Blob should not persist as a structured-clone value");
+    assert(normalizedData.mapKeys.length === 0, "Map should normalize to an empty JSON object");
+    assert(normalizedData.setKeys.length === 0, "Set should normalize to an empty JSON object");
+    assert(normalizedData.bufferKeys.length === 0, "ArrayBuffer should normalize to an empty JSON object");
+    assert(normalizedData.blobKeys.length === 0, "Blob should normalize to an empty JSON object");
 
     await evaluate(page, `document.querySelector("#mobile-builder-toggle").click()`);
     await waitFor(
