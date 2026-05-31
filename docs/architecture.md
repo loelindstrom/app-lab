@@ -25,7 +25,7 @@ resources/icons/        Favicon and web manifest assets
 
 ## Runtime Boundaries
 
-The host page is trusted. It contains the top bar, side menu, settings dialog, BuilderAI chat, and the single app iframe.
+The host page is trusted. It contains the top bar, side menu, source viewer, settings dialog, BuilderAI chat, and the single app iframe.
 
 Apps are untrusted. They are loaded through `iframe.srcdoc` with `sandbox="allow-scripts"` and without `allow-same-origin`. This gives app code a unique opaque origin and prevents direct access to host DOM, cookies, local storage, IndexedDB, and settings fields. Before loading, the host parses the app HTML, removes app-supplied CSP meta tags, injects the app CSP, and injects a per-load RPC capability. The app CSP blocks network connections, remote resources, forms, frames, workers, and base URL rewriting. The host also reloads the active app after unexpected iframe navigation.
 
@@ -85,6 +85,8 @@ BuilderAI is host-owned UI and does not run inside the iframe.
 - chat message rendering
 - transient progress lines
 - streaming assistant text
+
+The source viewer is host-owned UI in `src/shell.js`. It reads the current app source from the trusted registry state and renders it as text for inspection.
 
 `src/builder/agent.js` manages:
 

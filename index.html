@@ -22,6 +22,7 @@
         <h1 id="active-app-title">Loading</h1>
         <nav class="host-actions" aria-label="Context actions">
           <button id="new-app" type="button">New App</button>
+          <button id="view-source" type="button" hidden>Source</button>
           <button id="toggle-builder" type="button">BuilderAI</button>
           <button id="open-settings" type="button">Settings</button>
         </nav>
@@ -61,6 +62,7 @@
       </main>
 
       <footer id="mobile-builder-bar" class="mobile-builder-bar" hidden>
+        <button id="mobile-source" type="button" hidden>Source</button>
         <button id="mobile-builder-toggle" type="button" hidden>BuilderAI ↑</button>
       </footer>
     </div>
@@ -106,6 +108,17 @@
           <button id="save-settings" value="default" type="submit">Save</button>
         </menu>
       </form>
+    </dialog>
+
+    <dialog id="source-dialog" class="source-dialog">
+      <header class="panel-header">
+        <div>
+          <p class="eyebrow">Source</p>
+          <h2 id="source-title">Current app</h2>
+        </div>
+        <button id="close-source" class="ghost-button" type="button">Close</button>
+      </header>
+      <pre class="source-view"><code id="source-code"></code></pre>
     </dialog>
 
     <script type="module" src="src/main.js"></script>

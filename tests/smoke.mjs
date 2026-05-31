@@ -221,12 +221,16 @@ async function smoke() {
       return {
         shellClass: document.querySelector(".host-shell").className,
         barDisplay: getComputedStyle(bar).display,
+        sourceHidden: document.querySelector("#view-source").hidden,
+        mobileSourceHidden: document.querySelector("#mobile-source").hidden,
         scrollHeight: document.documentElement.scrollHeight,
         height: window.innerHeight
       };
     })()`);
     assert(homeMetrics.shellClass.includes("is-home"), "Home shell class was not set");
     assert(homeMetrics.barDisplay === "none", "Mobile builder bar should be hidden on home");
+    assert(homeMetrics.sourceHidden, "Source viewer should be hidden on home");
+    assert(homeMetrics.mobileSourceHidden, "Mobile source viewer should be hidden on home");
     assert(homeMetrics.scrollHeight === homeMetrics.height, "Home should not reserve a bottom strip");
 
     const homeApps = await evaluate(page, `window.__appLabTest.listApps().then((apps) => apps.map((app) => app.name))`);
@@ -281,13 +285,41 @@ async function smoke() {
         shellClass: document.querySelector(".host-shell").className,
         barDisplay: getComputedStyle(bar).display,
         barHeight: Math.round(bar.getBoundingClientRect().height),
+        sourceHidden: document.querySelector("#view-source").hidden,
+        sourceDisplay: getComputedStyle(document.querySelector("#view-source")).display,
+        mobileSourceHidden: document.querySelector("#mobile-source").hidden,
+        mobileSourceDisplay: getComputedStyle(document.querySelector("#mobile-source")).display,
+        mobileSourceInBar: document.querySelector("#mobile-source").parentElement === bar,
         iframeHeight: Math.round(document.querySelector("#app-sandbox").getBoundingClientRect().height)
       };
     })()`);
     assert(appMetrics.shellClass.includes("is-app"), "App shell class was not set");
     assert(appMetrics.barDisplay === "flex", "Mobile builder bar should be visible in an app");
     assert(appMetrics.barHeight === 36, "Mobile builder bar should keep a constant height");
+    assert(!appMetrics.sourceHidden, "Source viewer should be visible in an app");
+    assert(appMetrics.sourceDisplay === "none", "Desktop source button should be hidden in mobile app layout");
+    assert(!appMetrics.mobileSourceHidden, "Mobile source viewer should be visible in an app");
+    assert(appMetrics.mobileSourceDisplay !== "none", "Mobile source button should display in the bottom bar");
+    assert(appMetrics.mobileSourceInBar, "Mobile source button should live in the bottom bar");
     assert(appMetrics.iframeHeight > 500, "App iframe should remain visible");
+    await evaluate(page, `document.querySelector("#mobile-source").click()`);
+    await waitFor(
+      () => evaluate(page, `document.querySelector("#source-dialog").open`),
+      "source dialog open",
+    );
+    const sourceMetrics = await evaluate(page, `(() => ({
+      title: document.querySelector("#source-title").textContent,
+      sourceText: document.querySelector("#source-code").textContent,
+      renderedHeadingCount: document.querySelector("#source-code h1") ? 1 : 0
+    }))()`);
+    assert(sourceMetrics.title === "Notes", "Source dialog title should match active app");
+    assert(sourceMetrics.sourceText.includes("<h1>Notes</h1>"), "Source dialog should show current app HTML");
+    assert(sourceMetrics.renderedHeadingCount === 0, "Source dialog should render source as text");
+    await evaluate(page, `document.querySelector("#close-source").click()`);
+    await waitFor(
+      () => evaluate(page, `!document.querySelector("#source-dialog").open`),
+      "source dialog close",
+    );
 
     await evaluate(page, `window.__appLabTest.handleMessage({
       source: document.querySelector("#app-sandbox").contentWindow,

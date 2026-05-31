@@ -12,11 +12,13 @@ const REQUIRED_SELECTORS = {
   builderTitle: "#builder-title",
   closeBuilderButton: "#close-builder",
   closeMenuButton: "#close-menu",
+  closeSourceButton: "#close-source",
   homeButton: "#system-home",
   hostShell: ".host-shell",
   iframe: "#app-sandbox",
   mobileBuilderBar: "#mobile-builder-bar",
   mobileBuilderToggle: "#mobile-builder-toggle",
+  mobileSourceButton: "#mobile-source",
   modelsStatus: "#models-status",
   newAppButton: "#new-app",
   openRouterKeyInput: "#openrouter-key",
@@ -27,7 +29,11 @@ const REQUIRED_SELECTORS = {
   settingsForm: "#settings-form",
   sideMenu: "#side-menu",
   sideMenuSettingsButton: "#side-menu-settings",
+  sourceCode: "#source-code",
+  sourceDialog: "#source-dialog",
+  sourceTitle: "#source-title",
   toggleBuilderButton: "#toggle-builder",
+  viewSourceButton: "#view-source",
 };
 
 export function getDomBindings() {
@@ -68,9 +74,11 @@ export function createShell({ builderUi, dom, platform }) {
     dom.homeButton.textContent = isHome ? "☰" : "‹";
     dom.homeButton.setAttribute("aria-label", isHome ? "Open menu" : "Back to home");
     dom.newAppButton.hidden = !isHome;
+    dom.viewSourceButton.hidden = isHome;
     dom.toggleBuilderButton.hidden = isHome;
     dom.mobileBuilderBar.hidden = isHome;
     dom.mobileBuilderToggle.hidden = isHome;
+    dom.mobileSourceButton.hidden = isHome;
     builderUi.updateBuilderToggleLabel();
     dom.openSettingsButton.hidden = true;
   }
@@ -88,6 +96,20 @@ export function createShell({ builderUi, dom, platform }) {
 
   function closeSideMenu() {
     dom.sideMenu.hidden = true;
+  }
+
+  // Section: Source viewer
+  function openSourceViewer() {
+    const app = platform.state.activeApp;
+    if (!app || app.appId === MENU_APP_ID) return;
+
+    dom.sourceTitle.textContent = app.name;
+    dom.sourceCode.textContent = app.sourceCode || "";
+    dom.sourceDialog.showModal();
+  }
+
+  function closeSourceViewer() {
+    dom.sourceDialog.close();
   }
 
   function openSettingsFromMenu() {
@@ -204,9 +226,11 @@ export function createShell({ builderUi, dom, platform }) {
 
   return {
     closeSideMenu,
+    closeSourceViewer,
     createBlankApp,
     escapeHtml,
     handleHomeButton,
+    openSourceViewer,
     openSettings,
     openSettingsFromMenu,
     submitSettings,

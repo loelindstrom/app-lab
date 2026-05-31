@@ -38,6 +38,9 @@ export function createAppLab() {
     dom.homeButton.addEventListener("click", shell.handleHomeButton);
     dom.newAppButton.addEventListener("click", shell.createBlankApp);
     dom.toggleBuilderButton.addEventListener("click", builderUi.toggleBuilder);
+    dom.viewSourceButton.addEventListener("click", shell.openSourceViewer);
+    dom.mobileSourceButton.addEventListener("click", shell.openSourceViewer);
+    dom.closeSourceButton.addEventListener("click", shell.closeSourceViewer);
     dom.mobileBuilderToggle.addEventListener("click", builderUi.toggleBuilder);
     dom.closeBuilderButton.addEventListener("click", builderUi.closeBuilder);
     dom.openSettingsButton.addEventListener("click", shell.openSettings);

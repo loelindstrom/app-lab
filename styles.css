@@ -88,7 +88,7 @@ textarea:focus {
 .host-bar {
   border-bottom: 1px solid var(--line);
   display: grid;
-  grid-template-columns: 116px minmax(0, 1fr) 116px;
+  grid-template-columns: 116px minmax(0, 1fr) auto;
   height: 44px;
   padding: 0 8px;
 }
@@ -109,6 +109,7 @@ textarea:focus {
 .host-actions {
   align-items: center;
   display: flex;
+  gap: 8px;
   justify-content: flex-end;
   min-width: 0;
 }
@@ -165,6 +166,7 @@ h1 {
 
 .builder-panel,
 .settings-dialog,
+.source-dialog,
 .side-menu {
   background: rgb(255 250 240 / 94%);
   border: 1px solid var(--line);
@@ -348,6 +350,14 @@ h2 {
   width: 520px;
 }
 
+.source-dialog {
+  color: var(--ink);
+  height: min(760px, calc(100vh - 28px));
+  max-width: min(980px, calc(100vw - 28px));
+  padding: 0;
+  width: 980px;
+}
+
 .side-menu {
   border-radius: 0 8px 8px 0;
   bottom: 0;
@@ -396,6 +406,10 @@ h2 {
   background: rgb(31 37 34 / 42%);
 }
 
+.source-dialog::backdrop {
+  background: rgb(31 37 34 / 42%);
+}
+
 .settings-dialog form {
   display: grid;
   gap: 16px;
@@ -420,6 +434,18 @@ h2 {
   justify-content: flex-end;
   margin: 0;
   padding: 14px 16px;
+}
+
+.source-view {
+  background: #1f2522;
+  color: #f7f2e8;
+  font: 13px/1.5 "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  height: calc(100% - 71px);
+  margin: 0;
+  overflow: auto;
+  padding: 16px;
+  tab-size: 2;
+  white-space: pre;
 }
 
 .mobile-builder-bar {
@@ -455,6 +481,7 @@ h2 {
     padding: 0 10px;
   }
 
+  #view-source,
   #toggle-builder {
     display: none;
   }
@@ -509,6 +536,7 @@ h2 {
   .mobile-builder-bar {
     align-items: center;
     bottom: 0;
+    gap: 8px;
     justify-content: flex-end;
     height: 36px;
     min-height: 0;

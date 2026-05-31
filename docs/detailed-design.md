@@ -50,6 +50,7 @@ Sections:
 - `Shared shell helpers`: currently HTML escaping used by generated blank app HTML.
 - `Active app chrome`: syncs the title, home/back button, shell mode classes, and mobile builder bar visibility.
 - `Navigation and side menu`: handles Home/back behavior, side menu open/close, and settings entry from the side menu.
+- `Source viewer`: opens a host-owned read-only dialog with the current app's stored HTML source.
 - `Blank app creation`: creates a new registry app with a starter HTML document, loads it, and opens BuilderAI.
 - `Settings dialog`: loads/saves OpenRouter config and fetches the model list for the datalist.
 
