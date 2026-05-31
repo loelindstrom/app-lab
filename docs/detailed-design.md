@@ -11,7 +11,7 @@ Sections:
 - `Composition root`: creates the platform, shell, BuilderAI UI, and BuilderAI agent objects, then wires their dependencies together.
 - `Boot lifecycle`: opens IndexedDB, installs seed apps, and loads Home.
 - `Host event wiring`: attaches DOM events to shell, builder, settings, and RPC handlers.
-- `Test-only diagnostics`: exposes `window.__appLabTest` only when the page is loaded with `?test=1`.
+- `Test-only diagnostics`: exposes a small `window.__appLabTest` surface only when the page is loaded from localhost with `?test=1`.
 
 Design rule: if code starts to describe storage, BuilderAI internals, settings behavior, or RPC handling, it belongs outside `main.js`.
 
@@ -26,8 +26,8 @@ Sections:
 - `IndexedDB connection and request helpers`: opens database `app-lab`, creates stores, wraps IDB requests, and creates transactions.
 - `Host-owned system configuration`: reads and writes OpenRouter settings in `system_config`.
 - `App registry`: lists, reads, and writes app records in `apps_registry`.
-- `Active app data`: reads and writes JSON data in `apps_data` for the current active app.
-- `Iframe app loading`: puts the active app HTML into the sandbox iframe via `srcdoc`.
+- `Active app data`: reads and writes JSON data in `apps_data` for the current active app, with a 1MB serialized payload limit.
+- `Iframe app loading`: injects the enforced app CSP, puts the active app HTML into the sandbox iframe via `srcdoc`, and reloads the active app after unexpected iframe navigation.
 - `Host/app RPC boundary`: accepts only messages from the active iframe `contentWindow`, then handles `LIST_APPS`, `NAVIGATE_APP`, `GET_MY_DATA`, and `SAVE_MY_DATA`.
 - `Seed app installation`: fetches built-in app HTML and installs or updates seed records.
 

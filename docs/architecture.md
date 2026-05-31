@@ -26,7 +26,7 @@ resources/icons/        Favicon and web manifest assets
 
 The host page is trusted. It contains the top bar, side menu, settings dialog, BuilderAI chat, and the single app iframe.
 
-Apps are untrusted. They are loaded through `iframe.srcdoc` with `sandbox="allow-scripts"` and without `allow-same-origin`. This gives app code a unique opaque origin and prevents direct access to host DOM, cookies, local storage, IndexedDB, and settings fields.
+Apps are untrusted. They are loaded through `iframe.srcdoc` with `sandbox="allow-scripts"` and without `allow-same-origin`. This gives app code a unique opaque origin and prevents direct access to host DOM, cookies, local storage, IndexedDB, and settings fields. Before loading, the host injects an app CSP that blocks network connections, remote resources, forms, frames, workers, and base URL rewriting. The host also reloads the active app after unexpected iframe navigation.
 
 The platform boundary in `src/platform.js` is the stable privileged API. It owns:
 
@@ -36,6 +36,7 @@ The platform boundary in `src/platform.js` is the stable privileged API. It owns
 - OpenRouter config persistence
 - seed app installation
 - current app loading
+- app CSP injection
 - `postMessage` RPC validation
 
 `src/shell.js` and `src/builder/*` use the platform API instead of touching IndexedDB directly.
@@ -66,7 +67,7 @@ Supported app-to-host messages:
 - `LIST_APPS`: returns `APPS_LIST` with registry summaries and the active app id.
 - `NAVIGATE_APP`: loads another app by `appId`.
 - `GET_MY_DATA`: returns `MY_DATA` for the active app.
-- `SAVE_MY_DATA`: writes JSON data for the active app and returns `MY_DATA_SAVED`.
+- `SAVE_MY_DATA`: writes up to 1MB of JSON data for the active app and returns `MY_DATA_SAVED`, or `MY_DATA_SAVE_FAILED` when validation fails.
 
 Apps never receive the OpenRouter API key and cannot request arbitrary host capabilities.
 
@@ -100,7 +101,7 @@ The tests intentionally avoid external dependencies.
 - `node tests/unit.mjs` checks pure helpers such as stream parsing, token price formatting, tool activity labels, and HTML escaping.
 - `node tests/smoke.mjs` starts a temporary static server, drives local Chrome/Chromium through DevTools, and verifies boot, seeded apps, Notes data RPC, mobile layout states, settings failure handling, blank app creation, and BuilderAI progress UI.
 
-The smoke runner uses `?test=1` to expose a small host-only `window.__appLabTest` surface. That hook is not present during normal app loads.
+The smoke runner uses `?test=1` on localhost to expose a small host-only `window.__appLabTest` surface. That hook is not present during normal app loads or on non-local hosts.
 
 ## Static Assets
 

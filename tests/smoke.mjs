@@ -218,11 +218,32 @@ async function smoke() {
     const homeApps = await evaluate(page, `(window.__appLabTest?.listApps?.() || listApps()).then((apps) => apps.map((app) => app.name))`);
     assert(homeApps.includes("Notes"), "App registry should include Notes");
     assert(!homeApps.includes("Sandbox Check"), "App registry should not include Sandbox Check");
+    const preparedHtml = await evaluate(page, `window.__appLabTest.prepareSandboxHtml("<!doctype html><html><head><title>x</title></head><body></body></html>")`);
+    assert(preparedHtml.includes("Content-Security-Policy"), "Prepared app HTML should include a CSP meta tag");
+    assert(preparedHtml.includes("connect-src 'none'"), "App CSP should block network connections");
+    assert(!preparedHtml.includes("navigate-to"), "App CSP should avoid unsupported navigate-to warnings");
+    const cspFetchResult = await evaluate(page, `new Promise((resolve) => {
+      const iframe = document.createElement("iframe");
+      iframe.setAttribute("sandbox", "allow-scripts");
+      const timeout = setTimeout(() => resolve("timeout"), 4000);
+      window.addEventListener("message", function onMessage(event) {
+        if (event.data?.type !== "CSP_FETCH_RESULT") return;
+        clearTimeout(timeout);
+        window.removeEventListener("message", onMessage);
+        iframe.remove();
+        resolve(event.data.result);
+      });
+      document.body.append(iframe);
+      iframe.srcdoc = window.__appLabTest.prepareSandboxHtml('<!doctype html><script>fetch("https://example.com").then(() => parent.postMessage({ type: "CSP_FETCH_RESULT", result: "allowed" }, "*")).catch(() => parent.postMessage({ type: "CSP_FETCH_RESULT", result: "blocked" }, "*"));</script>');
+    })`);
+    assert(cspFetchResult === "blocked", `Injected app CSP should block fetch from sandboxed content, got ${cspFetchResult}`);
     await evaluate(page, `(window.__appLabTest?.handleMessage || handleMessage)({
       source: document.querySelector("#app-sandbox").contentWindow,
       data: { type: "NAVIGATE_APP", payload: { appId: "notes" } }
     })`);
     await waitForTitle(page, "Notes");
+    const iframePolicy = await evaluate(page, `document.querySelector("#app-sandbox").srcdoc`);
+    assert(iframePolicy.includes("Content-Security-Policy"), "Loaded iframe srcdoc should include the enforced CSP");
 
     const appMetrics = await evaluate(page, `(() => {
       const bar = document.querySelector("#mobile-builder-bar");
@@ -244,6 +265,12 @@ async function smoke() {
     })`);
     const savedData = await evaluate(page, `(window.__appLabTest?.getActiveAppData?.() || getActiveAppData())`);
     assert(savedData.text === "Smoke test note", "Notes data should save through the RPC path");
+    await evaluate(page, `(window.__appLabTest?.handleMessage || handleMessage)({
+      source: document.querySelector("#app-sandbox").contentWindow,
+      data: { type: "SAVE_MY_DATA", requestId: "save-huge", payload: { data: { text: "x".repeat(1_048_577) } } }
+    })`);
+    const dataAfterHugeSave = await evaluate(page, `(window.__appLabTest?.getActiveAppData?.() || getActiveAppData())`);
+    assert(dataAfterHugeSave.text === "Smoke test note", "Oversized app data should be rejected without overwriting existing data");
 
     await evaluate(page, `document.querySelector("#mobile-builder-toggle").click()`);
     await waitFor(

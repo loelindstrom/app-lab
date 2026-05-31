@@ -45,19 +45,25 @@ dom.sideMenuSettingsButton.addEventListener("click", shell.openSettingsFromMenu)
 dom.builderForm.addEventListener("submit", builderUi.submitBuilderMessage);
 dom.settingsForm.addEventListener("submit", shell.submitSettings);
 window.addEventListener("message", platform.handleMessage);
+dom.iframe.addEventListener("load", platform.handleIframeLoad);
 
 // Section: Test-only diagnostics
-if (new URLSearchParams(window.location.search).has("test")) {
+if (isLocalTestMode()) {
   window.__appLabTest = {
     addBuilderMessage: builderUi.addBuilderMessage,
     getActiveAppData: platform.getActiveAppData,
-    getToolActivityLabel: builderAgent.getToolActivityLabel,
     handleMessage: platform.handleMessage,
     listApps: platform.listApps,
+    prepareSandboxHtml: platform.prepareSandboxHtml,
     readOpenRouterStream,
     setBuilderBusy: builderUi.setBuilderBusy,
     updateBuilderActivity: builderUi.updateBuilderActivity,
   };
+}
+
+function isLocalTestMode() {
+  const hostnames = new Set(["localhost", "127.0.0.1", "[::1]"]);
+  return new URLSearchParams(window.location.search).has("test") && hostnames.has(window.location.hostname);
 }
 
 boot();

@@ -34,8 +34,39 @@ Important properties:
 - The iframe receives an opaque origin.
 - App code cannot directly read host DOM, host IndexedDB, host local storage, cookies, or settings inputs.
 - The host injects app HTML through `srcdoc`, not by navigating to arbitrary remote URLs.
+- Before assignment to `srcdoc`, the host injects a Content Security Policy meta tag into the app document.
 
 The sandbox does not make app code harmless. It limits browser capabilities and forces app interaction through the host RPC boundary.
+
+## App Content Security Policy
+
+`src/platform.js` injects an enforced app-document CSP before every iframe load. The policy is intentionally restrictive:
+
+```text
+default-src 'none';
+script-src 'unsafe-inline';
+style-src 'unsafe-inline';
+img-src data: blob:;
+font-src data:;
+connect-src 'none';
+media-src data: blob:;
+object-src 'none';
+frame-src 'none';
+worker-src 'none';
+form-action 'none';
+base-uri 'none'
+```
+
+This keeps generated apps usable with inline HTML/CSS/JavaScript while blocking common exfiltration paths:
+
+- `fetch`, `XMLHttpRequest`, WebSocket, EventSource, and `sendBeacon` through `connect-src 'none'`
+- remote images through `img-src data: blob:`
+- remote scripts because only inline scripts are allowed
+- forms through `form-action 'none'`
+- nested frames and workers
+- base URL rewriting
+
+The host also listens for iframe load events. If the iframe loads unexpectedly after the host's own `srcdoc` load, the host reloads the active app. This is the navigation hardening layer; App Lab does not use the CSP `navigate-to` directive because some supported browsers report it as unrecognized.
 
 ## RPC Firewall
 
@@ -63,6 +94,8 @@ There is no generic "run command" API. Unknown message types are ignored.
 App data is keyed by the host's active app id, not by an app-provided id. For `GET_MY_DATA` and `SAVE_MY_DATA`, the host chooses the storage row from `state.activeAppId`.
 
 This prevents an app from claiming another app id in the payload to read or overwrite that app's data.
+
+`SAVE_MY_DATA` accepts only JSON-serializable payloads up to 1MB after serialization. Oversized or non-serializable payloads are rejected and return `MY_DATA_SAVE_FAILED`.
 
 Current limitation: the model is single-active-iframe. If App Lab later supports multiple simultaneous iframes, storage routing must be changed from active-app state to a frame-to-app mapping.
 
@@ -93,7 +126,7 @@ The BuilderAI prompt also instructs generated apps not to use:
 - localStorage/sessionStorage
 - IndexedDB
 
-These are prompt-level constraints, not hard browser enforcement for every case. The iframe sandbox and host RPC boundary are the primary security controls.
+These prompt-level constraints are backed by the iframe sandbox, host RPC boundary, and injected app CSP. Browser policy is the primary control for network and navigation restrictions; the prompt is defense in depth and guidance for generation quality.
 
 ## Streaming and Progress UI
 
@@ -103,9 +136,9 @@ Final assistant text and tool progress are rendered in the host BuilderAI panel,
 
 ## Test Hook
 
-When the host is loaded with `?test=1`, `src/main.js` exposes `window.__appLabTest` for browser smoke tests.
+When the host is loaded from `localhost`, `127.0.0.1`, or `[::1]` with `?test=1`, `src/main.js` exposes `window.__appLabTest` for browser smoke tests.
 
-This hook is absent during normal app loads. It should stay small and should expose only functions needed by tests.
+This hook is absent during normal app loads and is not enabled on non-local hosts. It should stay small and should expose only functions needed by tests.
 
 ## Known Non-Goals
 
@@ -114,7 +147,6 @@ Current App Lab security does not attempt to provide:
 - protection against malicious browser extensions
 - protection against local device compromise
 - cryptographic encryption of API keys at rest
-- network isolation for generated app code beyond prompt instructions
 - multi-user authorization
 
 The intended boundary is local, single-user browser containment: untrusted app HTML should not be able to read host secrets or arbitrary app data.

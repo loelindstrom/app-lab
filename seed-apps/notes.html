@@ -92,6 +92,10 @@
       output[data-state="saved"] {
         color: var(--saved);
       }
+
+      output[data-state="error"] {
+        color: #a13d2d;
+      }
     </style>
   </head>
   <body>
@@ -140,6 +144,11 @@
         if (message.type === "MY_DATA_SAVED" && pendingRequests.get(message.requestId) === "save") {
           pendingRequests.delete(message.requestId);
           setStatus("Saved", "saved");
+        }
+
+        if (message.type === "MY_DATA_SAVE_FAILED" && pendingRequests.get(message.requestId) === "save") {
+          pendingRequests.delete(message.requestId);
+          setStatus(message.payload.error || "Could not save", "error");
         }
       });
 

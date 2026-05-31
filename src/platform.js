@@ -2,6 +2,22 @@ export const DB_NAME = "app-lab";
 export const DB_VERSION = 2;
 export const MENU_APP_ID = "menu";
 export const CONFIG_KEY = "openrouter";
+export const MAX_APP_DATA_BYTES = 1_048_576;
+
+const SANDBOX_CSP = [
+  "default-src 'none'",
+  "script-src 'unsafe-inline'",
+  "style-src 'unsafe-inline'",
+  "img-src data: blob:",
+  "font-src data:",
+  "connect-src 'none'",
+  "media-src data: blob:",
+  "object-src 'none'",
+  "frame-src 'none'",
+  "worker-src 'none'",
+  "form-action 'none'",
+  "base-uri 'none'",
+].join("; ");
 
 // Section: Seed app manifest
 const SEED_APPS = [
@@ -17,7 +33,7 @@ const SEED_APPS = [
     name: "Notes",
     description: "A small example app.",
     sourcePath: "seed-apps/notes.html",
-    seedVersion: 1,
+    seedVersion: 2,
   },
 ];
 
@@ -29,6 +45,7 @@ export function createPlatform({ dom }) {
     activeApp: null,
   };
   let onAppLoaded = () => {};
+  let expectedIframeLoad = false;
 
   function setAppLoadedHandler(handler) {
     onAppLoaded = handler;
@@ -127,17 +144,63 @@ export function createPlatform({ dom }) {
     return record?.data ?? null;
   }
 
+  function validateAppData(data) {
+    let serialized;
+
+    try {
+      serialized = JSON.stringify(data);
+    } catch {
+      throw new Error("App data must be JSON-serializable.");
+    }
+
+    if (serialized === undefined) {
+      throw new Error("App data must be JSON-serializable.");
+    }
+
+    const byteLength = new TextEncoder().encode(serialized).byteLength;
+    if (byteLength > MAX_APP_DATA_BYTES) {
+      throw new Error(`App data exceeds the ${MAX_APP_DATA_BYTES} byte limit.`);
+    }
+
+    return data;
+  }
+
   async function saveActiveAppData(data) {
+    const validatedData = validateAppData(data);
     await requestToPromise(
       transaction("apps_data", "readwrite").put({
         appId: state.activeAppId,
-        data,
+        data: validatedData,
         updatedAt: new Date().toISOString(),
       }),
     );
   }
 
   // Section: Iframe app loading
+  function escapeHtmlAttribute(value) {
+    return String(value).replaceAll("&", "&amp;").replaceAll('"', "&quot;");
+  }
+
+  function createCspMetaTag() {
+    return `<meta http-equiv="Content-Security-Policy" content="${escapeHtmlAttribute(SANDBOX_CSP)}">`;
+  }
+
+  function prepareSandboxHtml(sourceCode) {
+    const cspMeta = createCspMetaTag();
+    if (/<head[\s>]/i.test(sourceCode)) {
+      return sourceCode.replace(/<head([^>]*)>/i, `<head$1>${cspMeta}`);
+    }
+
+    if (/<html[\s>]/i.test(sourceCode)) {
+      return sourceCode.replace(/<html([^>]*)>/i, `<html$1><head>${cspMeta}</head>`);
+    }
+
+    const doctypeMatch = sourceCode.match(/^\s*<!doctype[^>]*>/i);
+    const doctype = doctypeMatch?.[0] ?? "<!doctype html>";
+    const body = doctypeMatch ? sourceCode.slice(doctype.length) : sourceCode;
+    return `${doctype}<html><head>${cspMeta}</head><body>${body}</body></html>`;
+  }
+
   function postToApp(message) {
     dom.iframe.contentWindow?.postMessage(message, "*");
   }
@@ -152,8 +215,21 @@ export function createPlatform({ dom }) {
 
     state.activeAppId = app.appId;
     state.activeApp = app;
-    dom.iframe.srcdoc = app.sourceCode;
+    expectedIframeLoad = true;
+    dom.iframe.srcdoc = prepareSandboxHtml(app.sourceCode);
     onAppLoaded(app);
+  }
+
+  function handleIframeLoad() {
+    if (expectedIframeLoad) {
+      expectedIframeLoad = false;
+      return;
+    }
+
+    if (state.activeAppId) {
+      console.warn("Unexpected iframe navigation detected; reloading active app.");
+      loadApp(state.activeAppId);
+    }
   }
 
   // Section: Host/app RPC boundary
@@ -182,12 +258,20 @@ export function createPlatform({ dom }) {
     }
 
     if (type === "SAVE_MY_DATA") {
-      await saveActiveAppData(payload?.data ?? null);
-      postToApp({
-        type: "MY_DATA_SAVED",
-        requestId,
-        payload: { ok: true },
-      });
+      try {
+        await saveActiveAppData(payload?.data ?? null);
+        postToApp({
+          type: "MY_DATA_SAVED",
+          requestId,
+          payload: { ok: true },
+        });
+      } catch (error) {
+        postToApp({
+          type: "MY_DATA_SAVE_FAILED",
+          requestId,
+          payload: { ok: false, error: error?.message || "Could not save app data." },
+        });
+      }
       return;
     }
 
@@ -232,9 +316,11 @@ export function createPlatform({ dom }) {
     getApp,
     getOpenRouterConfig,
     handleMessage,
+    handleIframeLoad,
     listApps,
     loadApp,
     openDatabase,
+    prepareSandboxHtml,
     putApp,
     saveOpenRouterConfig,
     seedApps,
