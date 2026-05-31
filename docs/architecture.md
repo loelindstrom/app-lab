@@ -9,7 +9,8 @@ There is no build step and no framework. Runtime code is vanilla ES modules load
 ```text
 index.html              Host markup, iframe, BuilderAI panel, settings dialog
 styles.css              Host layout and responsive shell styling
-src/main.js             Boot, dependency wiring, event listeners
+src/main.js             Production bootstrap
+src/app.js              Dependency wiring, boot lifecycle, event listeners
 src/platform.js         Privileged storage, app loading, seed apps, RPC boundary
 src/shell.js            Host UI behavior, settings UI, blank app creation
 src/builder/ui.js       BuilderAI drawer, messages, streaming/progress UI
@@ -39,7 +40,7 @@ The platform boundary in `src/platform.js` is the stable privileged API. It owns
 - app CSP injection
 - `postMessage` RPC validation
 
-`src/shell.js` and `src/builder/*` use the platform API instead of touching IndexedDB directly.
+`src/app.js`, `src/shell.js`, and `src/builder/*` use the platform API instead of touching IndexedDB directly.
 
 ## Data Model
 
@@ -101,7 +102,9 @@ The tests intentionally avoid external dependencies.
 - `node tests/unit.mjs` checks pure helpers such as stream parsing, token price formatting, tool activity labels, and HTML escaping.
 - `node tests/smoke.mjs` starts a temporary static server, drives local Chrome/Chromium through DevTools, and verifies boot, seeded apps, Notes data RPC, mobile layout states, settings failure handling, blank app creation, and BuilderAI progress UI.
 
-The smoke runner uses `?test=1` on localhost to expose a small host-only `window.__appLabTest` surface. That hook is not present during normal app loads or on non-local hosts.
+The smoke runner serves a virtual local-only page at `/__app_lab_test__.html` while `tests/smoke.mjs` is running. That page swaps the production bootstrap for `tests/test-main.js`, which exposes a small host-only `window.__appLabTest` surface for assertions.
+
+There is no committed `index.test.html` file and `src/main.js` does not expose diagnostics. `tests/test-main.js` also refuses to run unless it is loaded from the local smoke-test URL.
 
 ## Static Assets
 

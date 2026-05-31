@@ -43,6 +43,16 @@ function findChrome() {
 function startServer() {
   const server = createServer(async (request, response) => {
     const url = new URL(request.url || "/", baseUrl);
+    if (url.pathname === "/__app_lab_test__.html") {
+      const html = await readFile(join(root, "index.html"), "utf8");
+      response.writeHead(200, {
+        "Cache-Control": "no-store",
+        "Content-Type": "text/html",
+      });
+      response.end(html.replace('src="src/main.js"', 'src="/tests/test-main.js"'));
+      return;
+    }
+
     const pathname = url.pathname === "/" ? "/index.html" : url.pathname;
     const filePath = resolve(join(root, pathname));
 
@@ -199,8 +209,12 @@ async function smoke() {
       deviceScaleFactor: 1,
       mobile: true,
     });
-    await page.send("Page.navigate", { url: `${baseUrl}?test=1` });
+    await page.send("Page.navigate", { url: `${baseUrl}__app_lab_test__.html` });
     await waitForTitle(page, "Home");
+    await waitFor(
+      () => evaluate(page, `Boolean(window.__appLabTest)`),
+      "test hooks",
+    );
 
     const homeMetrics = await evaluate(page, `(() => {
       const bar = document.querySelector("#mobile-builder-bar");
@@ -215,7 +229,7 @@ async function smoke() {
     assert(homeMetrics.barDisplay === "none", "Mobile builder bar should be hidden on home");
     assert(homeMetrics.scrollHeight === homeMetrics.height, "Home should not reserve a bottom strip");
 
-    const homeApps = await evaluate(page, `(window.__appLabTest?.listApps?.() || listApps()).then((apps) => apps.map((app) => app.name))`);
+    const homeApps = await evaluate(page, `window.__appLabTest.listApps().then((apps) => apps.map((app) => app.name))`);
     assert(homeApps.includes("Notes"), "App registry should include Notes");
     assert(!homeApps.includes("Sandbox Check"), "App registry should not include Sandbox Check");
     const preparedHtml = await evaluate(page, `window.__appLabTest.prepareSandboxHtml("<!doctype html><html><head><title>x</title></head><body></body></html>")`);
@@ -237,7 +251,7 @@ async function smoke() {
       iframe.srcdoc = window.__appLabTest.prepareSandboxHtml('<!doctype html><script>fetch("https://example.com").then(() => parent.postMessage({ type: "CSP_FETCH_RESULT", result: "allowed" }, "*")).catch(() => parent.postMessage({ type: "CSP_FETCH_RESULT", result: "blocked" }, "*"));</script>');
     })`);
     assert(cspFetchResult === "blocked", `Injected app CSP should block fetch from sandboxed content, got ${cspFetchResult}`);
-    await evaluate(page, `(window.__appLabTest?.handleMessage || handleMessage)({
+    await evaluate(page, `window.__appLabTest.handleMessage({
       source: document.querySelector("#app-sandbox").contentWindow,
       data: { type: "NAVIGATE_APP", payload: { appId: "notes" } }
     })`);
@@ -259,17 +273,17 @@ async function smoke() {
     assert(appMetrics.barHeight === 36, "Mobile builder bar should keep a constant height");
     assert(appMetrics.iframeHeight > 500, "App iframe should remain visible");
 
-    await evaluate(page, `(window.__appLabTest?.handleMessage || handleMessage)({
+    await evaluate(page, `window.__appLabTest.handleMessage({
       source: document.querySelector("#app-sandbox").contentWindow,
       data: { type: "SAVE_MY_DATA", requestId: "save-smoke", payload: { data: { text: "Smoke test note" } } }
     })`);
-    const savedData = await evaluate(page, `(window.__appLabTest?.getActiveAppData?.() || getActiveAppData())`);
+    const savedData = await evaluate(page, `window.__appLabTest.getActiveAppData()`);
     assert(savedData.text === "Smoke test note", "Notes data should save through the RPC path");
-    await evaluate(page, `(window.__appLabTest?.handleMessage || handleMessage)({
+    await evaluate(page, `window.__appLabTest.handleMessage({
       source: document.querySelector("#app-sandbox").contentWindow,
       data: { type: "SAVE_MY_DATA", requestId: "save-huge", payload: { data: { text: "x".repeat(1_048_577) } } }
     })`);
-    const dataAfterHugeSave = await evaluate(page, `(window.__appLabTest?.getActiveAppData?.() || getActiveAppData())`);
+    const dataAfterHugeSave = await evaluate(page, `window.__appLabTest.getActiveAppData()`);
     assert(dataAfterHugeSave.text === "Smoke test note", "Oversized app data should be rejected without overwriting existing data");
 
     await evaluate(page, `document.querySelector("#mobile-builder-toggle").click()`);
@@ -338,12 +352,12 @@ async function smoke() {
     assert(newAppMetrics.messages.some((message) => message.includes("Blank app created")), "Blank app system message missing");
 
     await evaluate(page, `(() => {
-      (window.__appLabTest?.setBuilderBusy || setBuilderBusy)(true);
-      (window.__appLabTest?.updateBuilderActivity || updateBuilderActivity)("Reading current app...");
-      const live = (window.__appLabTest?.addBuilderMessage || addBuilderMessage)("assistant", "");
+      window.__appLabTest.setBuilderBusy(true);
+      window.__appLabTest.updateBuilderActivity("Reading current app...");
+      const live = window.__appLabTest.addBuilderMessage("assistant", "");
       live.dataset.streaming = "true";
       live.textContent = "Streaming final reply";
-      (window.__appLabTest?.updateBuilderActivity || updateBuilderActivity)("Writing response...");
+      window.__appLabTest.updateBuilderActivity("Writing response...");
     })()`);
     const streamMetrics = await evaluate(page, `(() => {
       const progress = document.querySelector(".builder-progress");
@@ -359,6 +373,11 @@ async function smoke() {
     assert(streamMetrics.loaderDots === 3, "Builder progress should show loader dots");
     assert(streamMetrics.liveText === "Streaming final reply", "Streaming assistant text should render");
     assert(streamMetrics.liveBeforeProgress, "Streaming assistant message should sit above progress");
+
+    await page.send("Page.navigate", { url: baseUrl });
+    await waitForTitle(page, "Home");
+    const productionHookVisible = await evaluate(page, `Boolean(window.__appLabTest)`);
+    assert(!productionHookVisible, "Production entry should not expose test hooks");
 
     console.log("Smoke tests passed");
   } finally {

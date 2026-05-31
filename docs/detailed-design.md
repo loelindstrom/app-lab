@@ -1,19 +1,26 @@
 # App Lab Detailed Design
 
-This document maps directly to the section comments in the JavaScript modules. The goal is that a reader can start with `src/main.js`, understand the system shape, then jump into one file and use the section headers to find the relevant behavior.
+This document maps directly to the section comments in the JavaScript modules. The goal is that a reader can start with `src/main.js`, see the production entry point, then jump into `src/app.js` and use the section headers to find the relevant behavior.
 
 ## `src/main.js`
 
-`main.js` is the composition root. It should stay small and should not contain subsystem logic.
+`main.js` is the production bootstrap. It should stay tiny and should not contain subsystem logic or diagnostics.
+
+It imports `createAppLab` from `src/app.js` and starts the app.
+
+Design rule: production-only startup belongs here; dependency wiring belongs in `src/app.js`; test hooks belong under `tests/`.
+
+## `src/app.js`
+
+`app.js` is the composition root. It creates the host modules, wires dependencies, binds host events, and exposes the started objects to controlled callers such as the smoke-test entry point.
 
 Sections:
 
 - `Composition root`: creates the platform, shell, BuilderAI UI, and BuilderAI agent objects, then wires their dependencies together.
 - `Boot lifecycle`: opens IndexedDB, installs seed apps, and loads Home.
 - `Host event wiring`: attaches DOM events to shell, builder, settings, and RPC handlers.
-- `Test-only diagnostics`: exposes a small `window.__appLabTest` surface only when the page is loaded from localhost with `?test=1`.
 
-Design rule: if code starts to describe storage, BuilderAI internals, settings behavior, or RPC handling, it belongs outside `main.js`.
+Design rule: if code starts to describe storage, BuilderAI internals, settings behavior, or RPC handling, it belongs outside `app.js`. If code exposes test-only capabilities, it belongs under `tests/`.
 
 ## `src/platform.js`
 
@@ -105,5 +112,6 @@ Tests are dependency-free.
 
 - `unit.mjs`: tests pure helpers and stream parsing.
 - `smoke.mjs`: starts a static server, drives Chrome/Chromium via DevTools, and verifies cross-module behavior.
+- `test-main.js`: local smoke-test entry point. It imports `src/app.js`, exposes `window.__appLabTest`, and refuses to run outside the local virtual smoke-test URL.
 
 Design rule: browser smoke tests should cover user-visible integration points, while unit tests should cover deterministic parsing and helper behavior.

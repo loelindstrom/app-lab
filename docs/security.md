@@ -134,11 +134,21 @@ OpenRouter streaming is parsed in host code. Reasoning-related stream fields are
 
 Final assistant text and tool progress are rendered in the host BuilderAI panel, outside the iframe.
 
-## Test Hook
+## Test Harness
 
-When the host is loaded from `localhost`, `127.0.0.1`, or `[::1]` with `?test=1`, `src/main.js` exposes `window.__appLabTest` for browser smoke tests.
+Production startup does not expose diagnostics. `src/main.js` only starts the app through `src/app.js`.
 
-This hook is absent during normal app loads and is not enabled on non-local hosts. It should stay small and should expose only functions needed by tests.
+Browser smoke tests use a separate entry point:
+
+- `tests/smoke.mjs` starts a server bound to `127.0.0.1`.
+- While that server is running, it serves a virtual page at `/__app_lab_test__.html`.
+- The virtual page is based on `index.html`, but swaps `src/main.js` for `tests/test-main.js`.
+- `tests/test-main.js` exposes `window.__appLabTest` for assertions.
+- `tests/test-main.js` refuses to run unless the page is local and the path is exactly `/__app_lab_test__.html`.
+
+There is no committed `index.test.html` page to deploy accidentally. If someone manually browses to `/tests/test-main.js` on a static host, they are only requesting a JavaScript source file; it does not run as the app page. If a production host has a catch-all fallback for `/__app_lab_test__.html`, it will normally return the real `index.html`, which loads `src/main.js` and does not expose diagnostics.
+
+The remaining risk is operational: deploying the `tests/` folder is unnecessary. It is still better to exclude tests from a published static bundle if the app later gets a deployment pipeline.
 
 ## Known Non-Goals
 
