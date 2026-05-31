@@ -398,20 +398,31 @@ async function smoke() {
     assert(normalizedData.bufferKeys.length === 0, "ArrayBuffer should normalize to an empty JSON object");
     assert(normalizedData.blobKeys.length === 0, "Blob should normalize to an empty JSON object");
 
-    await evaluate(page, `document.querySelector("#mobile-builder-toggle").click()`);
+    await evaluate(page, `(() => {
+      document.activeElement?.blur?.();
+      document.querySelector("#mobile-builder-toggle").click();
+    })()`);
     await waitFor(
       () => evaluate(page, `!document.querySelector("#builder-panel").hidden`),
       "mobile builder open",
     );
+    await new Promise((resolveWait) => setTimeout(resolveWait, 450));
     const builderOpenMetrics = await evaluate(page, `(() => {
       const bar = document.querySelector("#mobile-builder-bar");
       const panel = document.querySelector("#builder-panel");
       return {
+        activeElementId: document.activeElement?.id || "",
+        builderInputFocused: document.activeElement === document.querySelector("#builder-input"),
+        builderInputDisabled: document.querySelector("#builder-input").disabled,
+        builderInputReadOnly: document.querySelector("#builder-input").readOnly,
         toggleText: document.querySelector("#mobile-builder-toggle").textContent,
         gapPanelToBar: Math.round(bar.getBoundingClientRect().top - panel.getBoundingClientRect().bottom),
         panelPosition: getComputedStyle(panel).position
       };
     })()`);
+    assert(!builderOpenMetrics.builderInputFocused, "Mobile builder open should not focus the text field");
+    assert(!builderOpenMetrics.builderInputDisabled, "Mobile builder input should be enabled after the no-focus guard clears");
+    assert(!builderOpenMetrics.builderInputReadOnly, "Mobile builder input should be editable after the no-focus guard clears");
     assert(builderOpenMetrics.toggleText === "BuilderAI ↓", "Mobile builder arrow should flip while open");
     assert(Math.abs(builderOpenMetrics.gapPanelToBar) <= 2, "Builder panel should sit against the mobile bar");
     assert(builderOpenMetrics.panelPosition === "static", "Mobile builder panel should stay in document flow");

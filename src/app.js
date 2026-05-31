@@ -41,7 +41,7 @@ export function createAppLab() {
     dom.viewSourceButton.addEventListener("click", shell.openSourceViewer);
     dom.mobileSourceButton.addEventListener("click", shell.openSourceViewer);
     dom.closeSourceButton.addEventListener("click", shell.closeSourceViewer);
-    dom.mobileBuilderToggle.addEventListener("click", builderUi.toggleBuilder);
+    dom.mobileBuilderToggle.addEventListener("click", () => builderUi.toggleBuilder({ focusInput: false }));
     dom.closeBuilderButton.addEventListener("click", builderUi.closeBuilder);
     dom.openSettingsButton.addEventListener("click", shell.openSettings);
     dom.closeMenuButton.addEventListener("click", shell.closeSideMenu);

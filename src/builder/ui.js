@@ -9,6 +9,7 @@ export function createBuilderUi({ dom, getActiveApp, getActiveAppId }) {
     busy: false,
   };
   let runAgent = async () => {};
+  let mobileFocusGuardTimer = null;
 
   function setAgentRunner(runner) {
     runAgent = runner;
@@ -31,13 +32,65 @@ export function createBuilderUi({ dom, getActiveApp, getActiveAppId }) {
   }
 
   // Section: Builder drawer controls
-  function openBuilder() {
+  function openBuilder({ focusInput = true } = {}) {
+    const restoreMobileFocusGuard = focusInput ? null : disableBuilderInputForMobileOpen();
     dom.builderPanel.hidden = false;
     dom.hostShell.classList.add("builder-open");
     dom.toggleBuilderButton.hidden = true;
     dom.mobileBuilderToggle.hidden = getActiveAppId() === MENU_APP_ID;
     updateBuilderToggleLabel();
-    dom.builderInput.focus();
+    if (focusInput) {
+      dom.builderInput.focus();
+    } else {
+      preventMobileInputAutofocus(restoreMobileFocusGuard);
+    }
+  }
+
+  function disableBuilderInputForMobileOpen() {
+    window.clearTimeout(mobileFocusGuardTimer);
+    const previousDisabled = dom.builderInput.disabled;
+    const previousReadOnly = dom.builderInput.readOnly;
+    const previousTabIndex = dom.builderInput.getAttribute("tabindex");
+
+    dom.builderInput.disabled = true;
+    dom.builderInput.readOnly = true;
+    dom.builderInput.setAttribute("tabindex", "-1");
+
+    return () => {
+      dom.builderInput.disabled = state.busy || previousDisabled;
+      dom.builderInput.readOnly = previousReadOnly;
+      if (previousTabIndex === null) {
+        dom.builderInput.removeAttribute("tabindex");
+      } else {
+        dom.builderInput.setAttribute("tabindex", previousTabIndex);
+      }
+    };
+  }
+
+  function preventMobileInputAutofocus(restoreMobileFocusGuard) {
+    dom.builderInput.readOnly = true;
+    focusBuilderPanel();
+
+    requestAnimationFrame(() => {
+      blurBuilderInput();
+      focusBuilderPanel();
+    });
+
+    mobileFocusGuardTimer = window.setTimeout(() => {
+      blurBuilderInput();
+      focusBuilderPanel();
+      restoreMobileFocusGuard?.();
+    }, 360);
+  }
+
+  function blurBuilderInput() {
+    if (document.activeElement === dom.builderInput) {
+      dom.builderInput.blur();
+    }
+  }
+
+  function focusBuilderPanel() {
+    dom.builderPanel.focus({ preventScroll: true });
   }
 
   function closeBuilder() {
@@ -48,9 +101,9 @@ export function createBuilderUi({ dom, getActiveApp, getActiveAppId }) {
     updateBuilderToggleLabel();
   }
 
-  function toggleBuilder() {
+  function toggleBuilder(options = {}) {
     if (dom.builderPanel.hidden) {
-      openBuilder();
+      openBuilder(options);
     } else {
       closeBuilder();
     }
