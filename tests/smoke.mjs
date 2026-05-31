@@ -17,6 +17,7 @@ const mimeTypes = new Map([
   [".js", "text/javascript"],
   [".json", "application/json"],
   [".png", "image/png"],
+  [".webmanifest", "application/manifest+json"],
 ]);
 
 let nextId = 1;
