@@ -3,6 +3,7 @@ export const DB_VERSION = 2;
 export const MENU_APP_ID = "menu";
 export const CONFIG_KEY = "openrouter";
 
+// Section: Seed app manifest
 const SEED_APPS = [
   {
     appId: MENU_APP_ID,
@@ -21,6 +22,7 @@ const SEED_APPS = [
 ];
 
 export function createPlatform({ dom }) {
+  // Section: Platform state and lifecycle hooks
   const state = {
     db: null,
     activeAppId: null,
@@ -32,6 +34,7 @@ export function createPlatform({ dom }) {
     onAppLoaded = handler;
   }
 
+  // Section: IndexedDB connection and request helpers
   function openDatabase() {
     return new Promise((resolve, reject) => {
       const request = indexedDB.open(DB_NAME, DB_VERSION);
@@ -69,6 +72,7 @@ export function createPlatform({ dom }) {
     });
   }
 
+  // Section: Host-owned system configuration
   async function getOpenRouterConfig() {
     const record = await requestToPromise(transaction("system_config").get(CONFIG_KEY));
     return {
@@ -88,6 +92,7 @@ export function createPlatform({ dom }) {
     );
   }
 
+  // Section: App registry
   async function getApp(appId) {
     return requestToPromise(transaction("apps_registry").get(appId));
   }
@@ -116,6 +121,7 @@ export function createPlatform({ dom }) {
     await requestToPromise(transaction("apps_registry", "readwrite").put(record));
   }
 
+  // Section: Active app data
   async function getActiveAppData() {
     const record = await requestToPromise(transaction("apps_data").get(state.activeAppId));
     return record?.data ?? null;
@@ -131,6 +137,7 @@ export function createPlatform({ dom }) {
     );
   }
 
+  // Section: Iframe app loading
   function postToApp(message) {
     dom.iframe.contentWindow?.postMessage(message, "*");
   }
@@ -149,6 +156,7 @@ export function createPlatform({ dom }) {
     onAppLoaded(app);
   }
 
+  // Section: Host/app RPC boundary
   async function handleMessage(event) {
     if (event.source !== dom.iframe.contentWindow) return;
     if (!event.data || typeof event.data !== "object") return;
@@ -191,6 +199,7 @@ export function createPlatform({ dom }) {
     }
   }
 
+  // Section: Seed app installation
   async function fetchSeedSource(sourcePath) {
     const response = await fetch(sourcePath, { cache: "no-store" });
 

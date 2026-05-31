@@ -1,6 +1,7 @@
 export const OPENROUTER_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions";
 export const OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models?supported_parameters=tools";
 
+// Section: Chat Completions request
 export async function callOpenRouter({ config, messages, tools, handlers = {} }) {
   if (!config.apiKey || !config.model) {
     throw new Error("Add an OpenRouter API key and model id in Settings first.");
@@ -36,6 +37,7 @@ export async function callOpenRouter({ config, messages, tools, handlers = {} })
   return readOpenRouterStream(response.body, handlers);
 }
 
+// Section: Streaming response reader
 export async function readOpenRouterStream(body, handlers = {}) {
   const reader = body.getReader();
   const decoder = new TextDecoder();
@@ -84,6 +86,7 @@ export async function readOpenRouterStream(body, handlers = {}) {
   return assistantMessage;
 }
 
+// Section: SSE event parsing
 function processOpenRouterStreamEvent(rawEvent, assistantMessage, handlers, markThinking) {
   const data = rawEvent
     .split("\n")
@@ -140,6 +143,7 @@ function ensureToolCallDelta(toolCalls, index) {
   return toolCalls[index];
 }
 
+// Section: Model pricing display
 export function formatTokenPrice(pricePerToken) {
   const price = Number(pricePerToken);
   if (!Number.isFinite(price)) return "?";

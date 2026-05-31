@@ -3,6 +3,7 @@ import { callOpenRouter } from "./openrouter.js";
 const MAX_TOOL_ROUNDS = 4;
 
 export function createBuilderAgent({ builderUi, platform }) {
+  // Section: Builder prompt
   function getBuilderSystemPrompt() {
     return `You are the Builder Agent for App Lab.
 
@@ -20,6 +21,7 @@ Rules:
 - After writing, briefly summarize what changed.`;
   }
 
+  // Section: Tool schema
   function getBuilderTools() {
     return [
       {
@@ -63,6 +65,7 @@ Rules:
     ];
   }
 
+  // Section: Tool execution
   async function executeBuilderTool(toolCall) {
     const toolName = toolCall.function?.name;
     const args = toolCall.function?.arguments ? JSON.parse(toolCall.function.arguments) : {};
@@ -99,6 +102,7 @@ Rules:
     throw new Error(`Unknown builder tool: ${toolName}`);
   }
 
+  // Section: Agent loop
   async function runBuilderAgent() {
     const messages = [
       { role: "system", content: getBuilderSystemPrompt() },
@@ -187,6 +191,7 @@ Rules:
   };
 }
 
+// Section: Progress labels
 export function getToolActivityLabel(toolName, completed = null) {
   const labels = {
     read_current_app_code: ["Reading current app...", "Read current app."],

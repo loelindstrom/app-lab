@@ -1,6 +1,7 @@
 import { MENU_APP_ID } from "./platform.js";
 import { OPENROUTER_MODELS_URL, formatTokenPrice } from "./builder/openrouter.js";
 
+// Section: Host DOM bindings
 const REQUIRED_SELECTORS = {
   activeTitle: "#active-app-title",
   builderForm: "#builder-form",
@@ -43,6 +44,7 @@ export function getDomBindings() {
   return bindings;
 }
 
+// Section: Shared shell helpers
 export function escapeHtml(value) {
   return String(value)
     .replaceAll("&", "&amp;")
@@ -53,6 +55,7 @@ export function escapeHtml(value) {
 }
 
 export function createShell({ builderUi, dom, platform }) {
+  // Section: Active app chrome
   function syncAppChrome(app) {
     dom.activeTitle.textContent = app.name;
     updateTopBar(app.appId);
@@ -72,6 +75,7 @@ export function createShell({ builderUi, dom, platform }) {
     dom.openSettingsButton.hidden = true;
   }
 
+  // Section: Navigation and side menu
   function handleHomeButton() {
     if (platform.state.activeAppId === MENU_APP_ID) {
       dom.sideMenu.hidden = false;
@@ -91,6 +95,7 @@ export function createShell({ builderUi, dom, platform }) {
     openSettings();
   }
 
+  // Section: Blank app creation
   function createBlankAppHtml(name) {
     return `<!doctype html>
 <html lang="en">
@@ -140,6 +145,7 @@ export function createShell({ builderUi, dom, platform }) {
     builderUi.addBuilderMessage("system", "Blank app created. Describe what you want this app to do.");
   }
 
+  // Section: Settings dialog
   async function openSettings() {
     const config = await platform.getOpenRouterConfig();
     dom.openRouterKeyInput.value = config.apiKey;

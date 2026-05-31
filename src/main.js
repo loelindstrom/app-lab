@@ -4,6 +4,7 @@ import { createBuilderUi } from "./builder/ui.js";
 import { MENU_APP_ID, createPlatform } from "./platform.js";
 import { createShell, getDomBindings } from "./shell.js";
 
+// Section: Composition root
 const dom = getDomBindings();
 const platform = createPlatform({ dom });
 const builderUi = createBuilderUi({
@@ -20,6 +21,7 @@ platform.setAppLoadedHandler((app) => {
   builderUi.handleAppLoaded(app);
 });
 
+// Section: Boot lifecycle
 async function boot() {
   try {
     platform.state.db = await platform.openDatabase();
@@ -31,6 +33,7 @@ async function boot() {
   }
 }
 
+// Section: Host event wiring
 dom.homeButton.addEventListener("click", shell.handleHomeButton);
 dom.newAppButton.addEventListener("click", shell.createBlankApp);
 dom.toggleBuilderButton.addEventListener("click", builderUi.toggleBuilder);
@@ -43,6 +46,7 @@ dom.builderForm.addEventListener("submit", builderUi.submitBuilderMessage);
 dom.settingsForm.addEventListener("submit", shell.submitSettings);
 window.addEventListener("message", platform.handleMessage);
 
+// Section: Test-only diagnostics
 if (new URLSearchParams(window.location.search).has("test")) {
   window.__appLabTest = {
     addBuilderMessage: builderUi.addBuilderMessage,

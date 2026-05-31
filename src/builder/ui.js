@@ -1,6 +1,7 @@
 import { MENU_APP_ID } from "../platform.js";
 
 export function createBuilderUi({ dom, getActiveApp, getActiveAppId }) {
+  // Section: Builder UI state
   const state = {
     appId: null,
     messages: [],
@@ -13,6 +14,7 @@ export function createBuilderUi({ dom, getActiveApp, getActiveAppId }) {
     runAgent = runner;
   }
 
+  // Section: App switching lifecycle
   function handleAppLoaded(app) {
     dom.builderTitle.textContent = app.name;
 
@@ -28,6 +30,7 @@ export function createBuilderUi({ dom, getActiveApp, getActiveAppId }) {
     renderBuilderMessages();
   }
 
+  // Section: Builder drawer controls
   function openBuilder() {
     dom.builderPanel.hidden = false;
     dom.hostShell.classList.add("builder-open");
@@ -58,6 +61,7 @@ export function createBuilderUi({ dom, getActiveApp, getActiveAppId }) {
     dom.mobileBuilderToggle.textContent = dom.builderPanel.hidden ? "BuilderAI ↑" : "BuilderAI ↓";
   }
 
+  // Section: Chat message rendering
   function addBuilderMessage(role, content, persist = false) {
     if (persist) {
       state.messages.push({ role, content });
@@ -95,6 +99,7 @@ export function createBuilderUi({ dom, getActiveApp, getActiveAppId }) {
     }
   }
 
+  // Section: Busy/progress display
   function setBuilderBusy(isBusy) {
     state.busy = isBusy;
     dom.builderSend.disabled = isBusy;
@@ -159,6 +164,7 @@ export function createBuilderUi({ dom, getActiveApp, getActiveAppId }) {
     }
   }
 
+  // Section: Builder form submission
   async function submitBuilderMessage(event) {
     event.preventDefault();
     const userMessage = dom.builderInput.value.trim();
