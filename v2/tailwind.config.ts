@@ -6,17 +6,19 @@ export default {
     extend: {
       colors: {
         app: {
-          bg: "#f4f1ea",
-          ink: "#202521",
-          muted: "#637067",
-          line: "#d8d0c1",
-          surface: "#fffaf0",
-          accent: "#0f6d5c",
-          strong: "#09483d",
+          bg: "#eef3f7",
+          ink: "#172026",
+          muted: "#60717c",
+          line: "#cbd7df",
+          surface: "#fbfdff",
+          panel: "#ffffff",
+          accent: "#2563eb",
+          strong: "#1d4ed8",
+          violet: "#7c3aed",
         },
       },
       boxShadow: {
-        panel: "0 22px 60px rgb(46 38 24 / 16%)",
+        panel: "0 22px 60px rgb(23 32 38 / 16%)",
       },
       fontFamily: {
         sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],

@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import type { AppLabCore, AppRecord, AppSummary } from "../../core/types";
 import { SandboxFrame } from "../../runtime/SandboxFrame";
-import { BuilderPanel } from "../builder/BuilderPanel";
 import { SettingsDialog } from "../dialogs/SettingsDialog";
-import { SourceDialog } from "../dialogs/SourceDialog";
+import { ToolPanelMode, WorkspaceToolPanel } from "../tools/WorkspaceToolPanel";
 
 type WorkspaceMode = "launcher" | "app";
 
@@ -15,8 +14,7 @@ export function WorkspaceShell({ core }: WorkspaceShellProps) {
   const [apps, setApps] = useState<AppSummary[]>([]);
   const [activeApp, setActiveApp] = useState<AppRecord | null>(null);
   const [mode, setMode] = useState<WorkspaceMode>("launcher");
-  const [builderOpen, setBuilderOpen] = useState(false);
-  const [sourceOpen, setSourceOpen] = useState(false);
+  const [activeTool, setActiveTool] = useState<ToolPanelMode | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   useEffect(() => {
@@ -32,8 +30,7 @@ export function WorkspaceShell({ core }: WorkspaceShellProps) {
     if (!app) return;
     setActiveApp(app);
     setMode("app");
-    setBuilderOpen(false);
-    setSourceOpen(false);
+    setActiveTool(null);
   }
 
   async function createApp() {
@@ -41,44 +38,58 @@ export function WorkspaceShell({ core }: WorkspaceShellProps) {
     await refreshApps();
     setActiveApp(app);
     setMode("app");
-    setBuilderOpen(true);
+    setActiveTool("builder");
   }
 
   function openLauncher() {
     setMode("launcher");
-    setBuilderOpen(false);
-    setSourceOpen(false);
+    setActiveTool(null);
+  }
+
+  function toggleTool(nextTool: ToolPanelMode) {
+    setActiveTool((currentTool) => (currentTool === nextTool ? null : nextTool));
   }
 
   const title = useMemo(() => {
-    if (mode === "launcher") return "Apps";
+    if (mode === "launcher") return "App Lab";
     return activeApp?.name ?? "App";
   }, [activeApp?.name, mode]);
 
   return (
-    <div className={`grid min-h-[100svh] grid-rows-[44px_minmax(0,1fr)] ${builderOpen ? "lg:mr-[min(420px,36vw)]" : ""}`}>
-      <header className="grid grid-cols-[120px_minmax(0,1fr)_auto] items-center gap-2 border-b border-app-line bg-app-surface/85 px-2">
-        <button
-          className="min-h-9 justify-self-start rounded-md border border-transparent bg-transparent px-3 font-bold text-app-accent hover:bg-app-accent/10"
-          type="button"
-          onClick={openLauncher}
-        >
-          {mode === "launcher" ? "Apps" : "‹ Apps"}
-        </button>
-        <h1 className="truncate text-center text-[17px] font-extrabold">{title}</h1>
-        <nav className="flex gap-2" aria-label="Workspace actions">
-          <button className="min-h-9 rounded-md border border-app-accent bg-app-accent px-4 font-bold text-white hover:bg-app-strong" type="button" onClick={createApp}>
-            New
+    <div className={`grid min-h-[calc(100dvh+1px)] grid-rows-[44px_minmax(0,1fr)_auto] overflow-x-hidden ${activeTool ? "lg:mr-[min(420px,36vw)]" : ""}`}>
+      <header className="grid grid-cols-[88px_minmax(0,1fr)_88px] items-center border-b border-app-line bg-app-panel/90 px-2 lg:grid-cols-[1fr_auto_1fr]">
+        <div className="justify-self-start">
+          {mode === "app" ? (
+            <button
+              className="min-h-9 rounded-md border border-transparent bg-transparent px-3 font-bold text-app-accent hover:bg-app-accent/10"
+              type="button"
+              onClick={openLauncher}
+            >
+              ‹ Apps
+            </button>
+          ) : null}
+        </div>
+        <h1 className="max-w-[50vw] truncate text-center text-[17px] font-extrabold">{title}</h1>
+        <nav className="flex items-center justify-end gap-3" aria-label="Workspace actions">
+          <button
+            className="grid h-9 min-h-9 w-9 place-items-center rounded-md border border-transparent bg-transparent text-lg text-app-muted hover:bg-app-accent/10 hover:text-app-accent"
+            type="button"
+            aria-label="Open settings"
+            onClick={() => setSettingsOpen(true)}
+          >
+            ⚙
           </button>
-          <button className="hidden min-h-9 rounded-md border border-app-accent bg-app-accent px-4 font-bold text-white hover:bg-app-strong sm:block" type="button" onClick={() => setSettingsOpen(true)}>
-            Settings
-          </button>
+          {mode === "app" && activeApp ? (
+            <div className="hidden lg:block">
+              <ToolSwitch activeTool={activeTool} onToggleTool={toggleTool} />
+            </div>
+          ) : null}
         </nav>
       </header>
 
-      <main className="min-h-0">
+      <main className="min-h-0 overflow-hidden">
         {mode === "launcher" ? (
-          <LauncherView apps={apps} onCreateApp={createApp} onOpenApp={openApp} />
+          <LauncherView apps={apps} onOpenApp={openApp} />
         ) : activeApp ? (
           <AppView app={activeApp} />
         ) : null}
@@ -86,24 +97,20 @@ export function WorkspaceShell({ core }: WorkspaceShellProps) {
 
       {mode === "app" && activeApp ? (
         <>
-          <button
-            className="fixed bottom-6 right-6 z-10 hidden min-h-9 rounded-md border border-app-accent bg-app-accent px-4 font-bold text-white shadow-panel hover:bg-app-strong lg:block"
-            type="button"
-            onClick={() => setBuilderOpen(true)}
-          >
-            BuilderAI
-          </button>
-          <footer className="sticky bottom-0 z-10 flex h-10 items-center justify-end gap-2 border-t border-app-line bg-app-surface/90 px-2 lg:hidden">
-            <button className="min-h-8 rounded-md border border-app-accent bg-app-accent px-3 font-bold text-white hover:bg-app-strong" type="button" onClick={() => setSourceOpen(true)}>
-              Source
-            </button>
-            <button className="min-h-8 rounded-md border border-app-accent bg-app-accent px-3 font-bold text-white hover:bg-app-strong" type="button" onClick={() => setBuilderOpen(true)}>
-              BuilderAI
-            </button>
+          <footer className="sticky bottom-0 z-30 flex h-11 shrink-0 items-center justify-end border-t border-app-line bg-app-panel/95 px-3 lg:hidden">
+            <ToolSwitch activeTool={activeTool} onToggleTool={toggleTool} />
           </footer>
-          <BuilderPanel activeAppName={activeApp.name} isOpen={builderOpen} onClose={() => setBuilderOpen(false)} />
-          <SourceDialog app={activeApp} isOpen={sourceOpen} onClose={() => setSourceOpen(false)} />
+          <WorkspaceToolPanel activeApp={activeApp} mode={activeTool} onClose={() => setActiveTool(null)} />
         </>
+      ) : mode === "launcher" ? (
+        <button
+          className="fixed bottom-5 right-5 z-20 grid h-14 min-h-14 w-14 place-items-center rounded-full border border-app-accent bg-app-accent text-3xl font-light leading-none text-white shadow-panel hover:bg-app-strong"
+          type="button"
+          aria-label="Create new app"
+          onClick={createApp}
+        >
+          +
+        </button>
       ) : null}
 
       <SettingsDialog isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
@@ -113,21 +120,49 @@ export function WorkspaceShell({ core }: WorkspaceShellProps) {
 
 interface LauncherViewProps {
   apps: AppSummary[];
-  onCreateApp: () => void;
   onOpenApp: (appId: string) => void;
 }
 
-function LauncherView({ apps, onCreateApp, onOpenApp }: LauncherViewProps) {
+interface ToolSwitchProps {
+  activeTool: ToolPanelMode | null;
+  onToggleTool: (tool: ToolPanelMode) => void;
+}
+
+function ToolSwitch({ activeTool, onToggleTool }: ToolSwitchProps) {
   return (
-    <section className="mx-auto w-full max-w-5xl px-4 py-7" aria-label="Apps">
+    <div className="flex h-9 items-stretch gap-1 rounded-lg border border-app-line bg-white/90 p-1" role="group" aria-label="App tools">
+      <button
+        className={`relative min-h-0 rounded-md border-0 bg-transparent px-3 font-mono font-bold text-app-muted hover:text-app-accent ${
+          activeTool === "source" ? "text-app-accent after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-app-accent" : ""
+        }`}
+        type="button"
+        aria-label="Toggle source"
+        onClick={() => onToggleTool("source")}
+      >
+        &lt;&gt;
+      </button>
+      <button
+        className={`relative min-h-0 rounded-md border-0 bg-transparent px-3 font-bold text-app-muted hover:text-app-violet ${
+          activeTool === "builder" ? "text-app-violet after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-app-violet" : ""
+        }`}
+        type="button"
+        aria-label="Toggle BuilderAI"
+        onClick={() => onToggleTool("builder")}
+      >
+        AI ✦
+      </button>
+    </div>
+  );
+}
+
+function LauncherView({ apps, onOpenApp }: LauncherViewProps) {
+  return (
+    <section className="mx-auto h-full w-full max-w-5xl overflow-auto px-4 py-7 pb-24" aria-label="Apps">
       <div className="mb-5 flex items-end justify-between gap-5">
         <div>
           <p className="mb-1 text-xs font-extrabold uppercase text-app-muted">Workspace</p>
           <h2 className="text-[clamp(24px,4vw,38px)] font-extrabold leading-none">Choose an app</h2>
         </div>
-        <button className="min-h-9 rounded-md border border-app-accent bg-app-accent px-4 font-bold text-white hover:bg-app-strong" type="button" onClick={onCreateApp}>
-          New app
-        </button>
       </div>
 
       <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3">

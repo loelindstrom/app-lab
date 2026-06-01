@@ -12,8 +12,8 @@
   body {
     @apply m-0 bg-app-bg text-app-ink font-sans;
     background-image:
-      linear-gradient(135deg, rgb(15 109 92 / 12%), transparent 36%),
-      radial-gradient(circle at 80% 12%, rgb(178 74 41 / 15%), transparent 28%);
+      linear-gradient(135deg, rgb(37 99 235 / 9%), transparent 36%),
+      radial-gradient(circle at 82% 8%, rgb(124 58 237 / 9%), transparent 30%);
   }
 
   button,

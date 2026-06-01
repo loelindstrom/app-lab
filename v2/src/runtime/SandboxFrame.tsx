@@ -14,7 +14,7 @@ export function SandboxFrame({ app }: SandboxFrameProps) {
 
   return (
     <iframe
-      className="block h-[calc(100svh-44px)] w-full border-0 bg-app-surface lg:h-[calc(100svh-44px)] max-lg:h-[calc(100svh-40px-40px)]"
+      className="block h-[calc(100dvh-44px-44px)] w-full border-0 bg-app-surface lg:h-[calc(100dvh-44px)]"
       title={`${app.name} app`}
       sandbox="allow-scripts"
       referrerPolicy="no-referrer"

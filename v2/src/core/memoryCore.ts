@@ -73,8 +73,8 @@ function seedWelcomeApp(apps: Map<string, AppRecord>) {
     <style>
       * { box-sizing: border-box; }
       body {
-        background: #fffaf0;
-        color: #202521;
+        background: #101923;
+        color: #e7edf3;
         font-family: Inter, ui-sans-serif, system-ui, sans-serif;
         margin: 0;
         min-height: 100vh;
@@ -82,7 +82,7 @@ function seedWelcomeApp(apps: Map<string, AppRecord>) {
       }
       main { max-width: 760px; }
       h1 { font-size: clamp(44px, 10vw, 92px); line-height: .92; margin: 0 0 20px; }
-      p { color: #617069; font-size: 19px; line-height: 1.55; margin: 0; }
+      p { color: #a7b5c2; font-size: 19px; line-height: 1.55; margin: 0; }
     </style>
   </head>
   <body>
