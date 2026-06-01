@@ -16,6 +16,8 @@ export function WorkspaceShell({ core }: WorkspaceShellProps) {
   const [mode, setMode] = useState<WorkspaceMode>("launcher");
   const [activeTool, setActiveTool] = useState<ToolPanelMode | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [aiAttentionKey, setAiAttentionKey] = useState(0);
+  const [aiAttentionDismissed, setAiAttentionDismissed] = useState(true);
 
   useEffect(() => {
     refreshApps();
@@ -31,6 +33,8 @@ export function WorkspaceShell({ core }: WorkspaceShellProps) {
     setActiveApp(app);
     setMode("app");
     setActiveTool(null);
+    setAiAttentionKey((key) => key + 1);
+    setAiAttentionDismissed(false);
   }
 
   async function createApp() {
@@ -38,7 +42,9 @@ export function WorkspaceShell({ core }: WorkspaceShellProps) {
     await refreshApps();
     setActiveApp(app);
     setMode("app");
-    setActiveTool("builder");
+    setActiveTool(null);
+    setAiAttentionKey((key) => key + 1);
+    setAiAttentionDismissed(false);
   }
 
   function openLauncher() {
@@ -47,6 +53,10 @@ export function WorkspaceShell({ core }: WorkspaceShellProps) {
   }
 
   function toggleTool(nextTool: ToolPanelMode) {
+    if (nextTool === "builder") {
+      setAiAttentionDismissed(true);
+    }
+
     setActiveTool((currentTool) => (currentTool === nextTool ? null : nextTool));
   }
 
@@ -56,7 +66,7 @@ export function WorkspaceShell({ core }: WorkspaceShellProps) {
   }, [activeApp?.name, mode]);
 
   return (
-    <div className={`grid min-h-[calc(100dvh+1px)] grid-rows-[44px_minmax(0,1fr)_auto] overflow-x-hidden ${activeTool ? "lg:mr-[min(420px,36vw)]" : ""}`}>
+    <div className="grid min-h-[calc(100dvh+1px)] grid-rows-[44px_minmax(0,1fr)_auto] overflow-x-hidden">
       <header className="grid grid-cols-[88px_minmax(0,1fr)_88px] items-center border-b border-app-line bg-app-panel/90 px-2 lg:grid-cols-[1fr_auto_1fr]">
         <div className="justify-self-start">
           {mode === "app" ? (
@@ -81,13 +91,18 @@ export function WorkspaceShell({ core }: WorkspaceShellProps) {
           </button>
           {mode === "app" && activeApp ? (
             <div className="hidden lg:block">
-              <ToolSwitch activeTool={activeTool} onToggleTool={toggleTool} />
+              <ToolSwitch
+                activeTool={activeTool}
+                aiAttentionDismissed={aiAttentionDismissed}
+                aiAttentionKey={aiAttentionKey}
+                onToggleTool={toggleTool}
+              />
             </div>
           ) : null}
         </nav>
       </header>
 
-      <main className="min-h-0 overflow-hidden">
+      <main className={`min-h-0 overflow-hidden ${activeTool ? "lg:mr-[min(420px,36vw)]" : ""}`}>
         {mode === "launcher" ? (
           <LauncherView apps={apps} onOpenApp={openApp} />
         ) : activeApp ? (
@@ -98,7 +113,12 @@ export function WorkspaceShell({ core }: WorkspaceShellProps) {
       {mode === "app" && activeApp ? (
         <>
           <footer className="sticky bottom-0 z-30 flex h-11 shrink-0 items-center justify-end border-t border-app-line bg-app-panel/95 px-3 lg:hidden">
-            <ToolSwitch activeTool={activeTool} onToggleTool={toggleTool} />
+            <ToolSwitch
+              activeTool={activeTool}
+              aiAttentionDismissed={aiAttentionDismissed}
+              aiAttentionKey={aiAttentionKey}
+              onToggleTool={toggleTool}
+            />
           </footer>
           <WorkspaceToolPanel activeApp={activeApp} mode={activeTool} onClose={() => setActiveTool(null)} />
         </>
@@ -125,10 +145,14 @@ interface LauncherViewProps {
 
 interface ToolSwitchProps {
   activeTool: ToolPanelMode | null;
+  aiAttentionDismissed: boolean;
+  aiAttentionKey: number;
   onToggleTool: (tool: ToolPanelMode) => void;
 }
 
-function ToolSwitch({ activeTool, onToggleTool }: ToolSwitchProps) {
+function ToolSwitch({ activeTool, aiAttentionDismissed, aiAttentionKey, onToggleTool }: ToolSwitchProps) {
+  const showAiAttention = !aiAttentionDismissed && activeTool !== "builder";
+
   return (
     <div className="flex h-9 items-stretch gap-1 rounded-lg border border-app-line bg-white/90 p-1" role="group" aria-label="App tools">
       <button
@@ -142,14 +166,34 @@ function ToolSwitch({ activeTool, onToggleTool }: ToolSwitchProps) {
         &lt;&gt;
       </button>
       <button
-        className={`relative min-h-0 rounded-md border-0 bg-transparent px-3 font-bold text-app-muted hover:text-app-violet ${
+        className={`relative min-h-0 overflow-hidden rounded-md border-0 bg-transparent px-3 font-bold text-app-muted hover:text-app-violet ${
           activeTool === "builder" ? "text-app-violet after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-app-violet" : ""
         }`}
         type="button"
         aria-label="Toggle BuilderAI"
         onClick={() => onToggleTool("builder")}
       >
-        AI ✦
+        {showAiAttention ? (
+          <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 100 36" preserveAspectRatio="none" aria-hidden="true">
+            <rect
+              key={aiAttentionKey}
+              className="ai-snake-path"
+              x="2"
+              y="2"
+              width="96"
+              height="32"
+              rx="6"
+              ry="6"
+              pathLength="100"
+              fill="none"
+              stroke="#8b5cf6"
+              strokeLinecap="round"
+            />
+          </svg>
+        ) : null}
+        <span key={aiAttentionKey} className={`relative z-10 ${showAiAttention ? "animate-ai-text-shimmer" : ""}`}>
+          AI ✦
+        </span>
       </button>
     </div>
   );

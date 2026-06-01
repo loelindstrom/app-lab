@@ -22,3 +22,61 @@
     font: inherit;
   }
 }
+
+@layer utilities {
+  .animate-ai-text-shimmer {
+    animation: ai-text-shimmer 6s ease-out 1;
+  }
+
+  .ai-snake-path {
+    animation: ai-snake-lap 6s linear 1;
+    opacity: 0;
+    stroke-dasharray: 28 72;
+    stroke-dashoffset: 0;
+    stroke-width: 4;
+  }
+}
+
+@keyframes ai-text-shimmer {
+  0%,
+  100% {
+    color: theme("colors.app.muted");
+  }
+
+  8%,
+  24%,
+  44%,
+  64%,
+  84% {
+    color: theme("colors.app.violet");
+    text-shadow: 0 0 14px rgb(124 58 237 / 42%);
+  }
+
+  16%,
+  36%,
+  56%,
+  76% {
+    color: theme("colors.app.accent");
+    text-shadow: 0 0 14px rgb(37 99 235 / 34%);
+  }
+}
+
+@keyframes ai-snake-lap {
+  0% {
+    opacity: 0;
+    stroke-dashoffset: 28;
+  }
+
+  4% {
+    opacity: 1;
+  }
+
+  92% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+    stroke-dashoffset: -272;
+  }
+}
