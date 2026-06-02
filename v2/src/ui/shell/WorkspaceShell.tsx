@@ -106,7 +106,7 @@ export function WorkspaceShell({ core }: WorkspaceShellProps) {
         {mode === "launcher" ? (
           <LauncherView apps={apps} onOpenApp={openApp} />
         ) : activeApp ? (
-          <AppView app={activeApp} />
+          <AppView app={activeApp} core={core} />
         ) : null}
       </main>
 
@@ -120,7 +120,17 @@ export function WorkspaceShell({ core }: WorkspaceShellProps) {
               onToggleTool={toggleTool}
             />
           </footer>
-          <WorkspaceToolPanel activeApp={activeApp} mode={activeTool} onClose={() => setActiveTool(null)} />
+          <WorkspaceToolPanel
+            activeApp={activeApp}
+            mode={activeTool}
+            onClose={() => setActiveTool(null)}
+            onSaveSource={async (sourceCode) => {
+              const nextName = readHtmlTitle(sourceCode) || activeApp.name;
+              const updated = await core.updateApp({ appId: activeApp.appId, name: nextName, sourceCode });
+              setActiveApp(updated);
+              await refreshApps();
+            }}
+          />
         </>
       ) : mode === "launcher" ? (
         <button
@@ -209,27 +219,38 @@ function LauncherView({ apps, onOpenApp }: LauncherViewProps) {
         </div>
       </div>
 
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3">
-        {apps.map((app) => (
-          <button
-            className="grid min-h-28 content-start gap-2 rounded-lg border border-app-line bg-app-surface/95 p-4 text-left text-app-ink shadow-[0_10px_30px_rgb(46_38_24_/_8%)] hover:bg-white"
-            key={app.appId}
-            type="button"
-            onClick={() => onOpenApp(app.appId)}
-          >
-            <strong className="text-lg">{app.name}</strong>
-            <span className="text-sm leading-snug text-app-muted">{app.description}</span>
-          </button>
-        ))}
-      </div>
+      {apps.length ? (
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3">
+          {apps.map((app) => (
+            <button
+              className="grid min-h-28 content-start gap-2 rounded-lg border border-app-line bg-app-surface/95 p-4 text-left text-app-ink shadow-[0_10px_30px_rgb(46_38_24_/_8%)] hover:bg-white"
+              key={app.appId}
+              type="button"
+              onClick={() => onOpenApp(app.appId)}
+            >
+              <strong className="text-lg">{app.name}</strong>
+              <span className="text-sm leading-snug text-app-muted">{app.description}</span>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-xl border border-dashed border-app-line bg-app-panel/70 p-8 text-app-muted">
+          No apps yet. Use the + button to create the example app.
+        </div>
+      )}
     </section>
   );
 }
 
-function AppView({ app }: { app: AppRecord }) {
+function readHtmlTitle(sourceCode: string): string {
+  const document = new DOMParser().parseFromString(sourceCode, "text/html");
+  return document.title.trim();
+}
+
+function AppView({ app, core }: { app: AppRecord; core: AppLabCore }) {
   return (
     <section className="min-h-0" aria-label={app.name}>
-      <SandboxFrame app={app} />
+      <SandboxFrame app={app} getAppData={core.getAppData} saveAppData={core.saveAppData} />
     </section>
   );
 }

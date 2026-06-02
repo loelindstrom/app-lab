@@ -1,10 +1,10 @@
-import { createBlankAppInput } from "./blankApp";
-import type { AppLabCore, AppRecord, AppSummary, CreateAppInput, UpdateAppInput } from "./types";
+import { createExampleAppInput } from "./exampleApp";
+import { normalizeJsonValue } from "./jsonData";
+import type { AppLabCore, AppRecord, AppSummary, CreateAppInput, JsonValue, UpdateAppInput } from "./types";
 
 export function createMemoryCore(): AppLabCore {
   const apps = new Map<string, AppRecord>();
-
-  seedWelcomeApp(apps);
+  const appData = new Map<string, JsonValue>();
 
   async function listApps(): Promise<AppSummary[]> {
     return [...apps.values()]
@@ -31,7 +31,16 @@ export function createMemoryCore(): AppLabCore {
   }
 
   async function createBlankApp(): Promise<AppRecord> {
-    return createApp(createBlankAppInput());
+    return createApp(createExampleAppInput());
+  }
+
+  async function getAppData(appId: string): Promise<JsonValue> {
+    return appData.get(appId) ?? null;
+  }
+
+  async function saveAppData(appId: string, data: JsonValue): Promise<void> {
+    if (!apps.has(appId)) throw new Error(`App not found: ${appId}`);
+    appData.set(appId, normalizeJsonValue(data));
   }
 
   async function updateApp(input: UpdateAppInput): Promise<AppRecord> {
@@ -51,46 +60,9 @@ export function createMemoryCore(): AppLabCore {
     createApp,
     createBlankApp,
     getApp,
+    getAppData,
     listApps,
+    saveAppData,
     updateApp,
   };
-}
-
-function seedWelcomeApp(apps: Map<string, AppRecord>) {
-  const now = new Date().toISOString();
-  apps.set("welcome", {
-    appId: "welcome",
-    name: "Welcome",
-    description: "A starter app rendered inside the sandbox.",
-    createdAt: now,
-    updatedAt: now,
-    sourceCode: `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Welcome</title>
-    <style>
-      * { box-sizing: border-box; }
-      body {
-        background: #101923;
-        color: #e7edf3;
-        font-family: Inter, ui-sans-serif, system-ui, sans-serif;
-        margin: 0;
-        min-height: 100vh;
-        padding: 32px;
-      }
-      main { max-width: 760px; }
-      h1 { font-size: clamp(44px, 10vw, 92px); line-height: .92; margin: 0 0 20px; }
-      p { color: #a7b5c2; font-size: 19px; line-height: 1.55; margin: 0; }
-    </style>
-  </head>
-  <body>
-    <main>
-      <h1>App Lab v2</h1>
-      <p>This is the first React shell slice. The app is already isolated in the sandbox surface while the host owns the surrounding workspace tools.</p>
-    </main>
-  </body>
-</html>`,
-  });
 }

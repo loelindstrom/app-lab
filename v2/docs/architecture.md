@@ -16,7 +16,7 @@ Responsibilities:
 - BuilderAI service contract: read current app, write current app, stream progress and final text
 - export/import contracts for future backup and sync work
 
-The first implementation can use an in-memory core to prove the UI shape. The production core should later replace that with IndexedDB-backed services behind the same interface.
+The test implementation can use an in-memory core to prove behavior. The browser app uses an IndexedDB-backed core behind the same interface.
 
 Core rules:
 
@@ -24,6 +24,7 @@ Core rules:
 - core returns plain serializable values
 - OpenRouter key access stays host-owned and never crosses into iframe app code
 - generated app source is stored as data, not executed by core
+- app data is persisted as normalized JSON through host-mediated APIs, not direct iframe IndexedDB access
 
 ## App Runtime
 
@@ -43,6 +44,7 @@ The v2 runtime should preserve the PoC security posture:
 - injected app CSP blocks network, remote resources, forms, frames, workers, and base URL rewriting
 - app data RPC is scoped to the active app id chosen by the host
 - app data is normalized JSON and limited by size
+- app RPC currently supports `GET_MY_DATA` and `SAVE_MY_DATA`
 
 The runtime is browser-bound but still UI-independent. React components should render the iframe and call runtime helpers; runtime code should not know about drawers, dialogs, or layout.
 
@@ -58,6 +60,8 @@ The intended shell is a lightweight workspace frame:
 - desktop uses a right drawer
 - mobile uses a bottom sheet and a compact bottom dock
 - source/settings are host-owned dialogs
+- source editing is a host-owned tool panel; saving source updates the app record and reloads the sandbox
+- the source tool can generate a copyable prompt+code bundle for external LLMs
 
 Initial UI map:
 
@@ -104,10 +108,11 @@ UI rules:
 The first v2 slice should prove the shape before full feature parity:
 
 - boot into a host-owned launcher
-- create a blank app through the core service
+- create an example app through the core service
 - open an app in the iframe runtime
 - open/close BuilderAI as right drawer on desktop and bottom sheet on mobile
-- open source viewer for the active app
+- edit and save source for the active app
+- export prompt+code text for use with external browser LLMs
 - keep settings as a placeholder until OpenRouter is moved into core
 
 After that slice feels right, move persistence and OpenRouter from the PoC into `src/core`, then replace placeholders one behavior at a time.

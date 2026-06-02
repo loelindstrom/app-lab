@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from "react";
 import type { AppRecord } from "../../core/types";
 
 export type ToolPanelMode = "builder" | "source";
@@ -6,9 +7,10 @@ interface WorkspaceToolPanelProps {
   activeApp: AppRecord;
   mode: ToolPanelMode | null;
   onClose: () => void;
+  onSaveSource: (sourceCode: string) => Promise<void>;
 }
 
-export function WorkspaceToolPanel({ activeApp, mode, onClose }: WorkspaceToolPanelProps) {
+export function WorkspaceToolPanel({ activeApp, mode, onClose, onSaveSource }: WorkspaceToolPanelProps) {
   const isOpen = mode !== null;
   const title = mode === "source" ? "Source" : mode === "builder" ? "BuilderAI" : "App tools";
 
@@ -35,16 +37,76 @@ export function WorkspaceToolPanel({ activeApp, mode, onClose }: WorkspaceToolPa
         </button>
       </header>
 
-      {mode === "source" ? <SourceView app={activeApp} /> : <BuilderView />}
+      {mode === "source" ? <SourceView app={activeApp} onSaveSource={onSaveSource} /> : <BuilderView />}
     </aside>
   );
 }
 
-function SourceView({ app }: { app: AppRecord }) {
+function SourceView({ app, onSaveSource }: { app: AppRecord; onSaveSource: (sourceCode: string) => Promise<void> }) {
+  const [sourceCode, setSourceCode] = useState(app.sourceCode);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [status, setStatus] = useState("Ready");
+  const promptText = useMemo(() => createPromptWithCode(app.name, sourceCode), [app.name, sourceCode]);
+
+  useEffect(() => {
+    setSourceCode(app.sourceCode);
+    setStatus("Ready");
+  }, [app.appId, app.sourceCode]);
+
+  async function saveSource() {
+    setStatus("Saving...");
+    try {
+      await onSaveSource(sourceCode);
+      setStatus("Saved.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Could not save.");
+    }
+  }
+
   return (
-    <pre className="m-0 overflow-auto bg-[#111827] p-4 font-mono text-[13px] leading-normal text-slate-100 [tab-size:2]">
-      <code>{app.sourceCode}</code>
-    </pre>
+    <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)]">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-app-line bg-slate-50 px-3 py-2">
+        <div className="text-xs font-bold text-app-muted">{status}</div>
+        <div className="flex gap-2">
+          <button
+            className="min-h-8 rounded-md border border-app-line bg-white px-3 text-sm font-bold text-app-ink hover:border-app-accent"
+            type="button"
+            onClick={() => setExportOpen((isOpen) => !isOpen)}
+          >
+            Copy prompt+code
+          </button>
+          <button
+            className="min-h-8 rounded-md border border-app-accent bg-app-accent px-3 text-sm font-bold text-white hover:bg-app-strong"
+            type="button"
+            onClick={saveSource}
+          >
+            Save ↥
+          </button>
+        </div>
+      </div>
+
+      <div className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto] bg-[#111827]">
+        <textarea
+          className="h-full min-h-0 resize-none border-0 bg-[#111827] p-4 font-mono text-[13px] leading-normal text-slate-100 outline-none [tab-size:2]"
+          spellCheck={false}
+          value={sourceCode}
+          onChange={(event) => {
+            setSourceCode(event.target.value);
+            setStatus("Unsaved changes");
+          }}
+        />
+        {exportOpen ? (
+          <div className="border-t border-slate-700 bg-slate-950 p-3">
+            <textarea
+              className="h-44 w-full resize-y rounded-md border border-slate-700 bg-slate-900 p-3 font-mono text-xs leading-relaxed text-slate-100"
+              readOnly
+              value={promptText}
+              onFocus={(event) => event.target.select()}
+            />
+          </div>
+        ) : null}
+      </div>
+    </div>
   );
 }
 
@@ -77,4 +139,33 @@ function BuilderView() {
       </form>
     </div>
   );
+}
+
+function createPromptWithCode(appName: string, sourceCode: string): string {
+  return `You are helping me edit an App Lab sandbox app named "${appName}".
+
+The app must be a complete single-file HTML document. Use inline CSS and inline JavaScript only.
+
+Runtime rules:
+- Do not use external scripts, imports, CDNs, remote images, cookies, localStorage, sessionStorage, or direct IndexedDB.
+- The app runs in a sandboxed iframe with scripts enabled and an opaque origin.
+- To persist app-owned JSON data, use the host message API below.
+
+Persistence API:
+- Read the injected capability: const appLabCapability = window.__APP_LAB_CAPABILITY__;
+- Send window.parent.postMessage({ type, requestId, appLabCapability, payload }, "*");
+- To load saved data, send type "GET_MY_DATA".
+- The host replies with { type: "MY_DATA", requestId, payload: { data } }.
+- To save data, send type "SAVE_MY_DATA" with payload { data: <JSON value> }.
+- The host replies with "MY_DATA_SAVED" or "MY_DATA_SAVE_FAILED".
+- Keep requestId values and match replies to requests.
+
+Please rewrite the app as requested, returning only the complete HTML document.
+
+Current app code:
+
+\`\`\`html
+${sourceCode}
+\`\`\`
+`;
 }
