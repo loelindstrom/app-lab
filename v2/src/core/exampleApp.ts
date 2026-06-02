@@ -27,6 +27,14 @@ export const EXAMPLE_APP_SOURCE = `<!doctype html>
       main { display: grid; gap: 18px; max-width: 760px; }
       h1 { font-size: clamp(42px, 10vw, 84px); letter-spacing: -0.04em; line-height: .92; margin: 0; }
       p { color: #a7b5c2; font-size: 18px; line-height: 1.55; margin: 0; }
+      section {
+        background: #121e2b;
+        border: 1px solid #334155;
+        border-radius: 16px;
+        display: grid;
+        gap: 14px;
+        padding: 16px;
+      }
       label { color: #cbd5e1; display: grid; gap: 8px; font-weight: 800; }
       textarea {
         background: #172333;
@@ -52,6 +60,8 @@ export const EXAMPLE_APP_SOURCE = `<!doctype html>
       }
       output { color: #93c5fd; min-height: 22px; }
       .hint { color: #94a3b8; font-size: 14px; }
+      .counter { align-items: center; display: flex; flex-wrap: wrap; gap: 12px; }
+      .counter strong { color: #f8fafc; font-size: 44px; min-width: 72px; }
     </style>
   </head>
   <body>
@@ -61,12 +71,23 @@ export const EXAMPLE_APP_SOURCE = `<!doctype html>
         <p>This app cannot access host storage directly. It persists data by sending simple messages to App Lab.</p>
       </header>
 
-      <label>
-        Saved note
-        <textarea id="note" placeholder="Write something, save, then reload the page."></textarea>
-      </label>
+      <section>
+        <div>
+          <p class="hint">Persisted counter</p>
+          <div class="counter">
+            <strong id="count">0</strong>
+            <button id="increment" type="button">+1 and save</button>
+          </div>
+        </div>
 
-      <button id="save" type="button">Save note</button>
+        <label>
+          Saved note
+          <textarea id="note" placeholder="Write something, save, then reload the page."></textarea>
+        </label>
+
+        <button id="save" type="button">Save note</button>
+      </section>
+
       <output id="status">Loading saved data...</output>
       <p class="hint">Persistence contract: include window.__APP_LAB_CAPABILITY__, send GET_MY_DATA on load, then SAVE_MY_DATA with JSON data.</p>
     </main>
@@ -74,9 +95,12 @@ export const EXAMPLE_APP_SOURCE = `<!doctype html>
     <script>
       const appLabCapability = window.__APP_LAB_CAPABILITY__;
       const note = document.querySelector("#note");
+      const count = document.querySelector("#count");
+      const increment = document.querySelector("#increment");
       const save = document.querySelector("#save");
       const status = document.querySelector("#status");
       const pending = new Map();
+      const state = { count: 0, note: "" };
 
       function request(type, payload = {}) {
         const requestId = crypto.randomUUID();
@@ -91,7 +115,9 @@ export const EXAMPLE_APP_SOURCE = `<!doctype html>
 
         if (message.type === "MY_DATA" && pending.get(message.requestId) === "GET_MY_DATA") {
           pending.delete(message.requestId);
-          note.value = message.payload?.data?.note || "";
+          state.count = Number(message.payload?.data?.count || 0);
+          state.note = message.payload?.data?.note || "";
+          render();
           status.textContent = "Loaded.";
         }
 
@@ -106,9 +132,32 @@ export const EXAMPLE_APP_SOURCE = `<!doctype html>
         }
       });
 
+      function render() {
+        count.textContent = String(state.count);
+        note.value = state.note;
+      }
+
+      function saveState() {
+        request("SAVE_MY_DATA", {
+          data: {
+            count: state.count,
+            note: state.note,
+            savedAt: new Date().toISOString()
+          }
+        });
+      }
+
+      increment.addEventListener("click", () => {
+        state.count += 1;
+        render();
+        status.textContent = "Saving counter...";
+        saveState();
+      });
+
       save.addEventListener("click", () => {
+        state.note = note.value;
         status.textContent = "Saving...";
-        request("SAVE_MY_DATA", { data: { note: note.value, savedAt: new Date().toISOString() } });
+        saveState();
       });
 
       request("GET_MY_DATA");

@@ -64,8 +64,30 @@ function SourceView({ app, onSaveSource }: { app: AppRecord; onSaveSource: (sour
   }
 
   return (
-    <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)]">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-app-line bg-slate-50 px-3 py-2">
+    <div className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto_auto] bg-[#111827]">
+      <div className="min-h-0 bg-[#111827]">
+        <textarea
+          className="h-full min-h-0 w-full resize-none border-0 bg-[#111827] p-4 font-mono text-[13px] leading-normal text-slate-100 outline-none [tab-size:2]"
+          spellCheck={false}
+          value={sourceCode}
+          onChange={(event) => {
+            setSourceCode(event.target.value);
+            setStatus("Unsaved changes");
+          }}
+        />
+      </div>
+      {exportOpen ? (
+        <div className="border-t border-app-line bg-app-panel p-3">
+          <p className="mb-2 text-xs font-bold text-app-muted">Select and copy this prompt into another LLM.</p>
+          <textarea
+            className="h-44 w-full resize-y rounded-md border border-app-line bg-white p-3 font-mono text-xs leading-relaxed text-app-ink"
+            readOnly
+            value={promptText}
+            onFocus={(event) => event.target.select()}
+          />
+        </div>
+      ) : null}
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-app-line bg-slate-50 px-3 py-2">
         <div className="text-xs font-bold text-app-muted">{status}</div>
         <div className="flex gap-2">
           <button
@@ -80,31 +102,9 @@ function SourceView({ app, onSaveSource }: { app: AppRecord; onSaveSource: (sour
             type="button"
             onClick={saveSource}
           >
-            Save ↥
+            Save
           </button>
         </div>
-      </div>
-
-      <div className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto] bg-[#111827]">
-        <textarea
-          className="h-full min-h-0 resize-none border-0 bg-[#111827] p-4 font-mono text-[13px] leading-normal text-slate-100 outline-none [tab-size:2]"
-          spellCheck={false}
-          value={sourceCode}
-          onChange={(event) => {
-            setSourceCode(event.target.value);
-            setStatus("Unsaved changes");
-          }}
-        />
-        {exportOpen ? (
-          <div className="border-t border-slate-700 bg-slate-950 p-3">
-            <textarea
-              className="h-44 w-full resize-y rounded-md border border-slate-700 bg-slate-900 p-3 font-mono text-xs leading-relaxed text-slate-100"
-              readOnly
-              value={promptText}
-              onFocus={(event) => event.target.select()}
-            />
-          </div>
-        ) : null}
       </div>
     </div>
   );

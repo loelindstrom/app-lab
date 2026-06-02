@@ -18,6 +18,7 @@ describe("createMemoryCore", () => {
     expect(app.sourceCode).toContain("<html");
     expect(app.sourceCode).toContain("GET_MY_DATA");
     expect(app.sourceCode).toContain("SAVE_MY_DATA");
+    expect(app.sourceCode).toContain("Persisted counter");
   });
 
   it("saves app-owned JSON data", async () => {

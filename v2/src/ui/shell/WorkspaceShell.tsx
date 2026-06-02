@@ -66,7 +66,7 @@ export function WorkspaceShell({ core }: WorkspaceShellProps) {
   }, [activeApp?.name, mode]);
 
   return (
-    <div className="grid min-h-[calc(100dvh+1px)] grid-rows-[44px_minmax(0,1fr)_auto] overflow-x-hidden">
+    <div className="grid min-h-[calc(100dvh+1px)] grid-rows-[44px_minmax(0,1fr)_auto] overflow-x-hidden lg:min-h-dvh">
       <header className="grid grid-cols-[88px_minmax(0,1fr)_88px] items-center border-b border-app-line bg-app-panel/90 px-2 lg:grid-cols-[1fr_auto_1fr]">
         <div className="justify-self-start">
           {mode === "app" ? (
