@@ -34,6 +34,16 @@ export function prepareSandboxDocument(sourceCode: string, capability: string): 
   writable: false
 });`;
 
-  document.head.prepend(csp, capabilityScript);
+  const unloadScript = document.createElement("script");
+  unloadScript.textContent = `(function () {
+  const appLabCapability = window.__APP_LAB_CAPABILITY__;
+  function notifyHost() {
+    window.parent.postMessage({ type: "APP_LAB_UNLOADING", appLabCapability }, "*");
+  }
+  window.addEventListener("pagehide", notifyHost);
+  window.addEventListener("beforeunload", notifyHost);
+})();`;
+
+  document.head.prepend(csp, capabilityScript, unloadScript);
   return `<!doctype html>\n${document.documentElement.outerHTML}`;
 }
