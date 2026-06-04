@@ -33,7 +33,7 @@ Core rules:
 Responsibilities:
 
 - prepare sandbox HTML before iframe load
-- inject the app CSP and runtime capability
+- inject the app CSP, runtime capability, and app-facing `window.AppLab` helper
 - load active app source into the iframe
 - validate and route app-to-host messages
 - expose a narrow runtime event surface to UI/core
@@ -44,7 +44,8 @@ The v2 runtime should preserve the PoC security posture:
 - injected app CSP blocks network, remote resources, forms, frames, workers, and base URL rewriting
 - app data RPC is scoped to the active app id chosen by the host
 - app data is normalized JSON and limited by size
-- app RPC currently supports `GET_MY_DATA` and `SAVE_MY_DATA`
+- generated apps should use `AppLab.getData()`, `AppLab.saveData()`, and `AppLab.onError()`
+- the low-level host protocol currently supports `GET_MY_DATA`, `SAVE_MY_DATA`, and unload revocation messages
 
 The runtime is browser-bound but still UI-independent. React components should render the iframe and call runtime helpers; runtime code should not know about drawers, dialogs, or layout.
 
@@ -127,7 +128,7 @@ Initial tests:
 - source viewer shows active app source as text
 - launcher vs app mode toggles the correct host controls
 - mobile BuilderAI opens without focusing the composer
-- sandbox runtime injects CSP and does not expose host-owned config
+- sandbox runtime injects CSP and the `AppLab` helper without exposing host-owned config
 
 ## Migration Notes
 

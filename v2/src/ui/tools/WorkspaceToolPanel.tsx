@@ -147,18 +147,21 @@ function createPromptWithCode(appName: string, sourceCode: string): string {
 The app must be a complete single-file HTML document. Use inline CSS and inline JavaScript only.
 
 Runtime rules:
-- Do not use external scripts, imports, CDNs, remote images, cookies, localStorage, sessionStorage, or direct IndexedDB.
+- Do not use external scripts, imports, CDNs, remote images, cookies, localStorage, sessionStorage, direct IndexedDB, navigation, window.prompt, alert, or confirm.
 - The app runs in a sandboxed iframe with scripts enabled and an opaque origin.
-- To persist app-owned JSON data, use the host message API below.
+- Use inline CSS and plain browser APIs only. Do not rely on package managers or network access.
+- Use <dialog> for modal UI, but do not use native form submission. Use button type="button" and explicit click handlers.
+- Use textContent and DOM APIs for user-controlled text. Do not put user content into innerHTML.
+- Use pointer events for drag/drop interactions.
+- Include a visible status/error area so runtime failures are shown to the user.
+- For saved data changes, use a schemaVersion and migrate older saved shapes defensively before saving the new shape.
 
 Persistence API:
-- Read the injected capability: const appLabCapability = window.__APP_LAB_CAPABILITY__;
-- Send window.parent.postMessage({ type, requestId, appLabCapability, payload }, "*");
-- To load saved data, send type "GET_MY_DATA".
-- The host replies with { type: "MY_DATA", requestId, payload: { data } }.
-- To save data, send type "SAVE_MY_DATA" with payload { data: <JSON value> }.
-- The host replies with "MY_DATA_SAVED" or "MY_DATA_SAVE_FAILED".
-- Keep requestId values and match replies to requests.
+- Use the injected helper: await AppLab.getData(fallbackValue)
+- Save app-owned JSON data with: await AppLab.saveData(jsonValue)
+- JSON data must be primitives, arrays, and plain objects only.
+- You can show unexpected runtime errors with AppLab.onError((message) => { ... }).
+- Do not use raw postMessage unless the user explicitly asks for low-level App Lab runtime code.
 
 Please rewrite the app as requested, returning only the complete HTML document.
 

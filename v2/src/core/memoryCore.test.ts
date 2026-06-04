@@ -16,8 +16,8 @@ describe("createMemoryCore", () => {
     expect(found).toEqual(app);
     expect(app.name).toBe("Example App");
     expect(app.sourceCode).toContain("<html");
-    expect(app.sourceCode).toContain("GET_MY_DATA");
-    expect(app.sourceCode).toContain("SAVE_MY_DATA");
+    expect(app.sourceCode).toContain("AppLab.getData");
+    expect(app.sourceCode).toContain("AppLab.saveData");
     expect(app.sourceCode).toContain("Persisted counter");
   });
 

@@ -68,7 +68,7 @@ export const EXAMPLE_APP_SOURCE = `<!doctype html>
     <main>
       <header>
         <h1>Sandbox notes</h1>
-        <p>This app cannot access host storage directly. It persists data by sending simple messages to App Lab.</p>
+        <p>This app cannot access host storage directly. It persists JSON data through the AppLab helper.</p>
       </header>
 
       <section>
@@ -89,47 +89,19 @@ export const EXAMPLE_APP_SOURCE = `<!doctype html>
       </section>
 
       <output id="status">Loading saved data...</output>
-      <p class="hint">Persistence contract: include window.__APP_LAB_CAPABILITY__, send GET_MY_DATA on load, then SAVE_MY_DATA with JSON data.</p>
+      <p class="hint">Persistence contract: call AppLab.getData() on load, then AppLab.saveData(jsonValue) after edits.</p>
     </main>
 
     <script>
-      const appLabCapability = window.__APP_LAB_CAPABILITY__;
       const note = document.querySelector("#note");
       const count = document.querySelector("#count");
       const increment = document.querySelector("#increment");
       const save = document.querySelector("#save");
       const status = document.querySelector("#status");
-      const pending = new Map();
       const state = { count: 0, note: "" };
 
-      function request(type, payload = {}) {
-        const requestId = crypto.randomUUID();
-        pending.set(requestId, type);
-        window.parent.postMessage({ type, requestId, appLabCapability, payload }, "*");
-        return requestId;
-      }
-
-      window.addEventListener("message", (event) => {
-        const message = event.data;
-        if (!message || typeof message !== "object") return;
-
-        if (message.type === "MY_DATA" && pending.get(message.requestId) === "GET_MY_DATA") {
-          pending.delete(message.requestId);
-          state.count = Number(message.payload?.data?.count || 0);
-          state.note = message.payload?.data?.note || "";
-          render();
-          status.textContent = "Loaded.";
-        }
-
-        if (message.type === "MY_DATA_SAVED" && pending.get(message.requestId) === "SAVE_MY_DATA") {
-          pending.delete(message.requestId);
-          status.textContent = "Saved.";
-        }
-
-        if (message.type === "MY_DATA_SAVE_FAILED" && pending.get(message.requestId) === "SAVE_MY_DATA") {
-          pending.delete(message.requestId);
-          status.textContent = message.payload?.error || "Could not save.";
-        }
+      AppLab.onError((message) => {
+        status.textContent = "Error: " + message;
       });
 
       function render() {
@@ -137,30 +109,37 @@ export const EXAMPLE_APP_SOURCE = `<!doctype html>
         note.value = state.note;
       }
 
-      function saveState() {
-        request("SAVE_MY_DATA", {
-          data: {
-            count: state.count,
-            note: state.note,
-            savedAt: new Date().toISOString()
-          }
+      async function loadState() {
+        status.textContent = "Loading saved data...";
+        const saved = await AppLab.getData({ count: 0, note: "" });
+        state.count = Number(saved.count || 0);
+        state.note = typeof saved.note === "string" ? saved.note : "";
+        render();
+        status.textContent = "Loaded.";
+      }
+
+      async function saveState(statusText) {
+        status.textContent = statusText;
+        await AppLab.saveData({
+          count: state.count,
+          note: state.note,
+          savedAt: new Date().toISOString()
         });
+        status.textContent = "Saved.";
       }
 
       increment.addEventListener("click", () => {
         state.count += 1;
         render();
-        status.textContent = "Saving counter...";
-        saveState();
+        saveState("Saving counter...");
       });
 
       save.addEventListener("click", () => {
         state.note = note.value;
-        status.textContent = "Saving...";
-        saveState();
+        saveState("Saving...");
       });
 
-      request("GET_MY_DATA");
+      loadState();
     </script>
   </body>
 </html>`;
