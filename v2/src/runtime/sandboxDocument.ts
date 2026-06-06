@@ -39,6 +39,13 @@ export function prepareSandboxDocument(sourceCode: string, capability: string): 
   const appLabCapability = window.__APP_LAB_CAPABILITY__;
   const pending = new Map();
   const errorHandlers = new Set();
+  const originalConsole = {
+    debug: console.debug.bind(console),
+    error: console.error.bind(console),
+    info: console.info.bind(console),
+    log: console.log.bind(console),
+    warn: console.warn.bind(console)
+  };
 
   function createRequestId() {
     if (window.crypto && typeof window.crypto.randomUUID === "function") {
@@ -54,6 +61,40 @@ export function prepareSandboxDocument(sourceCode: string, capability: string): 
         handler(message, error);
       } catch (_) {}
     }
+  }
+
+  function formatConsoleArg(value) {
+    if (value instanceof Error) {
+      return value.stack || value.message;
+    }
+    if (typeof value === "string") {
+      return value;
+    }
+    try {
+      const json = JSON.stringify(value);
+      return json === undefined ? String(value) : json;
+    } catch (_) {
+      return String(value);
+    }
+  }
+
+  function postConsole(level, args) {
+    window.parent.postMessage({
+      type: "APP_LAB_CONSOLE",
+      appLabCapability,
+      payload: {
+        level,
+        args: Array.from(args).map(formatConsoleArg),
+        timestamp: new Date().toISOString()
+      }
+    }, "*");
+  }
+
+  for (const level of ["debug", "error", "info", "log", "warn"]) {
+    console[level] = function () {
+      originalConsole[level](...arguments);
+      postConsole(level, arguments);
+    };
   }
 
   function request(type, payload) {
@@ -91,8 +132,14 @@ export function prepareSandboxDocument(sourceCode: string, capability: string): 
     }
   });
 
-  window.addEventListener("error", (event) => notifyError(event.error || event.message));
-  window.addEventListener("unhandledrejection", (event) => notifyError(event.reason));
+  window.addEventListener("error", (event) => {
+    postConsole("error", [event.error || event.message]);
+    notifyError(event.error || event.message);
+  });
+  window.addEventListener("unhandledrejection", (event) => {
+    postConsole("error", [event.reason]);
+    notifyError(event.reason);
+  });
 
   Object.defineProperty(window, "AppLab", {
     value: Object.freeze({

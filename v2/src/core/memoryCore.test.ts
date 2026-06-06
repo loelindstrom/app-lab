@@ -29,6 +29,18 @@ describe("createMemoryCore", () => {
 
     await expect(core.getAppData(app.appId)).resolves.toEqual({ note: "hello" });
   });
+
+  it("deletes apps and their app-owned data", async () => {
+    const core = createMemoryCore();
+    const app = await core.createBlankApp();
+
+    await core.saveAppData(app.appId, { note: "hello" });
+    await core.deleteApp(app.appId);
+
+    await expect(core.getApp(app.appId)).resolves.toBeNull();
+    await expect(core.getAppData(app.appId)).resolves.toBeNull();
+    await expect(core.listApps()).resolves.toEqual([]);
+  });
 });
 
 describe("normalizeJsonValue", () => {

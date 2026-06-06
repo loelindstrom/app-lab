@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { AppLabCore, AppRecord, AppSummary } from "../../core/types";
+import type { SandboxConsoleEntry } from "../../runtime/SandboxFrame";
 import { SandboxFrame } from "../../runtime/SandboxFrame";
 import { SettingsDialog } from "../dialogs/SettingsDialog";
 import { ToolPanelMode, WorkspaceToolPanel } from "../tools/WorkspaceToolPanel";
@@ -18,6 +19,7 @@ export function WorkspaceShell({ core }: WorkspaceShellProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [aiAttentionKey, setAiAttentionKey] = useState(0);
   const [aiAttentionDismissed, setAiAttentionDismissed] = useState(true);
+  const [consoleEntries, setConsoleEntries] = useState<SandboxConsoleEntry[]>([]);
 
   useEffect(() => {
     refreshApps();
@@ -33,6 +35,7 @@ export function WorkspaceShell({ core }: WorkspaceShellProps) {
     setActiveApp(app);
     setMode("app");
     setActiveTool(null);
+    setConsoleEntries([]);
     setAiAttentionKey((key) => key + 1);
     setAiAttentionDismissed(false);
   }
@@ -43,6 +46,7 @@ export function WorkspaceShell({ core }: WorkspaceShellProps) {
     setActiveApp(app);
     setMode("app");
     setActiveTool(null);
+    setConsoleEntries([]);
     setAiAttentionKey((key) => key + 1);
     setAiAttentionDismissed(false);
   }
@@ -95,6 +99,7 @@ export function WorkspaceShell({ core }: WorkspaceShellProps) {
                 activeTool={activeTool}
                 aiAttentionDismissed={aiAttentionDismissed}
                 aiAttentionKey={aiAttentionKey}
+                consoleCount={consoleEntries.length}
                 onToggleTool={toggleTool}
               />
             </div>
@@ -104,9 +109,26 @@ export function WorkspaceShell({ core }: WorkspaceShellProps) {
 
       <main className={`min-h-0 overflow-hidden ${activeTool ? "lg:mr-[min(420px,36vw)]" : ""}`}>
         {mode === "launcher" ? (
-          <LauncherView apps={apps} onOpenApp={openApp} />
+          <LauncherView
+            apps={apps}
+            onDeleteApp={async (appId) => {
+              await core.deleteApp(appId);
+              await refreshApps();
+            }}
+            onOpenApp={openApp}
+            onUpdateApp={async (appId, input) => {
+              await core.updateApp({ appId, ...input });
+              await refreshApps();
+            }}
+          />
         ) : activeApp ? (
-          <AppView app={activeApp} core={core} />
+          <AppView
+            app={activeApp}
+            core={core}
+            onConsoleEntry={(entry) => {
+              setConsoleEntries((entries) => [...entries.slice(-199), entry]);
+            }}
+          />
         ) : null}
       </main>
 
@@ -117,17 +139,21 @@ export function WorkspaceShell({ core }: WorkspaceShellProps) {
               activeTool={activeTool}
               aiAttentionDismissed={aiAttentionDismissed}
               aiAttentionKey={aiAttentionKey}
+              consoleCount={consoleEntries.length}
               onToggleTool={toggleTool}
             />
           </footer>
           <WorkspaceToolPanel
             activeApp={activeApp}
+            consoleEntries={consoleEntries}
             mode={activeTool}
+            onClearConsole={() => setConsoleEntries([])}
             onClose={() => setActiveTool(null)}
             onSaveSource={async (sourceCode) => {
               const nextName = readHtmlTitle(sourceCode) || activeApp.name;
               const updated = await core.updateApp({ appId: activeApp.appId, name: nextName, sourceCode });
               setActiveApp(updated);
+              setConsoleEntries([]);
               await refreshApps();
             }}
           />
@@ -150,21 +176,39 @@ export function WorkspaceShell({ core }: WorkspaceShellProps) {
 
 interface LauncherViewProps {
   apps: AppSummary[];
+  onDeleteApp: (appId: string) => Promise<void>;
   onOpenApp: (appId: string) => void;
+  onUpdateApp: (appId: string, input: { name: string; description: string }) => Promise<void>;
 }
 
 interface ToolSwitchProps {
   activeTool: ToolPanelMode | null;
   aiAttentionDismissed: boolean;
   aiAttentionKey: number;
+  consoleCount: number;
   onToggleTool: (tool: ToolPanelMode) => void;
 }
 
-function ToolSwitch({ activeTool, aiAttentionDismissed, aiAttentionKey, onToggleTool }: ToolSwitchProps) {
+function ToolSwitch({ activeTool, aiAttentionDismissed, aiAttentionKey, consoleCount, onToggleTool }: ToolSwitchProps) {
   const showAiAttention = !aiAttentionDismissed && activeTool !== "builder";
 
   return (
     <div className="flex h-9 items-stretch gap-1 rounded-lg border border-app-line bg-white/90 p-1" role="group" aria-label="App tools">
+      <button
+        className={`relative min-h-0 rounded-md border-0 bg-transparent px-3 font-bold text-app-muted hover:text-app-accent ${
+          activeTool === "console" ? "text-app-accent after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-app-accent" : ""
+        }`}
+        type="button"
+        aria-label="Toggle console"
+        onClick={() => onToggleTool("console")}
+      >
+        Log
+        {consoleCount > 0 ? (
+          <span className="absolute -right-1 -top-1 grid min-h-4 min-w-4 place-items-center rounded-full bg-red-600 px-1 text-[10px] font-extrabold leading-none text-white shadow-sm">
+            {consoleCount > 99 ? "99+" : consoleCount}
+          </span>
+        ) : null}
+      </button>
       <button
         className={`relative min-h-0 rounded-md border-0 bg-transparent px-3 font-mono font-bold text-app-muted hover:text-app-accent ${
           activeTool === "source" ? "text-app-accent after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-app-accent" : ""
@@ -209,7 +253,9 @@ function ToolSwitch({ activeTool, aiAttentionDismissed, aiAttentionKey, onToggle
   );
 }
 
-function LauncherView({ apps, onOpenApp }: LauncherViewProps) {
+function LauncherView({ apps, onDeleteApp, onOpenApp, onUpdateApp }: LauncherViewProps) {
+  const [editingApp, setEditingApp] = useState<AppSummary | null>(null);
+
   return (
     <section className="mx-auto h-full w-full max-w-5xl overflow-auto px-4 py-7 pb-24" aria-label="Apps">
       <div className="mb-5 flex items-end justify-between gap-5">
@@ -222,15 +268,25 @@ function LauncherView({ apps, onOpenApp }: LauncherViewProps) {
       {apps.length ? (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3">
           {apps.map((app) => (
-            <button
-              className="grid min-h-28 content-start gap-2 rounded-lg border border-app-line bg-app-surface/95 p-4 text-left text-app-ink shadow-[0_10px_30px_rgb(46_38_24_/_8%)] hover:bg-white"
+            <article
+              className="grid min-h-32 content-start gap-3 rounded-lg border border-app-line bg-app-surface/95 p-4 text-app-ink shadow-[0_10px_30px_rgb(46_38_24_/_8%)] hover:bg-white"
               key={app.appId}
-              type="button"
-              onClick={() => onOpenApp(app.appId)}
             >
-              <strong className="text-lg">{app.name}</strong>
-              <span className="text-sm leading-snug text-app-muted">{app.description}</span>
-            </button>
+              <button className="grid gap-2 text-left" type="button" onClick={() => onOpenApp(app.appId)}>
+                <strong className="text-lg leading-tight">{app.name}</strong>
+                <span className="line-clamp-3 text-sm leading-snug text-app-muted">{app.description}</span>
+              </button>
+              <div className="mt-auto flex items-center justify-between gap-2 border-t border-app-line pt-3">
+                <span className="truncate text-xs font-bold text-app-muted">{formatDate(app.updatedAt)}</span>
+                <button
+                  className="min-h-8 rounded-md border border-app-line bg-white px-3 text-sm font-bold text-app-ink hover:border-app-accent"
+                  type="button"
+                  onClick={() => setEditingApp(app)}
+                >
+                  Edit
+                </button>
+              </div>
+            </article>
           ))}
         </div>
       ) : (
@@ -238,7 +294,125 @@ function LauncherView({ apps, onOpenApp }: LauncherViewProps) {
           No apps yet. Use the + button to create the example app.
         </div>
       )}
+
+      <LauncherEditDialog
+        app={editingApp}
+        onClose={() => setEditingApp(null)}
+        onDeleteApp={async (appId) => {
+          await onDeleteApp(appId);
+          setEditingApp(null);
+        }}
+        onUpdateApp={async (appId, input) => {
+          await onUpdateApp(appId, input);
+          setEditingApp(null);
+        }}
+      />
     </section>
+  );
+}
+
+function LauncherEditDialog({
+  app,
+  onClose,
+  onDeleteApp,
+  onUpdateApp,
+}: {
+  app: AppSummary | null;
+  onClose: () => void;
+  onDeleteApp: (appId: string) => Promise<void>;
+  onUpdateApp: (appId: string, input: { name: string; description: string }) => Promise<void>;
+}) {
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [status, setStatus] = useState("Ready");
+
+  useEffect(() => {
+    setName(app?.name ?? "");
+    setDescription(app?.description ?? "");
+    setStatus("Ready");
+  }, [app]);
+
+  if (!app) return null;
+
+  async function save() {
+    if (!app || !name.trim()) return;
+    setStatus("Saving...");
+    try {
+      await onUpdateApp(app.appId, { name: name.trim(), description: description.trim() });
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Could not save app.");
+    }
+  }
+
+  async function deleteApp() {
+    if (!app || !window.confirm(`Delete "${app.name}"? This removes the app and its saved data.`)) return;
+    setStatus("Deleting...");
+    try {
+      await onDeleteApp(app.appId);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Could not delete app.");
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-40 grid place-items-center bg-black/35 px-4" role="dialog" aria-modal="true" aria-label="Edit app">
+      <div className="grid w-full max-w-md gap-4 rounded-xl border border-app-line bg-app-panel p-4 shadow-panel">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-lg font-extrabold">Edit app</h2>
+          <button
+            className="grid h-8 min-h-8 w-8 place-items-center rounded-full text-xl text-app-muted hover:bg-app-accent/10 hover:text-app-accent"
+            type="button"
+            aria-label="Close app editor"
+            onClick={onClose}
+          >
+            ×
+          </button>
+        </div>
+        <label className="grid gap-2 text-sm font-bold text-app-muted">
+          Name
+          <input
+            className="min-h-10 rounded-md border border-app-line bg-white px-3 text-base font-semibold text-app-ink outline-none focus:border-app-accent"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+          />
+        </label>
+        <label className="grid gap-2 text-sm font-bold text-app-muted">
+          Description
+          <textarea
+            className="min-h-24 resize-y rounded-md border border-app-line bg-white px-3 py-2 text-base font-medium text-app-ink outline-none focus:border-app-accent"
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+          />
+        </label>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <button
+            className="min-h-9 rounded-md border border-red-200 bg-red-50 px-3 text-sm font-bold text-red-700 hover:bg-red-100"
+            type="button"
+            onClick={deleteApp}
+          >
+            Delete
+          </button>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-app-muted">{status}</span>
+            <button
+              className="min-h-9 rounded-md border border-app-line bg-white px-3 text-sm font-bold text-app-ink hover:border-app-accent"
+              type="button"
+              onClick={onClose}
+            >
+              Cancel
+            </button>
+            <button
+              className="min-h-9 rounded-md border border-app-accent bg-app-accent px-3 text-sm font-bold text-white hover:bg-app-strong disabled:opacity-50"
+              type="button"
+              disabled={!name.trim()}
+              onClick={save}
+            >
+              Save
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -247,10 +421,14 @@ function readHtmlTitle(sourceCode: string): string {
   return document.title.trim();
 }
 
-function AppView({ app, core }: { app: AppRecord; core: AppLabCore }) {
+function AppView({ app, core, onConsoleEntry }: { app: AppRecord; core: AppLabCore; onConsoleEntry: (entry: SandboxConsoleEntry) => void }) {
   return (
     <section className="min-h-0" aria-label={app.name}>
-      <SandboxFrame app={app} getAppData={core.getAppData} saveAppData={core.saveAppData} />
+      <SandboxFrame app={app} getAppData={core.getAppData} onConsoleEntry={onConsoleEntry} saveAppData={core.saveAppData} />
     </section>
   );
+}
+
+function formatDate(value: string): string {
+  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(new Date(value));
 }

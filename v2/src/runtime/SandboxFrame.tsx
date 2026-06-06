@@ -5,7 +5,15 @@ import { prepareSandboxDocument } from "./sandboxDocument";
 interface SandboxFrameProps {
   app: AppRecord;
   getAppData: (appId: string) => Promise<JsonValue>;
+  onConsoleEntry: (entry: SandboxConsoleEntry) => void;
   saveAppData: (appId: string, data: JsonValue) => Promise<void>;
+}
+
+export interface SandboxConsoleEntry {
+  id: string;
+  level: "debug" | "error" | "info" | "log" | "warn";
+  args: string[];
+  timestamp: string;
 }
 
 interface ActiveSandboxLoad {
@@ -13,7 +21,7 @@ interface ActiveSandboxLoad {
   capability: string;
 }
 
-export function SandboxFrame({ app, getAppData, saveAppData }: SandboxFrameProps) {
+export function SandboxFrame({ app, getAppData, onConsoleEntry, saveAppData }: SandboxFrameProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const activeLoadRef = useRef<ActiveSandboxLoad | null>(null);
   const expectedLoadCapabilityRef = useRef<string | null>(null);
@@ -24,7 +32,7 @@ export function SandboxFrame({ app, getAppData, saveAppData }: SandboxFrameProps
       capability,
       html: prepareSandboxDocument(app.sourceCode, capability),
     };
-  }, [app.appId, app.sourceCode, reloadNonce]);
+  }, [app.appId, app.sourceCode, app.updatedAt, reloadNonce]);
 
   useLayoutEffect(() => {
     activeLoadRef.current = {
@@ -45,6 +53,12 @@ export function SandboxFrame({ app, getAppData, saveAppData }: SandboxFrameProps
 
       if (type === "APP_LAB_UNLOADING") {
         revokeActiveLoad(activeLoad.capability);
+        return;
+      }
+
+      if (type === "APP_LAB_CONSOLE") {
+        const entry = toConsoleEntry(payload);
+        if (entry) onConsoleEntry(entry);
         return;
       }
 
@@ -99,7 +113,7 @@ export function SandboxFrame({ app, getAppData, saveAppData }: SandboxFrameProps
 
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, [getAppData, saveAppData]);
+  }, [getAppData, onConsoleEntry, saveAppData]);
 
   function handleFrameLoad() {
     if (expectedLoadCapabilityRef.current === sandboxDocument.capability) {
@@ -123,4 +137,23 @@ export function SandboxFrame({ app, getAppData, saveAppData }: SandboxFrameProps
       srcDoc={sandboxDocument.html}
     />
   );
+}
+
+function toConsoleEntry(payload: unknown): SandboxConsoleEntry | null {
+  if (!payload || typeof payload !== "object") return null;
+  const candidate = payload as { args?: unknown; level?: unknown; timestamp?: unknown };
+  const level = typeof candidate.level === "string" && isConsoleLevel(candidate.level) ? candidate.level : "log";
+  const args = Array.isArray(candidate.args) ? candidate.args.map((arg) => String(arg)).slice(0, 20) : [];
+  const timestamp = typeof candidate.timestamp === "string" ? candidate.timestamp : new Date().toISOString();
+
+  return {
+    id: crypto.randomUUID(),
+    level,
+    args,
+    timestamp,
+  };
+}
+
+function isConsoleLevel(level: string): level is SandboxConsoleEntry["level"] {
+  return level === "debug" || level === "error" || level === "info" || level === "log" || level === "warn";
 }

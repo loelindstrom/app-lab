@@ -93,12 +93,15 @@ export const EXAMPLE_APP_SOURCE = `<!doctype html>
     </main>
 
     <script>
+      "use strict";
+
       const note = document.querySelector("#note");
       const count = document.querySelector("#count");
       const increment = document.querySelector("#increment");
       const save = document.querySelector("#save");
       const status = document.querySelector("#status");
       const state = { count: 0, note: "" };
+      Object.seal(state);
 
       AppLab.onError((message) => {
         status.textContent = "Error: " + message;

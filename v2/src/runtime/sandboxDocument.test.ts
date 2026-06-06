@@ -15,6 +15,7 @@ describe("prepareSandboxDocument", () => {
     expect(scripts[1]).toContain("getData");
     expect(scripts[1]).toContain("saveData");
     expect(scripts[1]).toContain("onError");
+    expect(scripts[1]).toContain("APP_LAB_CONSOLE");
     expect(scripts[2]).toContain("APP_LAB_UNLOADING");
     expect(scripts[3]).toContain("window.appSawHelper");
   });

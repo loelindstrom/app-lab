@@ -49,6 +49,14 @@ export function createIndexedDbCore(): AppLabCore {
     return createApp(createExampleAppInput());
   }
 
+  async function deleteApp(appId: string): Promise<void> {
+    const database = await db();
+    const transaction = database.transaction(["apps_registry", "apps_data"], "readwrite");
+    transaction.objectStore("apps_registry").delete(appId);
+    transaction.objectStore("apps_data").delete(appId);
+    await transactionToPromise(transaction);
+  }
+
   async function updateApp(input: UpdateAppInput): Promise<AppRecord> {
     const existing = await getApp(input.appId);
     if (!existing) throw new Error(`App not found: ${input.appId}`);
@@ -85,6 +93,7 @@ export function createIndexedDbCore(): AppLabCore {
   return {
     createApp,
     createBlankApp,
+    deleteApp,
     getApp,
     getAppData,
     listApps,
@@ -119,5 +128,13 @@ function requestToPromise<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
+  });
+}
+
+function transactionToPromise(transaction: IDBTransaction): Promise<void> {
+  return new Promise((resolve, reject) => {
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error);
+    transaction.onabort = () => reject(transaction.error);
   });
 }

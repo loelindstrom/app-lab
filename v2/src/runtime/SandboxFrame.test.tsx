@@ -16,7 +16,7 @@ describe("SandboxFrame", () => {
   it("revokes the current capability when the app document unloads", async () => {
     const getAppData = vi.fn().mockResolvedValue({ note: "secret" });
     const { container } = render(
-      <SandboxFrame app={app} getAppData={getAppData} saveAppData={vi.fn().mockResolvedValue(undefined)} />,
+      <SandboxFrame app={app} getAppData={getAppData} onConsoleEntry={vi.fn()} saveAppData={vi.fn().mockResolvedValue(undefined)} />,
     );
     const iframe = getIframe(container);
     const capability = getCapability(iframe);
@@ -32,7 +32,7 @@ describe("SandboxFrame", () => {
   it("reloads the sandbox document after an unexpected iframe load", async () => {
     const getAppData = vi.fn().mockResolvedValue({ note: "secret" });
     const { container } = render(
-      <SandboxFrame app={app} getAppData={getAppData} saveAppData={vi.fn().mockResolvedValue(undefined)} />,
+      <SandboxFrame app={app} getAppData={getAppData} onConsoleEntry={vi.fn()} saveAppData={vi.fn().mockResolvedValue(undefined)} />,
     );
     const iframe = getIframe(container);
     const firstCapability = getCapability(iframe);
@@ -48,6 +48,34 @@ describe("SandboxFrame", () => {
 
     dispatchAppMessage(iframe, { type: "GET_MY_DATA", requestId: "new-read", appLabCapability: getCapability(iframe) });
     await waitFor(() => expect(getAppData).toHaveBeenCalledWith(app.appId));
+  });
+
+  it("accepts console entries from the active sandbox capability", async () => {
+    const onConsoleEntry = vi.fn();
+    const { container } = render(
+      <SandboxFrame app={app} getAppData={vi.fn().mockResolvedValue(null)} onConsoleEntry={onConsoleEntry} saveAppData={vi.fn().mockResolvedValue(undefined)} />,
+    );
+    const iframe = getIframe(container);
+    const capability = getCapability(iframe);
+
+    fireEvent.load(iframe);
+    dispatchAppMessage(iframe, {
+      type: "APP_LAB_CONSOLE",
+      appLabCapability: capability,
+      payload: {
+        level: "error",
+        args: ["Broken"],
+        timestamp: "2026-01-01T00:00:00.000Z",
+      },
+    });
+
+    expect(onConsoleEntry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        args: ["Broken"],
+        level: "error",
+        timestamp: "2026-01-01T00:00:00.000Z",
+      }),
+    );
   });
 });
 

@@ -34,6 +34,11 @@ export function createMemoryCore(): AppLabCore {
     return createApp(createExampleAppInput());
   }
 
+  async function deleteApp(appId: string): Promise<void> {
+    apps.delete(appId);
+    appData.delete(appId);
+  }
+
   async function getAppData(appId: string): Promise<JsonValue> {
     return appData.get(appId) ?? null;
   }
@@ -59,6 +64,7 @@ export function createMemoryCore(): AppLabCore {
   return {
     createApp,
     createBlankApp,
+    deleteApp,
     getApp,
     getAppData,
     listApps,

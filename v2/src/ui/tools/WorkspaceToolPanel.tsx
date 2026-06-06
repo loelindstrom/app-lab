@@ -1,18 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
 import type { AppRecord } from "../../core/types";
+import type { SandboxConsoleEntry } from "../../runtime/SandboxFrame";
 
-export type ToolPanelMode = "builder" | "source";
+export type ToolPanelMode = "builder" | "console" | "source";
 
 interface WorkspaceToolPanelProps {
   activeApp: AppRecord;
+  consoleEntries: SandboxConsoleEntry[];
   mode: ToolPanelMode | null;
+  onClearConsole: () => void;
   onClose: () => void;
   onSaveSource: (sourceCode: string) => Promise<void>;
 }
 
-export function WorkspaceToolPanel({ activeApp, mode, onClose, onSaveSource }: WorkspaceToolPanelProps) {
+export function WorkspaceToolPanel({ activeApp, consoleEntries, mode, onClearConsole, onClose, onSaveSource }: WorkspaceToolPanelProps) {
   const isOpen = mode !== null;
-  const title = mode === "source" ? "Source" : mode === "builder" ? "BuilderAI" : "App tools";
+  const title = mode === "source" ? "Source" : mode === "builder" ? "BuilderAI" : mode === "console" ? "Console" : "App tools";
 
   return (
     <aside
@@ -37,7 +40,13 @@ export function WorkspaceToolPanel({ activeApp, mode, onClose, onSaveSource }: W
         </button>
       </header>
 
-      {mode === "source" ? <SourceView app={activeApp} onSaveSource={onSaveSource} /> : <BuilderView />}
+      {mode === "source" ? (
+        <SourceView app={activeApp} onSaveSource={onSaveSource} />
+      ) : mode === "console" ? (
+        <ConsoleView entries={consoleEntries} onClear={onClearConsole} />
+      ) : (
+        <BuilderView />
+      )}
     </aside>
   );
 }
@@ -141,6 +150,67 @@ function BuilderView() {
   );
 }
 
+function ConsoleView({ entries, onClear }: { entries: SandboxConsoleEntry[]; onClear: () => void }) {
+  const [status, setStatus] = useState("Ready");
+  const consoleText = useMemo(() => formatConsoleEntries(entries), [entries]);
+
+  async function copyConsole() {
+    if (!consoleText) {
+      setStatus("No output");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(consoleText);
+      setStatus("Copied.");
+    } catch (_) {
+      setStatus("Select and copy manually.");
+    }
+  }
+
+  return (
+    <div className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto] bg-slate-950">
+      <div className="min-h-0 overflow-auto p-3 font-mono text-xs leading-relaxed text-slate-200">
+        {entries.length ? (
+          <ol className="select-text space-y-4">
+            {entries.map((entry) => (
+              <li className="whitespace-pre-wrap break-words" key={entry.id}>
+                <span className="text-slate-500">[{formatTime(entry.timestamp)}] </span>
+                <span className={`font-extrabold ${consoleLevelTextClass(entry.level)}`}>{entry.level.toUpperCase()}</span>
+                <span> {entry.args.join(" ") || "(empty)"}</span>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <p className="select-text text-slate-400">No console output yet.</p>
+        )}
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-app-line bg-slate-50 px-3 py-2">
+        <div className="text-xs font-bold text-app-muted">{status}</div>
+        <div className="flex gap-2">
+          <button
+            className="min-h-8 rounded-md border border-app-line bg-white px-3 text-sm font-bold text-app-ink hover:border-app-accent"
+            type="button"
+            onClick={() => {
+              onClear();
+              setStatus("Cleared.");
+            }}
+          >
+            Clear
+          </button>
+          <button
+            className="min-h-8 rounded-md border border-app-accent bg-app-accent px-3 text-sm font-bold text-white hover:bg-app-strong"
+            type="button"
+            onClick={copyConsole}
+          >
+            Copy
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function createPromptWithCode(appName: string, sourceCode: string): string {
   return `You are helping me edit an App Lab sandbox app named "${appName}".
 
@@ -155,6 +225,7 @@ Runtime rules:
 - Use pointer events for drag/drop interactions.
 - Include a visible status/error area so runtime failures are shown to the user.
 - For saved data changes, use a schemaVersion and migrate older saved shapes defensively before saving the new shape.
+- For small state objects with known keys, put "use strict"; at the top of the script and call Object.seal(state) after creating the state object, so property-name typos become visible errors.
 
 Persistence API:
 - Use the injected helper: await AppLab.getData(fallbackValue)
@@ -171,4 +242,29 @@ Current app code:
 ${sourceCode}
 \`\`\`
 `;
+}
+
+function formatConsoleEntries(entries: SandboxConsoleEntry[]): string {
+  return entries
+    .map((entry) => {
+      const message = entry.args.join(" ") || "(empty)";
+      return `[${formatTime(entry.timestamp)}] ${entry.level.toUpperCase()} ${message}`;
+    })
+    .join("\n\n");
+}
+
+function formatTime(timestamp: string): string {
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(new Date(timestamp));
+}
+
+function consoleLevelTextClass(level: SandboxConsoleEntry["level"]): string {
+  if (level === "error") return "text-red-400";
+  if (level === "warn") return "text-amber-300";
+  if (level === "info") return "text-sky-300";
+  if (level === "debug") return "text-violet-300";
+  return "text-slate-100";
 }

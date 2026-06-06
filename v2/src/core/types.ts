@@ -41,6 +41,7 @@ export interface UpdateAppInput {
 export interface AppLabCore {
   createApp(input: CreateAppInput): Promise<AppRecord>;
   createBlankApp(): Promise<AppRecord>;
+  deleteApp(appId: AppId): Promise<void>;
   getApp(appId: AppId): Promise<AppRecord | null>;
   getAppData(appId: AppId): Promise<JsonValue>;
   listApps(): Promise<AppSummary[]>;
