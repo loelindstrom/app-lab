@@ -1,126 +1,16 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://openrouter.ai; media-src 'self' data: blob:; object-src 'none'; frame-src 'self' about:; worker-src 'none'; form-action 'self'; base-uri 'self'; manifest-src 'self'"
-    >
+      content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://openrouter.ai https://*.openrouter.ai ws://localhost:* ws://127.0.0.1:*; frame-src 'self' data: blob:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'"
+    />
     <title>App Lab</title>
-    <link rel="apple-touch-icon" sizes="180x180" href="resources/icons/apple-touch-icon.png">
-    <link rel="icon" type="image/png" sizes="32x32" href="resources/icons/favicon-32x32.png">
-    <link rel="icon" type="image/png" sizes="16x16" href="resources/icons/favicon-16x16.png">
-    <link rel="manifest" href="resources/icons/site.webmanifest">
-    <link rel="shortcut icon" href="resources/icons/favicon.ico">
-    <link rel="stylesheet" href="styles.css">
   </head>
   <body>
-    <div class="host-shell">
-      <header class="host-bar" aria-label="Workspace controls">
-        <button id="system-home" class="nav-icon-button" type="button" aria-label="Open menu">☰</button>
-        <h1 id="active-app-title">Loading</h1>
-        <nav class="host-actions" aria-label="Context actions">
-          <button id="new-app" type="button">New App</button>
-          <button id="view-source" type="button" hidden>Source</button>
-          <button id="toggle-builder" type="button">BuilderAI</button>
-          <button id="open-settings" type="button">Settings</button>
-        </nav>
-      </header>
-
-      <main class="workspace">
-        <section class="viewport" aria-label="Active app">
-        <iframe
-          id="app-sandbox"
-          title="App viewport"
-          sandbox="allow-scripts"
-          referrerpolicy="no-referrer"
-        ></iframe>
-        </section>
-
-        <aside id="builder-panel" class="builder-panel" aria-label="Builder agent" tabindex="-1" hidden>
-          <header class="panel-header">
-            <div>
-              <p class="eyebrow">BuilderAI</p>
-              <h2 id="builder-title">Current app</h2>
-            </div>
-            <button id="close-builder" class="nav-icon-button" type="button" aria-label="Close BuilderAI">×</button>
-          </header>
-
-          <ol id="builder-messages" class="builder-messages" aria-live="polite"></ol>
-
-          <form id="builder-form" class="builder-form">
-            <label for="builder-input">Message</label>
-            <textarea
-              id="builder-input"
-              rows="4"
-              placeholder="What do you want to do with this app?"
-            ></textarea>
-            <button id="builder-send" type="submit">Send</button>
-          </form>
-        </aside>
-      </main>
-
-      <footer id="mobile-builder-bar" class="mobile-builder-bar" hidden>
-        <button id="mobile-source" type="button" hidden>Source</button>
-        <button id="mobile-builder-toggle" type="button" hidden>BuilderAI ↑</button>
-      </footer>
-    </div>
-
-    <aside id="side-menu" class="side-menu" aria-label="Menu" hidden>
-      <header class="side-menu-header">
-        <button id="close-menu" class="nav-icon-button" type="button" aria-label="Close menu">×</button>
-        <h2>Menu</h2>
-      </header>
-      <button id="side-menu-settings" class="side-menu-item" type="button">Settings</button>
-    </aside>
-
-    <dialog id="settings-dialog" class="settings-dialog">
-      <form id="settings-form" method="dialog">
-        <header class="panel-header">
-          <div>
-            <p class="eyebrow">Settings</p>
-            <h2>OpenRouter</h2>
-          </div>
-          <button class="ghost-button" value="cancel" type="submit">Close</button>
-        </header>
-
-        <label>
-          API key
-          <input id="openrouter-key" name="openrouter-key" type="password" autocomplete="off">
-        </label>
-
-        <label>
-          Model id
-          <input
-            id="openrouter-model"
-            name="openrouter-model"
-            type="text"
-            list="openrouter-models"
-            placeholder="inclusionai/ling-2.6-flash"
-            autocomplete="off"
-          >
-          <datalist id="openrouter-models"></datalist>
-          <small id="models-status">Tool-capable models load when settings open.</small>
-        </label>
-
-        <menu>
-          <button id="save-settings" value="default" type="submit">Save</button>
-        </menu>
-      </form>
-    </dialog>
-
-    <dialog id="source-dialog" class="source-dialog">
-      <header class="panel-header">
-        <div>
-          <p class="eyebrow">Source</p>
-          <h2 id="source-title">Current app</h2>
-        </div>
-        <button id="close-source" class="ghost-button" type="button">Close</button>
-      </header>
-      <pre class="source-view"><code id="source-code"></code></pre>
-    </dialog>
-
-    <script type="module" src="src/main.js"></script>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -124,7 +124,7 @@ function BuilderView() {
     <div className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto]">
       <ol className="flex flex-col gap-3 overflow-auto p-3" aria-live="polite">
         <li className="rounded-lg border border-app-line bg-app-accent/10 px-3 py-2 text-sm leading-relaxed text-app-muted">
-          BuilderAI is a placeholder in this first v2 slice. The next step is moving the PoC agent loop into core.
+          BuilderAI is a placeholder while the app-building loop is shaped around source editing, logs, and the sandbox runtime.
         </li>
       </ol>
 
