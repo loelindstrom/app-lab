@@ -119,6 +119,12 @@ A read-only invite can contain `roomId`, `decryptSecret`, and `readToken`. A wri
 `writeToken`. The storage provider or sync adapter must reject writes without write authority. If a provider cannot enforce write
 tokens directly, the implementation needs another enforceable write mechanism before exposing read/write permissions in the UI.
 
+For the first sync implementation, `readToken` and `writeToken` are provider-side bearer capabilities rather than cryptographic
+signing keys. `roomId` identifies the room but is not treated as the authorization secret. `readToken` authorizes loading and
+subscribing to a room; `writeToken` authorizes version-checked saves. This means App Lab trusts the chosen provider adapter to
+enforce read/write ACLs correctly. Client-side write signing can be considered later if App Lab needs write integrity independent
+of provider enforcement.
+
 Invite links are bearer capabilities, but opening one should not mutate the workspace automatically. The user should first see an
 import confirmation screen with the app name, source and data permissions, whether the app joins live shared data, and owner or
 origin information when available. Import requires an explicit user action. Workspace sync remains separate and is only for
@@ -135,9 +141,10 @@ Source is always effectively visible to collaborators because generated apps run
 collaboration sharing should not pretend that source can be hidden from someone who can run the app.
 
 Source-write is also code-publish authority for that app. A source-write collaborator can change code that later runs for other
-collaborators and can read the shared app data exposed to that app. Remote source changes should therefore have a visible version
-boundary before becoming runnable. The initial behavior should prefer "source update available" / "review and apply" over silently
-replacing runnable source.
+collaborators and can read the shared app data exposed to that app. The UI must present source-write as a trusted collaborator
+permission. In the first implementation, after a user explicitly imports or joins a shared app, remote source updates from
+write-capable collaborators may become runnable as part of the live collaboration model. A future review-before-apply mode can be
+added for less trusted sharing flows.
 
 This keeps future options open:
 
@@ -205,7 +212,8 @@ Room payloads should use authenticated encryption, not unauthenticated encryptio
 
 Clients should reject malformed payloads, authentication failures, and snapshots older than a locally remembered `lastSeenVersion`.
 On fresh restore, there is no local version memory; the client can accept the provider's current snapshot after successful
-authentication, then remember that version for rollback checks.
+authentication, then remember that version for rollback checks. A malicious provider could still present an older valid snapshot
+on first restore because the client has no prior version anchor yet; this is accepted as a first-version limitation.
 
 ### Security Notes
 

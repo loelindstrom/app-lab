@@ -491,8 +491,9 @@ function ShareAppDialog({ app, onClose }: { app: AppSummary | null; onClose: () 
         </div>
 
         <p className="text-sm leading-relaxed text-app-muted">
-          Sharing will create an encrypted app room and an invite link. Opening that link should add the app to another workspace
-          automatically. Source is always visible to collaborators; the controls below choose whether source and data are editable.
+          Sharing will create an encrypted app room and an invite link. Opening that link should show an import confirmation before
+          adding the app to another workspace. Source is always visible to collaborators; the controls below choose whether source
+          and data are editable.
         </p>
 
         <div className="grid gap-3 sm:grid-cols-2">
