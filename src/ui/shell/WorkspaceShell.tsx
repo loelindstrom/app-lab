@@ -269,10 +269,21 @@ function LauncherView({ apps, onDeleteApp, onOpenApp, onUpdateApp }: LauncherVie
         <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3">
           {apps.map((app) => (
             <article
-              className="grid min-h-32 content-start gap-3 rounded-lg border border-app-line bg-app-surface/95 p-4 text-app-ink shadow-[0_10px_30px_rgb(46_38_24_/_8%)] hover:bg-white"
+              className="relative grid min-h-32 content-start gap-3 rounded-lg border border-app-line bg-app-surface/95 p-4 text-app-ink shadow-[0_10px_30px_rgb(46_38_24_/_8%)] hover:bg-white"
               key={app.appId}
             >
-              <button className="grid gap-2 text-left" type="button" onClick={() => onOpenApp(app.appId)}>
+              <button
+                className="absolute right-3 top-3 grid h-8 min-h-8 w-8 place-items-center rounded-md border border-transparent bg-white/80 text-base text-app-muted hover:border-app-accent hover:text-app-accent"
+                type="button"
+                aria-label={`Edit ${app.name}`}
+                title="Edit"
+                onClick={() => setEditingApp(app)}
+              >
+                <span className="inline-block scale-x-[-1]" aria-hidden="true">
+                  ✎
+                </span>
+              </button>
+              <button className="grid gap-2 pr-9 text-left" type="button" onClick={() => onOpenApp(app.appId)}>
                 <strong className="text-lg leading-tight">{app.name}</strong>
                 <span className="line-clamp-3 text-sm leading-snug text-app-muted">{app.description}</span>
               </button>
@@ -281,9 +292,9 @@ function LauncherView({ apps, onDeleteApp, onOpenApp, onUpdateApp }: LauncherVie
                 <button
                   className="min-h-8 rounded-md border border-app-line bg-white px-3 text-sm font-bold text-app-ink hover:border-app-accent"
                   type="button"
-                  onClick={() => setEditingApp(app)}
+                  onClick={() => onOpenApp(app.appId)}
                 >
-                  Edit
+                  Open
                 </button>
               </div>
             </article>
