@@ -17,6 +17,8 @@ export function WorkspaceShell({ core }: WorkspaceShellProps) {
   const [mode, setMode] = useState<WorkspaceMode>("launcher");
   const [activeTool, setActiveTool] = useState<ToolPanelMode | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [workspaceSyncOpen, setWorkspaceSyncOpen] = useState(false);
+  const [sharingApp, setSharingApp] = useState<AppSummary | null>(null);
   const [aiAttentionKey, setAiAttentionKey] = useState(0);
   const [aiAttentionDismissed, setAiAttentionDismissed] = useState(true);
   const [consoleEntries, setConsoleEntries] = useState<SandboxConsoleEntry[]>([]);
@@ -71,7 +73,7 @@ export function WorkspaceShell({ core }: WorkspaceShellProps) {
 
   return (
     <div className="grid min-h-[calc(100dvh+1px)] grid-rows-[44px_minmax(0,1fr)_auto] overflow-x-hidden lg:min-h-dvh">
-      <header className="grid grid-cols-[88px_minmax(0,1fr)_88px] items-center border-b border-app-line bg-app-panel/90 px-2 lg:grid-cols-[1fr_auto_1fr]">
+      <header className="grid grid-cols-[88px_minmax(0,1fr)_112px] items-center border-b border-app-line bg-app-panel/90 px-2 lg:grid-cols-[1fr_auto_1fr]">
         <div className="justify-self-start">
           {mode === "app" ? (
             <button
@@ -84,7 +86,18 @@ export function WorkspaceShell({ core }: WorkspaceShellProps) {
           ) : null}
         </div>
         <h1 className="max-w-[50vw] truncate text-center text-[17px] font-extrabold">{title}</h1>
-        <nav className="flex items-center justify-end gap-3" aria-label="Workspace actions">
+        <nav className="flex items-center justify-end gap-1 lg:gap-3" aria-label="Workspace actions">
+          {mode === "app" && activeApp ? (
+            <button
+              className="grid h-9 min-h-9 w-9 place-items-center rounded-md border border-transparent bg-transparent text-lg text-app-muted hover:bg-app-accent/10 hover:text-app-accent"
+              type="button"
+              aria-label={`Share ${activeApp.name}`}
+              title="Share"
+              onClick={() => setSharingApp(activeApp)}
+            >
+              ↗
+            </button>
+          ) : null}
           <button
             className="grid h-9 min-h-9 w-9 place-items-center rounded-md border border-transparent bg-transparent text-lg text-app-muted hover:bg-app-accent/10 hover:text-app-accent"
             type="button"
@@ -116,6 +129,8 @@ export function WorkspaceShell({ core }: WorkspaceShellProps) {
               await refreshApps();
             }}
             onOpenApp={openApp}
+            onOpenSync={() => setWorkspaceSyncOpen(true)}
+            onShareApp={(app) => setSharingApp(app)}
             onUpdateApp={async (appId, input) => {
               await core.updateApp({ appId, ...input });
               await refreshApps();
@@ -170,6 +185,8 @@ export function WorkspaceShell({ core }: WorkspaceShellProps) {
       ) : null}
 
       <SettingsDialog isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <WorkspaceSyncDialog isOpen={workspaceSyncOpen} onClose={() => setWorkspaceSyncOpen(false)} />
+      <ShareAppDialog app={sharingApp} onClose={() => setSharingApp(null)} />
     </div>
   );
 }
@@ -178,6 +195,8 @@ interface LauncherViewProps {
   apps: AppSummary[];
   onDeleteApp: (appId: string) => Promise<void>;
   onOpenApp: (appId: string) => void;
+  onOpenSync: () => void;
+  onShareApp: (app: AppSummary) => void;
   onUpdateApp: (appId: string, input: { name: string; description: string }) => Promise<void>;
 }
 
@@ -253,15 +272,27 @@ function ToolSwitch({ activeTool, aiAttentionDismissed, aiAttentionKey, consoleC
   );
 }
 
-function LauncherView({ apps, onDeleteApp, onOpenApp, onUpdateApp }: LauncherViewProps) {
+function LauncherView({ apps, onDeleteApp, onOpenApp, onOpenSync, onShareApp, onUpdateApp }: LauncherViewProps) {
   const [editingApp, setEditingApp] = useState<AppSummary | null>(null);
 
   return (
     <section className="mx-auto h-full w-full max-w-5xl overflow-auto px-4 py-7 pb-24" aria-label="Apps">
-      <div className="mb-5 flex items-end justify-between gap-5">
+      <div className="mb-5 flex flex-wrap items-end justify-between gap-5">
         <div>
           <p className="mb-1 text-xs font-extrabold uppercase text-app-muted">Workspace</p>
           <h2 className="text-[clamp(24px,4vw,38px)] font-extrabold leading-none">Choose an app</h2>
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <span className="rounded-full border border-app-line bg-white px-3 py-1 text-xs font-extrabold uppercase text-app-muted">
+            Local only
+          </span>
+          <button
+            className="min-h-9 rounded-md border border-app-accent bg-white px-3 text-sm font-extrabold text-app-accent hover:bg-app-accent/10"
+            type="button"
+            onClick={onOpenSync}
+          >
+            Sync workspace
+          </button>
         </div>
       </div>
 
@@ -287,15 +318,28 @@ function LauncherView({ apps, onDeleteApp, onOpenApp, onUpdateApp }: LauncherVie
                 <strong className="text-lg leading-tight">{app.name}</strong>
                 <span className="line-clamp-3 text-sm leading-snug text-app-muted">{app.description}</span>
               </button>
+              <div className="flex flex-wrap gap-2">
+                <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-extrabold uppercase text-app-muted">Private</span>
+                <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-extrabold uppercase text-app-muted">Not synced</span>
+              </div>
               <div className="mt-auto flex items-center justify-between gap-2 border-t border-app-line pt-3">
                 <span className="truncate text-xs font-bold text-app-muted">{formatDate(app.updatedAt)}</span>
-                <button
-                  className="min-h-8 rounded-md border border-app-line bg-white px-3 text-sm font-bold text-app-ink hover:border-app-accent"
-                  type="button"
-                  onClick={() => onOpenApp(app.appId)}
-                >
-                  Open
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    className="min-h-8 rounded-md border border-app-line bg-white px-3 text-sm font-bold text-app-ink hover:border-app-accent"
+                    type="button"
+                    onClick={() => onShareApp(app)}
+                  >
+                    Share
+                  </button>
+                  <button
+                    className="min-h-8 rounded-md border border-app-line bg-white px-3 text-sm font-bold text-app-ink hover:border-app-accent"
+                    type="button"
+                    onClick={() => onOpenApp(app.appId)}
+                  >
+                    Open
+                  </button>
+                </div>
               </div>
             </article>
           ))}
@@ -319,6 +363,178 @@ function LauncherView({ apps, onDeleteApp, onOpenApp, onUpdateApp }: LauncherVie
         }}
       />
     </section>
+  );
+}
+
+function WorkspaceSyncDialog({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+  const [mode, setMode] = useState<"create" | "restore">("create");
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-40 grid place-items-center bg-black/35 px-4" role="dialog" aria-modal="true" aria-label="Workspace sync">
+      <div className="grid max-h-[88dvh] w-full max-w-2xl grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-xl border border-app-line bg-app-panel shadow-panel">
+        <div className="flex items-center justify-between gap-3 border-b border-app-line p-4">
+          <div>
+            <p className="mb-1 text-xs font-extrabold uppercase text-app-muted">Design preview</p>
+            <h2 className="text-lg font-extrabold">Workspace sync</h2>
+          </div>
+          <button
+            className="grid h-8 min-h-8 w-8 place-items-center rounded-full text-xl text-app-muted hover:bg-app-accent/10 hover:text-app-accent"
+            type="button"
+            aria-label="Close workspace sync"
+            onClick={onClose}
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="min-h-0 overflow-auto p-4">
+          <div className="mb-4 grid gap-3 rounded-lg border border-app-line bg-slate-50 p-3 sm:grid-cols-3">
+            <SyncFact label="Workspace" value="Local only" />
+            <SyncFact label="Provider" value="Not connected" />
+            <SyncFact label="Live updates" value="Planned" />
+          </div>
+
+          <div className="mb-4 flex flex-wrap gap-2 rounded-lg bg-white p-1">
+            <SyncModeButton active={mode === "create"} label="Create key" onClick={() => setMode("create")} />
+            <SyncModeButton active={mode === "restore"} label="Restore device" onClick={() => setMode("restore")} />
+          </div>
+
+          {mode === "create" ? (
+            <div className="grid gap-4">
+              <p className="text-sm leading-relaxed text-app-muted">
+                This will create one workspace recovery key. Adding that key on another device should restore the launcher,
+                including private apps and shared app memberships.
+              </p>
+              <div className="rounded-lg border border-app-line bg-white p-3">
+                <p className="mb-2 text-xs font-extrabold uppercase text-app-muted">Future recovery key</p>
+                <div className="rounded-md border border-dashed border-app-line bg-slate-50 p-3 font-mono text-sm text-app-muted">
+                  applab-workspace-key-will-appear-here
+                </div>
+              </div>
+              <button className="min-h-10 rounded-md border border-app-line bg-slate-100 px-4 font-extrabold text-app-muted" type="button" disabled>
+                Create workspace key after provider is implemented
+              </button>
+            </div>
+          ) : (
+            <div className="grid gap-4">
+              <p className="text-sm leading-relaxed text-app-muted">
+                Restore is the one-thing setup flow for a second device. The key unlocks the encrypted workspace manifest and
+                imports the app room references that belong to this user.
+              </p>
+              <textarea
+                className="min-h-28 resize-y rounded-md border border-app-line bg-white p-3 font-mono text-sm outline-none focus:border-app-accent"
+                placeholder="Paste workspace recovery key"
+              />
+              <button className="min-h-10 rounded-md border border-app-line bg-slate-100 px-4 font-extrabold text-app-muted" type="button" disabled>
+                Restore after sync core is implemented
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SyncFact({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-[11px] font-extrabold uppercase text-app-muted">{label}</p>
+      <p className="text-sm font-extrabold text-app-ink">{value}</p>
+    </div>
+  );
+}
+
+function SyncModeButton({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
+  return (
+    <button
+      className={`min-h-9 rounded-md px-3 text-sm font-extrabold ${
+        active ? "bg-app-accent text-white" : "bg-transparent text-app-muted hover:bg-app-accent/10 hover:text-app-accent"
+      }`}
+      type="button"
+      onClick={onClick}
+    >
+      {label}
+    </button>
+  );
+}
+
+function ShareAppDialog({ app, onClose }: { app: AppSummary | null; onClose: () => void }) {
+  const [sourceScope, setSourceScope] = useState("read");
+  const [dataScope, setDataScope] = useState("write");
+
+  useEffect(() => {
+    setSourceScope("read");
+    setDataScope("write");
+  }, [app?.appId]);
+
+  if (!app) return null;
+
+  return (
+    <div className="fixed inset-0 z-40 grid place-items-center bg-black/35 px-4" role="dialog" aria-modal="true" aria-label="Share app">
+      <div className="grid w-full max-w-lg gap-4 rounded-xl border border-app-line bg-app-panel p-4 shadow-panel">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="mb-1 text-xs font-extrabold uppercase text-app-muted">Design preview</p>
+            <h2 className="truncate text-lg font-extrabold">Share {app.name}</h2>
+          </div>
+          <button
+            className="grid h-8 min-h-8 w-8 place-items-center rounded-full text-xl text-app-muted hover:bg-app-accent/10 hover:text-app-accent"
+            type="button"
+            aria-label="Close share dialog"
+            onClick={onClose}
+          >
+            ×
+          </button>
+        </div>
+
+        <p className="text-sm leading-relaxed text-app-muted">
+          Sharing will create an encrypted app room and an invite link. Opening that link should add the app to another workspace
+          automatically. Source is always visible to collaborators; the controls below choose whether source and data are editable.
+        </p>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="grid gap-2 text-sm font-bold text-app-muted">
+            Source code
+            <select
+              className="min-h-10 rounded-md border border-app-line bg-white px-3 text-base font-semibold text-app-ink outline-none focus:border-app-accent"
+              value={sourceScope}
+              onChange={(event) => setSourceScope(event.target.value)}
+            >
+              <option value="read">Can view</option>
+              <option value="write">Can edit</option>
+            </select>
+          </label>
+          <label className="grid gap-2 text-sm font-bold text-app-muted">
+            App data
+            <select
+              className="min-h-10 rounded-md border border-app-line bg-white px-3 text-base font-semibold text-app-ink outline-none focus:border-app-accent"
+              value={dataScope}
+              onChange={(event) => setDataScope(event.target.value)}
+            >
+              <option value="read">Can view</option>
+              <option value="write">Can edit</option>
+            </select>
+          </label>
+        </div>
+
+        <div className="rounded-lg border border-app-line bg-slate-50 p-3">
+          <p className="mb-2 text-xs font-extrabold uppercase text-app-muted">Invite link</p>
+          <div className="rounded-md border border-dashed border-app-line bg-white p-3 font-mono text-xs leading-relaxed text-app-muted">
+            Share link will appear after workspace sync is connected.
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <span className="text-xs font-bold text-app-muted">Selected: source {sourceScope}, data {dataScope}</span>
+          <button className="min-h-9 rounded-md border border-app-line bg-slate-100 px-3 text-sm font-extrabold text-app-muted" type="button" disabled>
+            Create invite later
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
