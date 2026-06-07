@@ -70,8 +70,8 @@ UI rules:
 
 ## Sync Plan
 
-Sync is planned around encrypted rooms and a private workspace manifest. The goal is that a user can restore an entire App Lab
-workspace on another device with one recovery key, while also sharing individual apps with friends.
+Sync is planned around encrypted rooms, explicit room capabilities, and a private workspace manifest. The goal is that a user can
+restore an entire App Lab workspace on another device with one recovery key, while also sharing individual apps with friends.
 
 The sync model has three concepts:
 
@@ -81,7 +81,12 @@ The sync model has three concepts:
 
 Private apps and shared apps use the same room mechanism. A private app is simply an app whose room secrets only appear in one
 user's workspace manifest. A shared app appears in multiple users' workspace manifests, with each manifest containing the room
-references and secrets that user is allowed to use.
+references and capabilities that user is allowed to use.
+
+The workspace recovery key is high-entropy generated material, not a user-chosen password in the first implementation. It unlocks
+the encrypted workspace manifest, so compromise of that key compromises the user's private apps and all shared room memberships
+listed in that workspace. The key should not be logged, stored in provider records, or placed in URLs. Clipboard and QR export may
+be useful later, but the UI must treat them as sensitive recovery flows.
 
 The manifest should contain records like:
 
@@ -90,26 +95,34 @@ interface SyncedWorkspaceApp {
   localAppId: string;
   displayName: string;
   role: "owner" | "collaborator";
-  sourceRoom?: RoomReference;
-  dataRoom?: RoomReference;
+  sourceRoom?: RoomCapability;
+  dataRoom?: RoomCapability;
 }
 ```
 
-Room references should carry explicit scopes:
+Room capabilities separate decrypt/read authority from write authority. Read-only must be a real boundary, not only a UI hint.
 
 ```ts
-type RoomPermission = "none" | "read" | "write";
+type RoomPermission = "read" | "write";
 
-interface RoomReference {
+interface RoomCapability {
   roomId: string;
-  roomSecret: string;
+  decryptSecret: string;
+  readToken: string;
+  writeToken?: string;
   permission: RoomPermission;
   lastSeenVersion: number;
 }
 ```
 
-Invite links should import one app into another user's workspace automatically when opened. Workspace sync remains separate and is
-only for restoring the user's own workspace on another device.
+A read-only invite can contain `roomId`, `decryptSecret`, and `readToken`. A write-capable invite can additionally contain
+`writeToken`. The storage provider or sync adapter must reject writes without write authority. If a provider cannot enforce write
+tokens directly, the implementation needs another enforceable write mechanism before exposing read/write permissions in the UI.
+
+Invite links are bearer capabilities, but opening one should not mutate the workspace automatically. The user should first see an
+import confirmation screen with the app name, source and data permissions, whether the app joins live shared data, and owner or
+origin information when available. Import requires an explicit user action. Workspace sync remains separate and is only for
+restoring the user's own workspace on another device.
 
 The initial sharing UI is designed around collaboration permissions:
 
@@ -121,6 +134,11 @@ The initial sharing UI is designed around collaboration permissions:
 Source is always effectively visible to collaborators because generated apps run in the browser and can be inspected. Therefore
 collaboration sharing should not pretend that source can be hidden from someone who can run the app.
 
+Source-write is also code-publish authority for that app. A source-write collaborator can change code that later runs for other
+collaborators and can read the shared app data exposed to that app. Remote source changes should therefore have a visible version
+boundary before becoming runnable. The initial behavior should prefer "source update available" / "review and apply" over silently
+replacing runnable source.
+
 This keeps future options open:
 
 - share app source and app data together
@@ -131,14 +149,18 @@ This keeps future options open:
 
 ### Sync Provider Boundary
 
-App Lab should own encryption, room ids, room secrets, version checks, and conflict behavior. Storage providers should be adapters
-behind a small interface:
+App Lab should own encryption, room ids, room capabilities, version checks, and conflict behavior. Storage providers should be
+adapters behind a small interface:
 
 ```ts
 interface SyncProvider {
-  loadRoom(roomId: string): Promise<RemoteRoomSnapshot>;
+  loadRoom(input: {
+    roomId: string;
+    readToken: string;
+  }): Promise<RemoteRoomSnapshot>;
   saveRoom(input: {
     roomId: string;
+    writeToken: string;
     expectedVersion: number;
     encryptedPayload: string;
   }): Promise<RemoteRoomSaveResult>;
@@ -149,7 +171,11 @@ Realtime support should be optional and added without changing app/runtime APIs:
 
 ```ts
 interface RealtimeSyncProvider extends SyncProvider {
-  subscribeRoom(roomId: string, onChange: (snapshot: RemoteRoomSnapshot) => void): () => void;
+  subscribeRoom(input: {
+    roomId: string;
+    readToken: string;
+    onChange: (snapshot: RemoteRoomSnapshot) => void;
+  }): () => void;
 }
 ```
 
@@ -168,11 +194,28 @@ Generated apps store arbitrary JSON, so App Lab should not try to globally merge
 
 This avoids silent data loss. App-specific merge strategies can be explored later.
 
+### Room Cryptography And Integrity
+
+Room payloads should use authenticated encryption, not unauthenticated encryption. The authenticated data should include at least:
+
+- room id
+- room type: workspace manifest, app package, or app data
+- schema version
+- room version
+
+Clients should reject malformed payloads, authentication failures, and snapshots older than a locally remembered `lastSeenVersion`.
+On fresh restore, there is no local version memory; the client can accept the provider's current snapshot after successful
+authentication, then remember that version for rollback checks.
+
 ### Security Notes
 
-The storage provider should only see encrypted payloads. Room secrets and workspace secrets stay in the browser and in invite or
-recovery material controlled by the user. Invite links are still sensitive: anyone with a write-capable invite can access that
-room with the permissions encoded in the invite.
+The storage provider should only see encrypted payloads. Decrypt secrets, workspace secrets, and write tokens stay in the browser
+and in invite or recovery material controlled by the user. Invite links are still sensitive: anyone with a write-capable invite can
+access that room with the permissions encoded in the invite.
+
+Revocation is not solved in the first sync version. With bearer capabilities, leaked invites and removed collaborators remain
+sensitive unless the room rotates capabilities and re-shares new capabilities to remaining collaborators. The first UI should say
+this clearly before creating share links.
 
 Sync does not change the existing generated-app boundary. A generated app that can read its own app data through `AppLab.getData()`
 can still disclose that app-owned data. Sync protects against provider-side reading and cross-app leakage, not against malicious
