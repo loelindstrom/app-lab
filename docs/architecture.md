@@ -130,6 +130,10 @@ import confirmation screen with the app name, source and data permissions, wheth
 origin information when available. Import requires an explicit user action. Workspace sync remains separate and is only for
 restoring the user's own workspace on another device.
 
+Invite capability material should be carried in the URL fragment (`#...`) rather than query parameters so room secrets and tokens
+are not sent to the hosting server as part of the HTTP request path. Fragment links are still sensitive because they can be copied,
+screenshotted, stored in browser history, or pasted into other tools.
+
 The initial sharing UI is designed around collaboration permissions:
 
 - source `read`: recipient can inspect or copy the app source
@@ -161,6 +165,12 @@ adapters behind a small interface:
 
 ```ts
 interface SyncProvider {
+  createRoom(input: {
+    roomId: string;
+    readToken: string;
+    writeToken: string;
+    encryptedPayload: string;
+  }): Promise<RemoteRoomSnapshot>;
   loadRoom(input: {
     roomId: string;
     readToken: string;
@@ -188,6 +198,9 @@ interface RealtimeSyncProvider extends SyncProvider {
 
 The first implementation can use polling plus optimistic version checks. The provider boundary should make it easy to replace
 polling with subscriptions later.
+
+Provider adapters are security-sensitive code because v1 relies on provider-enforced bearer tokens. Tests for every provider
+adapter must prove that read-token-only clients can load but cannot save.
 
 ### Conflict Rule
 
@@ -223,7 +236,9 @@ access that room with the permissions encoded in the invite.
 
 Revocation is not solved in the first sync version. With bearer capabilities, leaked invites and removed collaborators remain
 sensitive unless the room rotates capabilities and re-shares new capabilities to remaining collaborators. The first UI should say
-this clearly before creating share links.
+this clearly before creating share links. The future rotation shape is: create replacement room capabilities, re-encrypt the room
+payload under the replacement decrypt secret when needed, save the replacement room, update remaining workspace manifests, and stop
+advertising the old capabilities. Implementations should avoid treating room secrets as immutable forever.
 
 Sync does not change the existing generated-app boundary. A generated app that can read its own app data through `AppLab.getData()`
 can still disclose that app-owned data. Sync protects against provider-side reading and cross-app leakage, not against malicious
