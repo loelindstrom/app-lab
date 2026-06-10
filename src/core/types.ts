@@ -47,4 +47,5 @@ export interface AppLabCore {
   listApps(): Promise<AppSummary[]>;
   saveAppData(appId: AppId, data: JsonValue): Promise<void>;
   updateApp(input: UpdateAppInput): Promise<AppRecord>;
+  upsertApp(record: AppRecord): Promise<AppRecord>;
 }

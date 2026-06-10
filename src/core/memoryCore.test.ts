@@ -30,6 +30,23 @@ describe("createMemoryCore", () => {
     await expect(core.getAppData(app.appId)).resolves.toEqual({ note: "hello" });
   });
 
+  it("upserts restored app records with their original app id", async () => {
+    const core = createMemoryCore();
+    await core.upsertApp({
+      appId: "restored-app",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      description: "Restored",
+      name: "Restored App",
+      sourceCode: "<!doctype html><title>Restored</title>",
+      updatedAt: "2026-01-02T00:00:00.000Z",
+    });
+
+    await expect(core.getApp("restored-app")).resolves.toMatchObject({
+      appId: "restored-app",
+      name: "Restored App",
+    });
+  });
+
   it("deletes apps and their app-owned data", async () => {
     const core = createMemoryCore();
     const app = await core.createBlankApp();

@@ -3,7 +3,7 @@ import type { CreateAppInput } from "./types";
 export function createExampleAppInput(name = "Example App"): CreateAppInput {
   return {
     name,
-    description: "Sandbox app with host-mediated persistence.",
+    description: "Sandbox app with persistence and live shared data.",
     sourceCode: EXAMPLE_APP_SOURCE,
   };
 }
@@ -59,6 +59,16 @@ export const EXAMPLE_APP_SOURCE = `<!doctype html>
         padding: 0 18px;
       }
       output { color: #93c5fd; min-height: 22px; }
+      .bar { align-items: center; display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; }
+      .badge {
+        background: #172333;
+        border: 1px solid #334155;
+        border-radius: 999px;
+        color: #c4b5fd;
+        font-size: 13px;
+        font-weight: 850;
+        padding: 7px 10px;
+      }
       .hint { color: #94a3b8; font-size: 14px; }
       .counter { align-items: center; display: flex; flex-wrap: wrap; gap: 12px; }
       .counter strong { color: #f8fafc; font-size: 44px; min-width: 72px; }
@@ -68,12 +78,15 @@ export const EXAMPLE_APP_SOURCE = `<!doctype html>
     <main>
       <header>
         <h1>Sandbox notes</h1>
-        <p>This app cannot access host storage directly. It persists JSON data through the AppLab helper.</p>
+        <p>This app persists JSON through the AppLab helper and updates live when shared data changes remotely.</p>
       </header>
 
       <section>
-        <div>
+        <div class="bar">
           <p class="hint">Persisted counter</p>
+          <span id="live" class="badge">Live data ready</span>
+        </div>
+        <div>
           <div class="counter">
             <strong id="count">0</strong>
             <button id="increment" type="button">+1 and save</button>
@@ -89,7 +102,7 @@ export const EXAMPLE_APP_SOURCE = `<!doctype html>
       </section>
 
       <output id="status">Loading saved data...</output>
-      <p class="hint">Persistence contract: call AppLab.getData() on load, then AppLab.saveData(jsonValue) after edits.</p>
+      <p class="hint">Contract: load with AppLab.getData(fallback), save with AppLab.saveData(json), and react to shared updates with AppLab.onDataChange(handler).</p>
     </main>
 
     <script>
@@ -100,24 +113,41 @@ export const EXAMPLE_APP_SOURCE = `<!doctype html>
       const increment = document.querySelector("#increment");
       const save = document.querySelector("#save");
       const status = document.querySelector("#status");
-      const state = { count: 0, note: "" };
+      const live = document.querySelector("#live");
+      const state = { count: 0, note: "", savedAt: null };
       Object.seal(state);
 
       AppLab.onError((message) => {
         status.textContent = "Error: " + message;
       });
 
-      function render() {
+      function normalizeData(data) {
+        return {
+          count: Number(data && data.count || 0),
+          note: data && typeof data.note === "string" ? data.note : "",
+          savedAt: data && typeof data.savedAt === "string" ? data.savedAt : null
+        };
+      }
+
+      function applyData(data, source) {
+        const next = normalizeData(data);
+        const noteWasFocused = document.activeElement === note;
+        state.count = next.count;
+        state.note = next.note;
+        state.savedAt = next.savedAt;
+        render({ preserveDraft: noteWasFocused && source === "remote" });
+      }
+
+      function render(options = {}) {
         count.textContent = String(state.count);
-        note.value = state.note;
+        if (!options.preserveDraft) note.value = state.note;
+        live.textContent = state.savedAt ? "Last saved " + new Date(state.savedAt).toLocaleTimeString() : "Live data ready";
       }
 
       async function loadState() {
         status.textContent = "Loading saved data...";
         const saved = await AppLab.getData({ count: 0, note: "" });
-        state.count = Number(saved.count || 0);
-        state.note = typeof saved.note === "string" ? saved.note : "";
-        render();
+        applyData(saved, "load");
         status.textContent = "Loaded.";
       }
 
@@ -130,6 +160,11 @@ export const EXAMPLE_APP_SOURCE = `<!doctype html>
         });
         status.textContent = "Saved.";
       }
+
+      AppLab.onDataChange((nextData, info) => {
+        applyData(nextData, "remote");
+        status.textContent = "Live update received" + (info && info.version ? " v" + info.version : "") + ".";
+      });
 
       increment.addEventListener("click", () => {
         state.count += 1;

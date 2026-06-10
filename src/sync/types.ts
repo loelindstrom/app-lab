@@ -39,6 +39,11 @@ export interface SaveRoomInput {
   encryptedPayload: string;
 }
 
+export interface DeleteRoomInput {
+  roomId: string;
+  writeToken: string;
+}
+
 export interface SubscribeRoomInput {
   roomId: string;
   readToken: string;
@@ -47,6 +52,7 @@ export interface SubscribeRoomInput {
 
 export interface SyncProvider {
   createRoom(input: CreateRoomInput): Promise<RemoteRoomSnapshot>;
+  deleteRoom(input: DeleteRoomInput): Promise<void>;
   loadRoom(input: LoadRoomInput): Promise<RemoteRoomSnapshot>;
   saveRoom(input: SaveRoomInput): Promise<RemoteRoomSnapshot>;
 }

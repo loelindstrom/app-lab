@@ -1,4 +1,4 @@
-import type { CreateRoomInput, LoadRoomInput, RemoteRoomSnapshot, SaveRoomInput, SubscribeRoomInput, RealtimeSyncProvider } from "./types";
+import type { CreateRoomInput, DeleteRoomInput, LoadRoomInput, RemoteRoomSnapshot, SaveRoomInput, SubscribeRoomInput, RealtimeSyncProvider } from "./types";
 
 interface MemoryRoom {
   roomId: string;
@@ -55,6 +55,14 @@ export function createMemorySyncProvider(): RealtimeSyncProvider {
     return snapshot;
   }
 
+  async function deleteRoom(input: DeleteRoomInput): Promise<void> {
+    const room = requireRoom(input.roomId);
+    if (input.writeToken !== room.writeToken) {
+      throw new Error("Write token is not authorized for this room.");
+    }
+    rooms.delete(input.roomId);
+  }
+
   function subscribeRoom(input: SubscribeRoomInput): () => void {
     const room = requireRoom(input.roomId);
     if (input.readToken !== room.readToken) {
@@ -82,6 +90,7 @@ export function createMemorySyncProvider(): RealtimeSyncProvider {
 
   return {
     createRoom,
+    deleteRoom,
     loadRoom,
     saveRoom,
     subscribeRoom,

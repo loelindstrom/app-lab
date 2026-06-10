@@ -70,6 +70,11 @@ export function createIndexedDbCore(): AppLabCore {
     return updated;
   }
 
+  async function upsertApp(record: AppRecord): Promise<AppRecord> {
+    await putRecord("apps_registry", record);
+    return record;
+  }
+
   async function getAppData(appId: string): Promise<JsonValue> {
     const record = await requestToPromise<AppDataRecord | undefined>((await db()).transaction("apps_data").objectStore("apps_data").get(appId));
     return record?.data ?? null;
@@ -99,6 +104,7 @@ export function createIndexedDbCore(): AppLabCore {
     listApps,
     saveAppData,
     updateApp,
+    upsertApp,
   };
 }
 

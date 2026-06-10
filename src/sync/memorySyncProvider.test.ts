@@ -122,4 +122,26 @@ describe("memory sync provider", () => {
 
     expect(seenVersions).toEqual([2]);
   });
+
+  it("deletes rooms only with the write token", async () => {
+    const provider = createMemorySyncProvider();
+    const capability = createRoomCapability();
+    const encryptedPayload = await encryptRoomPayload({
+      roomId: capability.roomId,
+      roomType: "app-data",
+      roomVersion: 1,
+      decryptSecret: capability.decryptSecret,
+      data: { count: 1 },
+    });
+    await provider.createRoom({
+      roomId: capability.roomId,
+      readToken: capability.readToken,
+      writeToken: capability.writeToken ?? "",
+      encryptedPayload,
+    });
+
+    await expect(provider.deleteRoom({ roomId: capability.roomId, writeToken: capability.readToken })).rejects.toThrow(/Write token/);
+    await provider.deleteRoom({ roomId: capability.roomId, writeToken: capability.writeToken ?? "" });
+    await expect(provider.loadRoom({ roomId: capability.roomId, readToken: capability.readToken })).rejects.toThrow(/not found/i);
+  });
 });

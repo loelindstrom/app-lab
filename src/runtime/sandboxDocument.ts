@@ -39,6 +39,7 @@ export function prepareSandboxDocument(sourceCode: string, capability: string): 
   const appLabCapability = window.__APP_LAB_CAPABILITY__;
   const pending = new Map();
   const errorHandlers = new Set();
+  const dataChangeHandlers = new Set();
   const originalConsole = {
     debug: console.debug.bind(console),
     error: console.error.bind(console),
@@ -109,6 +110,19 @@ export function prepareSandboxDocument(sourceCode: string, capability: string): 
     const message = event.data;
     if (!message || typeof message !== "object") return;
 
+    if (message.type === "APP_LAB_DATA_CHANGED") {
+      const data = message.payload ? message.payload.data : null;
+      const info = message.payload ? message.payload.info || {} : {};
+      for (const handler of dataChangeHandlers) {
+        try {
+          handler(data, info);
+        } catch (error) {
+          console.error(error);
+          notifyError(error);
+        }
+      }
+    }
+
     const pendingRequest = pending.get(message.requestId);
     if (!pendingRequest) return;
 
@@ -148,6 +162,23 @@ export function prepareSandboxDocument(sourceCode: string, capability: string): 
       },
       saveData: function (data) {
         return request("SAVE_MY_DATA", { data });
+      },
+      onDataChange: function (handler) {
+        if (typeof handler !== "function") return function () {};
+        dataChangeHandlers.add(handler);
+        window.parent.postMessage({
+          type: "APP_LAB_DATA_HANDLER_STATUS",
+          appLabCapability,
+          payload: { registered: dataChangeHandlers.size > 0 }
+        }, "*");
+        return function () {
+          dataChangeHandlers.delete(handler);
+          window.parent.postMessage({
+            type: "APP_LAB_DATA_HANDLER_STATUS",
+            appLabCapability,
+            payload: { registered: dataChangeHandlers.size > 0 }
+          }, "*");
+        };
       },
       onError: function (handler) {
         if (typeof handler !== "function") return function () {};

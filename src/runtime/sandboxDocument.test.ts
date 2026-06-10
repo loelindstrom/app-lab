@@ -14,7 +14,10 @@ describe("prepareSandboxDocument", () => {
     expect(scripts[1]).toContain('Object.defineProperty(window, "AppLab"');
     expect(scripts[1]).toContain("getData");
     expect(scripts[1]).toContain("saveData");
+    expect(scripts[1]).toContain("onDataChange");
     expect(scripts[1]).toContain("onError");
+    expect(scripts[1]).toContain("APP_LAB_DATA_CHANGED");
+    expect(scripts[1]).toContain("APP_LAB_DATA_HANDLER_STATUS");
     expect(scripts[1]).toContain("APP_LAB_CONSOLE");
     expect(scripts[2]).toContain("APP_LAB_UNLOADING");
     expect(scripts[3]).toContain("window.appSawHelper");

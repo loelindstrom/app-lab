@@ -6,6 +6,9 @@ interface SandboxFrameProps {
   app: AppRecord;
   getAppData: (appId: string) => Promise<JsonValue>;
   onConsoleEntry: (entry: SandboxConsoleEntry) => void;
+  onUnhandledRemoteDataChange?: () => void;
+  reloadKey?: number;
+  remoteDataChange?: RemoteDataChange | null;
   saveAppData: (appId: string, data: JsonValue) => Promise<void>;
 }
 
@@ -21,9 +24,16 @@ interface ActiveSandboxLoad {
   capability: string;
 }
 
-export function SandboxFrame({ app, getAppData, onConsoleEntry, saveAppData }: SandboxFrameProps) {
+export interface RemoteDataChange {
+  data: JsonValue;
+  id: string;
+  version: number;
+}
+
+export function SandboxFrame({ app, getAppData, onConsoleEntry, onUnhandledRemoteDataChange, reloadKey = 0, remoteDataChange, saveAppData }: SandboxFrameProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const activeLoadRef = useRef<ActiveSandboxLoad | null>(null);
+  const dataChangeHandlerRegisteredRef = useRef(false);
   const expectedLoadCapabilityRef = useRef<string | null>(null);
   const [reloadNonce, setReloadNonce] = useState(0);
   const sandboxDocument = useMemo(() => {
@@ -32,13 +42,14 @@ export function SandboxFrame({ app, getAppData, onConsoleEntry, saveAppData }: S
       capability,
       html: prepareSandboxDocument(app.sourceCode, capability),
     };
-  }, [app.appId, app.sourceCode, app.updatedAt, reloadNonce]);
+  }, [app.appId, app.sourceCode, app.updatedAt, reloadKey, reloadNonce]);
 
   useLayoutEffect(() => {
     activeLoadRef.current = {
       appId: app.appId,
       capability: sandboxDocument.capability,
     };
+    dataChangeHandlerRegisteredRef.current = false;
     expectedLoadCapabilityRef.current = sandboxDocument.capability;
   }, [app.appId, sandboxDocument.capability]);
 
@@ -59,6 +70,11 @@ export function SandboxFrame({ app, getAppData, onConsoleEntry, saveAppData }: S
       if (type === "APP_LAB_CONSOLE") {
         const entry = toConsoleEntry(payload);
         if (entry) onConsoleEntry(entry);
+        return;
+      }
+
+      if (type === "APP_LAB_DATA_HANDLER_STATUS") {
+        dataChangeHandlerRegisteredRef.current = Boolean(payload?.registered);
         return;
       }
 
@@ -114,6 +130,28 @@ export function SandboxFrame({ app, getAppData, onConsoleEntry, saveAppData }: S
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
   }, [getAppData, onConsoleEntry, saveAppData]);
+
+  useEffect(() => {
+    if (!remoteDataChange) return;
+    const activeLoad = activeLoadRef.current;
+    if (!activeLoad || activeLoad.appId !== app.appId) return;
+    if (!dataChangeHandlerRegisteredRef.current) {
+      onUnhandledRemoteDataChange?.();
+    }
+    iframeRef.current?.contentWindow?.postMessage(
+      {
+        type: "APP_LAB_DATA_CHANGED",
+        payload: {
+          data: remoteDataChange.data,
+          info: {
+            source: "remote",
+            version: remoteDataChange.version,
+          },
+        },
+      },
+      "*",
+    );
+  }, [app.appId, onUnhandledRemoteDataChange, remoteDataChange]);
 
   function handleFrameLoad() {
     if (expectedLoadCapabilityRef.current === sandboxDocument.capability) {

@@ -61,6 +61,11 @@ export function createMemoryCore(): AppLabCore {
     return updated;
   }
 
+  async function upsertApp(record: AppRecord): Promise<AppRecord> {
+    apps.set(record.appId, record);
+    return record;
+  }
+
   return {
     createApp,
     createBlankApp,
@@ -70,5 +75,6 @@ export function createMemoryCore(): AppLabCore {
     listApps,
     saveAppData,
     updateApp,
+    upsertApp,
   };
 }

@@ -230,6 +230,10 @@ Runtime rules:
 Persistence API:
 - Use the injected helper: await AppLab.getData(fallbackValue)
 - Save app-owned JSON data with: await AppLab.saveData(jsonValue)
+- For live shared data, register AppLab.onDataChange((nextData, info) => { ... }).
+- In onDataChange, update the app's persisted data model and refresh only the data-dependent UI.
+- Do not reset transient UI state during onDataChange: preserve active tab, scroll position, open dialogs, focused inputs, and unsaved drafts.
+- Keep persisted data separate from view state. Persist records/settings; keep current tab, modal state, and form focus in local variables.
 - JSON data must be primitives, arrays, and plain objects only.
 - You can show unexpected runtime errors with AppLab.onError((message) => { ... }).
 - Do not use raw postMessage unless the user explicitly asks for low-level App Lab runtime code.
