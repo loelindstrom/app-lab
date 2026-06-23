@@ -1,26 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import type { AppLabCore, AppRecord, AppSummary, JsonValue } from "../../core/types";
-import { decryptRoomSnapshot, rememberSnapshotVersion } from "../../sync/crypto";
 import { encodeAppInvite, readInviteFromHash } from "../../sync/invites";
 import type { RemoteDataChange, SandboxConsoleEntry } from "../../runtime/SandboxFrame";
 import { SandboxFrame } from "../../runtime/SandboxFrame";
-import { deleteRemoteAppRooms, ensureRemoteAppRooms, isRemoteAppDeletedError, loadRemoteAppRooms, saveRemoteAppData, saveRemoteAppSource } from "../../sync/appRooms";
-import { createFirebaseRealtimeSyncProvider, createFirebaseSdkRealtimeDriver } from "../../sync/firebaseRealtimeProvider";
 import type {
   AppInvitePayload,
   AppSyncBadge,
   ConfigureStorageProfileInput,
-  RemoteProviderReference,
   StorageProfile,
   WorkspaceSyncRegistry,
 } from "../../sync/workspaceSync";
-import {
-  createWorkspaceRecoveryMaterial,
-  decodeWorkspaceRecoveryMaterial,
-  encodeWorkspaceRecoveryMaterial,
-  loadWorkspaceManifest,
-  saveWorkspaceManifest,
-} from "../../sync/workspaceManifest";
+import { createWorkspaceSyncActions } from "../../sync/workspaceSyncActions";
 import { SettingsDialog } from "../dialogs/SettingsDialog";
 import { ToolPanelMode, WorkspaceToolPanel } from "../tools/WorkspaceToolPanel";
 
@@ -48,6 +38,7 @@ export function WorkspaceShell({ core, syncRegistry }: WorkspaceShellProps) {
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
   const [syncStatusOpen, setSyncStatusOpen] = useState(false);
   const [sandboxReloadKey, setSandboxReloadKey] = useState(0);
+  const syncActions = useMemo(() => createWorkspaceSyncActions({ core, syncRegistry }), [core, syncRegistry]);
 
   useEffect(() => {
     refreshApps();
@@ -74,29 +65,12 @@ export function WorkspaceShell({ core, syncRegistry }: WorkspaceShellProps) {
     let cancelled = false;
 
     async function subscribe() {
-      const record = await syncRegistry.getAppSyncRecord(subscribedApp.appId);
-      const provider = await createProviderForSyncRecord(record);
-      if (!record || !provider || cancelled) return;
-
-      unsubscribe = provider.subscribeRoom({
-        readToken: record.dataRoom.readToken,
-        roomId: record.dataRoom.roomId,
-        onChange: (snapshot) => {
-          void (async () => {
-            const latestRecord = await syncRegistry.getAppSyncRecord(subscribedApp.appId);
-            if (!latestRecord || snapshot.version <= latestRecord.dataRoom.lastSeenVersion || cancelled) return;
-            const data = await decryptRoomSnapshot({
-              capability: latestRecord.dataRoom,
-              roomType: "app-data",
-              snapshot,
-            });
-            await core.saveAppData(subscribedApp.appId, data);
-            const dataRoom = rememberSnapshotVersion(latestRecord.dataRoom, snapshot);
-            await syncRegistry.rememberAppRoomVersions({ appId: subscribedApp.appId, dataRoom });
-            setRemoteDataChange({ data, id: crypto.randomUUID(), version: snapshot.version });
-          })();
-        },
+      const nextUnsubscribe = await syncActions.subscribeAppData(subscribedApp.appId, ({ data, version }) => {
+        if (cancelled) return;
+        setRemoteDataChange({ data, id: crypto.randomUUID(), version });
       });
+      if (cancelled) nextUnsubscribe();
+      else unsubscribe = nextUnsubscribe;
     }
 
     void subscribe();
@@ -104,7 +78,7 @@ export function WorkspaceShell({ core, syncRegistry }: WorkspaceShellProps) {
       cancelled = true;
       unsubscribe?.();
     };
-  }, [activeApp?.appId, core, syncRegistry, storageProfile]);
+  }, [activeApp?.appId, syncActions]);
 
   useEffect(() => {
     if (!activeApp) return;
@@ -113,38 +87,22 @@ export function WorkspaceShell({ core, syncRegistry }: WorkspaceShellProps) {
     let cancelled = false;
 
     async function subscribe() {
-      const record = await syncRegistry.getAppSyncRecord(subscribedApp.appId);
-      const provider = await createSourceProviderForSyncRecord(record);
-      if (!record || !provider || cancelled) return;
-
-      unsubscribe = provider.subscribeRoom({
-        readToken: record.sourceRoom.readToken,
-        roomId: record.sourceRoom.roomId,
-        onChange: (snapshot) => {
-          void (async () => {
-            const latestRecord = await syncRegistry.getAppSyncRecord(subscribedApp.appId);
-            if (!latestRecord || snapshot.version <= latestRecord.sourceRoom.lastSeenVersion || cancelled) return;
-            try {
-              const loaded = await loadRemoteAppRooms({ provider, syncRecord: latestRecord });
-              await core.upsertApp(loaded.app);
-              await core.saveAppData(loaded.app.appId, loaded.appData);
-              await syncRegistry.rememberAppRoomVersions({
-                appId: loaded.app.appId,
-                dataRoom: loaded.dataRoom,
-                sourceRoom: loaded.sourceRoom,
-              });
-              setActiveApp(loaded.app);
-              setSyncStatus(null);
-              await refreshApps();
-            } catch (error) {
-              if (!isRemoteAppDeletedError(error)) throw error;
-              await syncRegistry.markRemoteAppDeleted(subscribedApp.appId, error.deletedAt);
-              setSyncStatus("This shared app was deleted by its owner.");
-              await refreshApps();
-            }
-          })();
+      const nextUnsubscribe = await syncActions.subscribeAppSource(
+        subscribedApp.appId,
+        ({ app }) => {
+          if (cancelled) return;
+          setActiveApp(app);
+          setSyncStatus(null);
+          void refreshApps();
         },
-      });
+        () => {
+          if (cancelled) return;
+          setSyncStatus("This shared app was deleted by its owner.");
+          void refreshApps();
+        },
+      );
+      if (cancelled) nextUnsubscribe();
+      else unsubscribe = nextUnsubscribe;
     }
 
     void subscribe();
@@ -152,7 +110,7 @@ export function WorkspaceShell({ core, syncRegistry }: WorkspaceShellProps) {
       cancelled = true;
       unsubscribe?.();
     };
-  }, [activeApp?.appId, core, syncRegistry, storageProfile]);
+  }, [activeApp?.appId, syncActions]);
 
   async function refreshApps() {
     const nextApps = await core.listApps();
@@ -176,7 +134,7 @@ export function WorkspaceShell({ core, syncRegistry }: WorkspaceShellProps) {
 
   async function createApp() {
     const app = await core.createBlankApp();
-    await ensureAppBackedUp(app);
+    await trySync("App created locally. Remote backup failed", () => syncActions.ensureAppBackedUp(app));
     await refreshApps();
     setActiveApp(app);
     setMode("app");
@@ -299,7 +257,7 @@ export function WorkspaceShell({ core, syncRegistry }: WorkspaceShellProps) {
           <LauncherView
             apps={apps}
             onDeleteApp={async (appId) => {
-              await deleteSyncedAppRooms(appId);
+              await syncActions.deleteSyncedAppRooms(appId);
               await core.deleteApp(appId);
               await syncRegistry.removeLocalAppSync(appId);
               await refreshApps();
@@ -324,7 +282,7 @@ export function WorkspaceShell({ core, syncRegistry }: WorkspaceShellProps) {
             }}
             onSaveAppData={async (appId, data) => {
               await core.saveAppData(appId, data);
-              await trySync("App data saved locally. Remote data sync failed", () => pushAppData(appId, data));
+              await trySync("App data saved locally. Remote data sync failed", () => syncActions.pushAppData(appId, data));
             }}
             onUnhandledRemoteDataChange={() => {
               setSyncStatus("Remote data changed. This app does not handle live updates yet; reopen it to reload latest data.");
@@ -353,7 +311,7 @@ export function WorkspaceShell({ core, syncRegistry }: WorkspaceShellProps) {
             onSaveSource={async (sourceCode) => {
               const nextName = readHtmlTitle(sourceCode) || activeApp.name;
               const updated = await core.updateApp({ appId: activeApp.appId, name: nextName, sourceCode });
-              await trySync("Source saved locally. Remote source sync failed", () => pushAppSource(updated));
+              await trySync("Source saved locally. Remote source sync failed", () => syncActions.pushAppSource(updated));
               setActiveApp(updated);
               setConsoleEntries([]);
               await refreshApps();
@@ -381,48 +339,16 @@ export function WorkspaceShell({ core, syncRegistry }: WorkspaceShellProps) {
         onClose={() => setSettingsOpen(false)}
         onConfigureStorageProfile={async (input: ConfigureStorageProfileInput) => {
           await syncRegistry.configureStorageProfile(input);
-          const nextApps = await core.listApps();
-          for (const app of nextApps) {
-            const record = await syncRegistry.getAppSyncRecord(app.appId);
-            if (!record) await syncRegistry.ensureOwnedAppRooms(app.appId);
-            const fullApp = await core.getApp(app.appId);
-            if (fullApp) await ensureAppBackedUp(fullApp);
-          }
+          await trySync("Storage configured locally. Remote backup failed", () => syncActions.backUpLocalApps());
           await refreshApps();
         }}
         onExportWorkspaceRecovery={async () => {
-          await syncRegistry.ensureWorkspaceManifestRoom();
-          let state = await syncRegistry.getState();
-          if (!state.storageProfile) throw new Error("Storage profile is required.");
-          const provider = createFirebaseProvider(state.storageProfile);
-          for (const appSummary of await core.listApps()) {
-            const app = await core.getApp(appSummary.appId);
-            const syncRecord = await syncRegistry.getAppSyncRecord(appSummary.appId);
-            if (!app || !syncRecord || syncRecord.kind === "joined") continue;
-            await ensureRemoteAppRooms({
-              app,
-              appData: await core.getAppData(app.appId),
-              provider,
-              syncRecord,
-            });
-          }
-          state = await syncRegistry.getState();
-          const savedState = await saveWorkspaceManifest({
-            provider,
-            state,
-          });
-          await syncRegistry.replaceState(savedState);
+          const recovery = await syncActions.exportWorkspaceRecovery();
           await refreshApps();
-          return encodeWorkspaceRecoveryMaterial(createWorkspaceRecoveryMaterial(savedState));
+          return recovery;
         }}
         onRestoreWorkspaceRecovery={async (recoveryText) => {
-          const recoveryMaterial = decodeWorkspaceRecoveryMaterial(recoveryText);
-          const restoredState = await loadWorkspaceManifest({
-            provider: createFirebaseRealtimeSyncProvider({ driver: createFirebaseSdkRealtimeDriver(recoveryMaterial.provider.firebaseConfig) }),
-            recoveryMaterial,
-          });
-          await hydrateWorkspaceAppsFromRooms(core, restoredState);
-          await syncRegistry.replaceState(restoredState);
+          await syncActions.restoreWorkspaceRecovery(recoveryText);
           await refreshApps();
         }}
       />
@@ -431,18 +357,7 @@ export function WorkspaceShell({ core, syncRegistry }: WorkspaceShellProps) {
         hasStorageProfile={Boolean(storageProfile)}
         onClose={() => setSharingApp(null)}
         onCreateInvite={async (appId) => {
-          const app = await core.getApp(appId);
-          if (!app) throw new Error("App not found.");
-          let syncRecord = await syncRegistry.getAppSyncRecord(appId);
-          if (!syncRecord) syncRecord = await syncRegistry.ensureOwnedAppRooms(appId);
-
-          if (syncRecord.kind !== "joined") {
-            const profile = await syncRegistry.getStorageProfile();
-            if (!profile) throw new Error("Storage profile is required before sharing.");
-            await syncCurrentAppToRemote(app, createFirebaseProvider(profile), syncRecord);
-          }
-
-          const invite = await syncRegistry.createInvite(appId);
+          const invite = await syncActions.createInvite(appId);
           await refreshApps();
           return invite;
         }}
@@ -454,7 +369,8 @@ export function WorkspaceShell({ core, syncRegistry }: WorkspaceShellProps) {
           if (window.location.hash.startsWith("#applab-invite=")) history.replaceState(null, "", window.location.pathname + window.location.search);
         }}
         onImport={async (invite) => {
-          await importInvite(invite);
+          await syncActions.importInvite(invite);
+          await refreshApps();
           setPendingInvite(null);
           if (window.location.hash.startsWith("#applab-invite=")) history.replaceState(null, "", window.location.pathname + window.location.search);
         }}
@@ -462,103 +378,11 @@ export function WorkspaceShell({ core, syncRegistry }: WorkspaceShellProps) {
     </div>
   );
 
-  async function importInvite(invite: AppInvitePayload) {
-    const provider = createFirebaseProviderFromReference(invite.provider);
-    const loaded = await loadRemoteAppRooms({
-      provider,
-      syncRecord: {
-        appId: "pending-import",
-        dataProvider: invite.provider,
-        dataRoom: invite.dataRoom,
-        importedAt: new Date().toISOString(),
-        kind: "joined",
-        sourceProvider: invite.provider,
-        sourceRoom: invite.sourceRoom,
-      },
-    });
-    await core.upsertApp(loaded.app);
-    await core.saveAppData(loaded.app.appId, loaded.appData);
-    await syncRegistry.markJoinedApp({
-      appId: loaded.app.appId,
-      dataProvider: invite.provider,
-      dataRoom: loaded.dataRoom,
-      sourceProvider: invite.provider,
-      sourceRoom: loaded.sourceRoom,
-    });
-    await refreshApps();
-  }
-
-  async function pushAppSource(app: AppRecord) {
-    const record = await syncRegistry.getAppSyncRecord(app.appId);
-    const provider = await createSourceProviderForSyncRecord(record);
-    if (!record || !provider) return;
-    const sourceRoom = await saveRemoteAppSource({ app, provider, syncRecord: record });
-    await syncRegistry.rememberAppRoomVersions({ appId: app.appId, sourceRoom });
-  }
-
-  async function pushAppData(appId: string, data: JsonValue) {
-    const record = await syncRegistry.getAppSyncRecord(appId);
-    const provider = await createProviderForSyncRecord(record);
-    if (!record || !provider) return;
-    const dataRoom = await saveRemoteAppData({ appData: data, provider, syncRecord: record });
-    await syncRegistry.rememberAppRoomVersions({ appId, dataRoom });
-  }
-
-  async function ensureAppBackedUp(app: AppRecord) {
-    const profile = await syncRegistry.getStorageProfile();
-    if (!profile) return;
-    const syncRecord = await syncRegistry.ensureOwnedAppRooms(app.appId);
-    await trySync("App created locally. Remote backup failed", async () => {
-      await ensureRemoteAppRooms({
-        app,
-        appData: await core.getAppData(app.appId),
-        provider: createFirebaseProvider(profile),
-        syncRecord,
-      });
-      const loaded = await loadRemoteAppRooms({ provider: createFirebaseProvider(profile), syncRecord });
-      await syncRegistry.rememberAppRoomVersions({
-        appId: app.appId,
-        dataRoom: loaded.dataRoom,
-        sourceRoom: loaded.sourceRoom,
-      });
-    });
-  }
-
-  async function syncCurrentAppToRemote(
-    app: AppRecord,
-    provider: ReturnType<typeof createFirebaseProvider>,
-    record: Awaited<ReturnType<WorkspaceSyncRegistry["getAppSyncRecord"]>>,
-  ) {
-    if (!record || record.kind === "joined") return;
-    const sourceRoom = await saveRemoteAppSource({ app, provider, syncRecord: record });
-    const dataRoom = await saveRemoteAppData({
-      appData: await core.getAppData(app.appId),
-      provider,
-      syncRecord: { ...record, sourceRoom },
-    });
-    await syncRegistry.rememberAppRoomVersions({ appId: app.appId, dataRoom, sourceRoom });
-  }
-
   async function pullLatestAppRooms(appId: string) {
-    const record = await syncRegistry.getAppSyncRecord(appId);
-    const provider = await createProviderForSyncRecord(record);
-    if (!record || !provider) return;
     await trySync("Could not pull latest shared app", async () => {
-      let loaded;
-      try {
-        loaded = await loadRemoteAppRooms({ provider, syncRecord: record });
-      } catch (error) {
-        if (!isRemoteAppDeletedError(error)) throw error;
-        await syncRegistry.markRemoteAppDeleted(appId, error.deletedAt);
-        throw new Error("This shared app was deleted by its owner.");
-      }
-      await core.upsertApp(loaded.app);
-      await core.saveAppData(loaded.app.appId, loaded.appData);
-      await syncRegistry.rememberAppRoomVersions({
-        appId: loaded.app.appId,
-        dataRoom: loaded.dataRoom,
-        sourceRoom: loaded.sourceRoom,
-      });
+      const result = await syncActions.pullLatestAppRooms(appId);
+      if (result.deletedAt) throw new Error("This shared app was deleted by its owner.");
+      if (result.app) setActiveApp(result.app);
     });
     await refreshApps();
   }
@@ -573,60 +397,6 @@ export function WorkspaceShell({ core, syncRegistry }: WorkspaceShellProps) {
     }
   }
 
-  async function deleteSyncedAppRooms(appId: string) {
-    const record = await syncRegistry.getAppSyncRecord(appId);
-    if (!record) return;
-    if (record.kind === "joined") return;
-    const app = await core.getApp(appId);
-    if (!app) return;
-    const sourceProvider = await createSourceProviderForSyncRecord(record);
-    const dataProvider = await createProviderForSyncRecord(record);
-    if (!sourceProvider || !dataProvider) return;
-    await deleteRemoteAppRooms({
-      app,
-      dataProvider,
-      sourceProvider,
-      syncRecord: record,
-    });
-  }
-
-  async function createProviderForSyncRecord(record: Awaited<ReturnType<WorkspaceSyncRegistry["getAppSyncRecord"]>>) {
-    if (!record) return null;
-    if (record.kind === "joined") return createFirebaseProviderFromReference(record.dataProvider);
-    const profile = await syncRegistry.getStorageProfile();
-    if (!profile) return null;
-    return createFirebaseProvider(profile);
-  }
-
-  async function createSourceProviderForSyncRecord(record: Awaited<ReturnType<WorkspaceSyncRegistry["getAppSyncRecord"]>>) {
-    if (!record) return null;
-    if (record.kind === "joined") return createFirebaseProviderFromReference(record.sourceProvider);
-    const profile = await syncRegistry.getStorageProfile();
-    if (!profile) return null;
-    return createFirebaseProvider(profile);
-  }
-}
-
-function createFirebaseProvider(profile: StorageProfile) {
-  return createFirebaseRealtimeSyncProvider({ driver: createFirebaseSdkRealtimeDriver(profile.firebaseConfig) });
-}
-
-function createFirebaseProviderFromReference(provider: RemoteProviderReference) {
-  if (!provider.firebaseConfig) throw new Error("Invite is missing Firebase config.");
-  return createFirebaseRealtimeSyncProvider({ driver: createFirebaseSdkRealtimeDriver(provider.firebaseConfig) });
-}
-
-async function hydrateWorkspaceAppsFromRooms(core: AppLabCore, state: Awaited<ReturnType<WorkspaceSyncRegistry["getState"]>>) {
-  if (!state.storageProfile) return;
-  const provider = createFirebaseProvider(state.storageProfile);
-  for (const record of Object.values(state.apps)) {
-    if (record.kind === "joined" && record.sourceProvider.databaseUrl !== state.storageProfile.databaseUrl) continue;
-    const loaded = await loadRemoteAppRooms({ provider, syncRecord: record });
-    await core.upsertApp(loaded.app);
-    await core.saveAppData(loaded.app.appId, loaded.appData);
-    record.sourceRoom = loaded.sourceRoom;
-    record.dataRoom = loaded.dataRoom;
-  }
 }
 
 interface LauncherViewProps {
