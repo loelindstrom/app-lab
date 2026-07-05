@@ -1,4 +1,4 @@
-import { fireEvent, render, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { AppRecord } from "../core/types";
 import { SandboxFrame } from "./SandboxFrame";
@@ -76,6 +76,83 @@ describe("SandboxFrame", () => {
         timestamp: "2026-01-01T00:00:00.000Z",
       }),
     );
+  });
+
+  it("waits briefly for the app to register a remote data handler before warning", () => {
+    vi.useFakeTimers();
+    const onUnhandledRemoteDataChange = vi.fn();
+    const saveAppData = vi.fn().mockResolvedValue(undefined);
+    const getAppData = vi.fn().mockResolvedValue(null);
+    const { container, rerender } = render(
+      <SandboxFrame
+        app={app}
+        getAppData={getAppData}
+        onConsoleEntry={vi.fn()}
+        onUnhandledRemoteDataChange={onUnhandledRemoteDataChange}
+        remoteDataChange={null}
+        saveAppData={saveAppData}
+      />,
+    );
+    const iframe = getIframe(container);
+    const capability = getCapability(iframe);
+
+    fireEvent.load(iframe);
+    rerender(
+      <SandboxFrame
+        app={app}
+        getAppData={getAppData}
+        onConsoleEntry={vi.fn()}
+        onUnhandledRemoteDataChange={onUnhandledRemoteDataChange}
+        remoteDataChange={{ data: { count: 2 }, id: "remote-1", version: 2 }}
+        saveAppData={saveAppData}
+      />,
+    );
+
+    dispatchAppMessage(iframe, {
+      type: "APP_LAB_DATA_HANDLER_STATUS",
+      appLabCapability: capability,
+      payload: { registered: true },
+    });
+    act(() => {
+      vi.advanceTimersByTime(600);
+    });
+
+    expect(onUnhandledRemoteDataChange).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it("warns when remote data changes and the app does not register a handler", () => {
+    vi.useFakeTimers();
+    const onUnhandledRemoteDataChange = vi.fn();
+    const { container, rerender } = render(
+      <SandboxFrame
+        app={app}
+        getAppData={vi.fn().mockResolvedValue(null)}
+        onConsoleEntry={vi.fn()}
+        onUnhandledRemoteDataChange={onUnhandledRemoteDataChange}
+        remoteDataChange={null}
+        saveAppData={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+    const iframe = getIframe(container);
+
+    fireEvent.load(iframe);
+    rerender(
+      <SandboxFrame
+        app={app}
+        getAppData={vi.fn().mockResolvedValue(null)}
+        onConsoleEntry={vi.fn()}
+        onUnhandledRemoteDataChange={onUnhandledRemoteDataChange}
+        remoteDataChange={{ data: { count: 2 }, id: "remote-1", version: 2 }}
+        saveAppData={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+    act(() => {
+      vi.advanceTimersByTime(600);
+    });
+
+    expect(onUnhandledRemoteDataChange).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
   });
 });
 

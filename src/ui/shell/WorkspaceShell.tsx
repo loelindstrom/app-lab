@@ -10,7 +10,8 @@ import type {
   StorageProfile,
   WorkspaceSyncRegistry,
 } from "../../sync/workspaceSync";
-import { createWorkspaceSyncActions } from "../../sync/workspaceSyncActions";
+import type { SyncQueueStore } from "../../sync/syncQueue";
+import { createWorkspaceSyncActions, type WorkspaceSyncActions } from "../../sync/workspaceSyncActions";
 import { SettingsDialog } from "../dialogs/SettingsDialog";
 import { ToolPanelMode, WorkspaceToolPanel } from "../tools/WorkspaceToolPanel";
 
@@ -18,10 +19,12 @@ type WorkspaceMode = "launcher" | "app";
 
 interface WorkspaceShellProps {
   core: AppLabCore;
+  syncActionsOverride?: WorkspaceSyncActions;
+  syncQueueStore: SyncQueueStore;
   syncRegistry: WorkspaceSyncRegistry;
 }
 
-export function WorkspaceShell({ core, syncRegistry }: WorkspaceShellProps) {
+export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, syncRegistry }: WorkspaceShellProps) {
   const [apps, setApps] = useState<AppSummary[]>([]);
   const [syncBadges, setSyncBadges] = useState<Record<string, AppSyncBadge>>({});
   const [storageProfile, setStorageProfile] = useState<StorageProfile | null>(null);
@@ -38,11 +41,41 @@ export function WorkspaceShell({ core, syncRegistry }: WorkspaceShellProps) {
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
   const [syncStatusOpen, setSyncStatusOpen] = useState(false);
   const [sandboxReloadKey, setSandboxReloadKey] = useState(0);
-  const syncActions = useMemo(() => createWorkspaceSyncActions({ core, syncRegistry }), [core, syncRegistry]);
+  const defaultSyncActions = useMemo(() => createWorkspaceSyncActions({ core, queueStore: syncQueueStore, syncRegistry }), [core, syncQueueStore, syncRegistry]);
+  const syncActions = syncActionsOverride ?? defaultSyncActions;
 
   useEffect(() => {
     refreshApps();
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function wakePendingSync() {
+      try {
+        await syncActions.flushRoomLifecycleQueue();
+        await syncActions.flushSourceSyncQueue();
+        await syncActions.flushAppDataSyncQueue();
+        if (!cancelled) await refreshApps();
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : "Unknown sync error.";
+        if (!cancelled) setSyncStatus(`Could not retry pending sync: ${detail}`);
+      }
+    }
+
+    function wakeIfVisible() {
+      if (document.visibilityState === "visible") void wakePendingSync();
+    }
+
+    void wakePendingSync();
+    window.addEventListener("online", wakeIfVisible);
+    document.addEventListener("visibilitychange", wakeIfVisible);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("online", wakeIfVisible);
+      document.removeEventListener("visibilitychange", wakeIfVisible);
+    };
+  }, [syncActions]);
 
   useEffect(() => {
     function readHashInvite() {

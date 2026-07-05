@@ -10,6 +10,8 @@
     "deploy:pages": "bash scripts/deploy-github-pages.sh",
     "preview": "vite preview --host 127.0.0.1",
     "test": "vitest run",
+    "test:e2e": "set -a; [ ! -f .env.test.local ] || . ./.env.test.local; set +a; playwright test",
+    "test:firebase-smoke": "set -a; [ ! -f .env.test.local ] || . ./.env.test.local; set +a; vitest run src/sync/firebaseRealtimeProvider.smoke.test.ts",
     "typecheck": "tsc -b"
   },
   "dependencies": {
@@ -18,6 +20,7 @@
     "react-dom": "18.3.1"
   },
   "devDependencies": {
+    "@playwright/test": "1.49.1",
     "@testing-library/react": "15.0.7",
     "@testing-library/user-event": "14.5.2",
     "@types/react": "18.3.12",

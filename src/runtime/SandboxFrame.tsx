@@ -35,6 +35,8 @@ export function SandboxFrame({ app, getAppData, onConsoleEntry, onUnhandledRemot
   const activeLoadRef = useRef<ActiveSandboxLoad | null>(null);
   const dataChangeHandlerRegisteredRef = useRef(false);
   const expectedLoadCapabilityRef = useRef<string | null>(null);
+  const pendingRemoteDataChangeRef = useRef<RemoteDataChange | null>(null);
+  const unhandledRemoteDataTimerRef = useRef<number | null>(null);
   const [reloadNonce, setReloadNonce] = useState(0);
   const sandboxDocument = useMemo(() => {
     const capability = crypto.randomUUID();
@@ -51,7 +53,13 @@ export function SandboxFrame({ app, getAppData, onConsoleEntry, onUnhandledRemot
     };
     dataChangeHandlerRegisteredRef.current = false;
     expectedLoadCapabilityRef.current = sandboxDocument.capability;
+    pendingRemoteDataChangeRef.current = null;
+    clearUnhandledRemoteDataTimer();
   }, [app.appId, sandboxDocument.capability]);
+
+  useEffect(() => {
+    return () => clearUnhandledRemoteDataTimer();
+  }, []);
 
   useEffect(() => {
     async function handleMessage(event: MessageEvent) {
@@ -75,6 +83,9 @@ export function SandboxFrame({ app, getAppData, onConsoleEntry, onUnhandledRemot
 
       if (type === "APP_LAB_DATA_HANDLER_STATUS") {
         dataChangeHandlerRegisteredRef.current = Boolean(payload?.registered);
+        if (dataChangeHandlerRegisteredRef.current) {
+          flushPendingRemoteDataChange();
+        }
         return;
       }
 
@@ -136,22 +147,47 @@ export function SandboxFrame({ app, getAppData, onConsoleEntry, onUnhandledRemot
     const activeLoad = activeLoadRef.current;
     if (!activeLoad || activeLoad.appId !== app.appId) return;
     if (!dataChangeHandlerRegisteredRef.current) {
-      onUnhandledRemoteDataChange?.();
+      pendingRemoteDataChangeRef.current = remoteDataChange;
+      clearUnhandledRemoteDataTimer();
+      unhandledRemoteDataTimerRef.current = window.setTimeout(() => {
+        if (pendingRemoteDataChangeRef.current?.id !== remoteDataChange.id || dataChangeHandlerRegisteredRef.current) return;
+        pendingRemoteDataChangeRef.current = null;
+        onUnhandledRemoteDataChange?.();
+      }, 500);
+      return;
     }
+    postRemoteDataChange(remoteDataChange);
+  }, [app.appId, onUnhandledRemoteDataChange, remoteDataChange]);
+
+  function clearUnhandledRemoteDataTimer() {
+    if (unhandledRemoteDataTimerRef.current == null) return;
+    window.clearTimeout(unhandledRemoteDataTimerRef.current);
+    unhandledRemoteDataTimerRef.current = null;
+  }
+
+  function flushPendingRemoteDataChange() {
+    const pendingRemoteDataChange = pendingRemoteDataChangeRef.current;
+    if (!pendingRemoteDataChange) return;
+    pendingRemoteDataChangeRef.current = null;
+    clearUnhandledRemoteDataTimer();
+    postRemoteDataChange(pendingRemoteDataChange);
+  }
+
+  function postRemoteDataChange(change: RemoteDataChange) {
     iframeRef.current?.contentWindow?.postMessage(
       {
         type: "APP_LAB_DATA_CHANGED",
         payload: {
-          data: remoteDataChange.data,
+          data: change.data,
           info: {
             source: "remote",
-            version: remoteDataChange.version,
+            version: change.version,
           },
         },
       },
       "*",
     );
-  }, [app.appId, onUnhandledRemoteDataChange, remoteDataChange]);
+  }
 
   function handleFrameLoad() {
     if (expectedLoadCapabilityRef.current === sandboxDocument.capability) {
