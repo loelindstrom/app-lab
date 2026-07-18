@@ -6,7 +6,16 @@ import { createFirebaseRealtimeSyncProvider, createFirebaseSdkRealtimeDriver } f
 import { processOwnedAppDeletionQueue } from "./ownedAppDeletionWorker";
 import { processRoomLifecycleQueue } from "./roomLifecycleWorker";
 import { processSourceSyncQueue } from "./sourceSyncWorker";
-import { enqueueDeleteOwnedApp, enqueueEnsureAppRooms, enqueueSaveAppData, enqueueSaveSource, enqueueSaveWorkspaceManifest, saveAppDataQueueId, type SyncQueueStore } from "./syncQueue";
+import {
+  enqueueDeleteOwnedApp,
+  enqueueEnsureAppRooms,
+  enqueueSaveAppData,
+  enqueueSaveSource,
+  enqueueSaveWorkspaceManifest,
+  saveAppDataQueueId,
+  saveSourceQueueId,
+  type SyncQueueStore,
+} from "./syncQueue";
 import type { RealtimeSyncProvider } from "./types";
 import type { AppInvitePayload, AppSyncRecord, RemoteProviderReference, StorageProfile, WorkspaceSyncRegistry } from "./workspaceSync";
 import {
@@ -165,6 +174,7 @@ export function createWorkspaceSyncActions(input: WorkspaceSyncActionsInput) {
   }
 
   async function pullLatestAppRooms(appId: string): Promise<PullLatestResult> {
+    if (await hasPendingLocalAppWork(appId)) return {};
     const record = await syncRegistry.getAppSyncRecord(appId);
     const provider = await createProviderForSyncRecord(record);
     if (!record || !provider) return {};
@@ -289,6 +299,7 @@ export function createWorkspaceSyncActions(input: WorkspaceSyncActionsInput) {
           const latestRecord = await syncRegistry.getAppSyncRecord(appId);
           if (!latestRecord || snapshot.version <= latestRecord.sourceRoom.lastSeenVersion) return;
           try {
+            if (await hasPendingLocalAppSource(appId)) return;
             const loaded = await loadRemoteAppSource({ provider, syncRecord: latestRecord });
             await core.upsertApp(loaded.app);
             await syncRegistry.rememberAppRoomVersions({
@@ -466,6 +477,15 @@ export function createWorkspaceSyncActions(input: WorkspaceSyncActionsInput) {
   async function hasPendingLocalAppData(appId: string): Promise<boolean> {
     const item = await queueStore.getItem(saveAppDataQueueId(appId));
     return item?.kind === "save-app-data";
+  }
+
+  async function hasPendingLocalAppSource(appId: string): Promise<boolean> {
+    const item = await queueStore.getItem(saveSourceQueueId(appId));
+    return item?.kind === "save-source";
+  }
+
+  async function hasPendingLocalAppWork(appId: string): Promise<boolean> {
+    return (await hasPendingLocalAppData(appId)) || (await hasPendingLocalAppSource(appId));
   }
 
   async function shouldPreferLocalAppData(appId: string): Promise<boolean> {

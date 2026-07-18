@@ -174,7 +174,6 @@ export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, sync
   }
 
   async function openApp(appId: string) {
-    await pullLatestAppRooms(appId);
     const app = await core.getApp(appId);
     if (!app) return;
     setActiveApp(app);
@@ -184,6 +183,7 @@ export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, sync
     setSyncStatusOpen(false);
     setAiAttentionKey((key) => key + 1);
     setAiAttentionDismissed(false);
+    void pullLatestAppRooms(appId);
   }
 
   async function createApp() {

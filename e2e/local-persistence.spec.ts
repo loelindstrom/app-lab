@@ -107,6 +107,87 @@ test.describe("synced app persistence", () => {
 
     await expect(appFrame(page).getByRole("heading", { name: "Synced Source Persisted" })).toBeVisible();
   });
+
+  test("keeps offline app data edits across repeated launcher re-entry with storage configured", async ({ page, context }) => {
+    if (!firebaseConfig) throw new Error("APP_LAB_FIREBASE_SMOKE_CONFIG is required.");
+
+    await page.goto("/");
+    await page.evaluate(async () => {
+      indexedDB.deleteDatabase("app-lab-v2");
+      indexedDB.deleteDatabase("app-lab-sync-queue-v1");
+      localStorage.clear();
+    });
+    await page.reload();
+    await configureStorage(page, firebaseConfig);
+
+    await createExampleApp(page);
+    await expect(appFrame(page).getByRole("heading", { name: "Sandbox checklist" })).toBeVisible();
+    await page.getByRole("button", { name: "‹ Apps" }).click();
+    await expect(page.getByTitle("Synced with remote storage.")).toBeVisible({ timeout: 15_000 });
+    await page.getByRole("button", { name: "Open", exact: true }).click();
+
+    await context.setOffline(true);
+
+    await appFrame(page).getByLabel("New item").fill("Offline first");
+    await appFrame(page).getByRole("button", { name: "Add" }).click();
+    await expect(appFrame(page).getByText("Offline first", { exact: true })).toBeVisible();
+
+    await page.getByRole("button", { name: "‹ Apps" }).click();
+    await page.getByRole("button", { name: "Open", exact: true }).click();
+    await expect(appFrame(page).getByText("Offline first", { exact: true })).toBeVisible();
+
+    await appFrame(page).getByLabel("New item").fill("Offline second");
+    await appFrame(page).getByRole("button", { name: "Add" }).click();
+    await expect(appFrame(page).getByText("Offline second", { exact: true })).toBeVisible();
+
+    await page.getByRole("button", { name: "‹ Apps" }).click();
+    await page.getByRole("button", { name: "Open", exact: true }).click();
+    await expect(appFrame(page).getByText("Offline first", { exact: true })).toBeVisible();
+    await expect(appFrame(page).getByText("Offline second", { exact: true })).toBeVisible();
+
+    await context.setOffline(false);
+    await page.evaluate(() => window.dispatchEvent(new Event("online")));
+    await page.getByRole("button", { name: "‹ Apps" }).click();
+    await expect(page.getByTitle("Synced with remote storage.")).toBeVisible({ timeout: 15_000 });
+  });
+
+  test("keeps offline source edits across repeated launcher re-entry with storage configured", async ({ page, context }) => {
+    if (!firebaseConfig) throw new Error("APP_LAB_FIREBASE_SMOKE_CONFIG is required.");
+
+    await page.goto("/");
+    await page.evaluate(async () => {
+      indexedDB.deleteDatabase("app-lab-v2");
+      indexedDB.deleteDatabase("app-lab-sync-queue-v1");
+      localStorage.clear();
+    });
+    await page.reload();
+    await configureStorage(page, firebaseConfig);
+
+    await createExampleApp(page);
+    await expect(appFrame(page).getByRole("heading", { name: "Sandbox checklist" })).toBeVisible();
+    await page.getByRole("button", { name: "‹ Apps" }).click();
+    await expect(page.getByTitle("Synced with remote storage.")).toBeVisible({ timeout: 15_000 });
+    await page.getByRole("button", { name: "Open", exact: true }).click();
+
+    await context.setOffline(true);
+
+    await saveSource(page, htmlForChecklistTitle("Offline Source One"));
+    await expect(appFrame(page).getByRole("heading", { name: "Offline Source One" })).toBeVisible();
+    await page.getByRole("button", { name: "‹ Apps" }).click();
+    await page.getByRole("button", { name: "Open", exact: true }).click();
+    await expect(appFrame(page).getByRole("heading", { name: "Offline Source One" })).toBeVisible();
+
+    await saveSource(page, htmlForChecklistTitle("Offline Source Two"));
+    await expect(appFrame(page).getByRole("heading", { name: "Offline Source Two" })).toBeVisible();
+    await page.getByRole("button", { name: "‹ Apps" }).click();
+    await page.getByRole("button", { name: "Open", exact: true }).click();
+    await expect(appFrame(page).getByRole("heading", { name: "Offline Source Two" })).toBeVisible();
+
+    await context.setOffline(false);
+    await page.evaluate(() => window.dispatchEvent(new Event("online")));
+    await page.getByRole("button", { name: "‹ Apps" }).click();
+    await expect(page.getByTitle("Synced with remote storage.")).toBeVisible({ timeout: 15_000 });
+  });
 });
 
 async function createExampleApp(page: Page) {

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { createMemoryCore } from "../core/memoryCore";
-import { isRemoteAppDeletedError, loadRemoteAppRooms, saveRemoteAppSource } from "./appRooms";
+import { isRemoteAppDeletedError, loadRemoteAppRooms, saveRemoteAppData, saveRemoteAppSource } from "./appRooms";
 import { createMemorySyncProvider } from "./memorySyncProvider";
-import { createMemorySyncQueueStore } from "./syncQueue";
+import { createMemorySyncQueueStore, enqueueSaveAppData, enqueueSaveSource } from "./syncQueue";
 import { createWorkspaceSyncActions } from "./workspaceSyncActions";
 import { createMemoryWorkspaceSyncStore, createWorkspaceSyncRegistry } from "./workspaceSync";
 import { createWorkspaceRecoveryMaterial, loadWorkspaceManifest } from "./workspaceManifest";
@@ -283,5 +283,75 @@ describe("workspace sync actions", () => {
       name: "Recovery export test",
     });
     await expect(restoredCore.getAppData(app.appId)).resolves.toEqual({ count: 4 });
+  });
+
+  it("does not pull remote source/data over pending local work", async () => {
+    const provider = createMemorySyncProvider();
+    const core = createMemoryCore();
+    const queueStore = createMemorySyncQueueStore();
+    const registry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
+    await registry.configureStorageProfile({ databaseUrl: "https://example.firebaseio.com" });
+    const actions = createWorkspaceSyncActions({
+      core,
+      createProviderFromReference: () => provider,
+      createProviderFromStorageProfile: () => provider,
+      queueStore,
+      syncRegistry: registry,
+    });
+
+    const app = await core.createApp({
+      description: "Pending local work",
+      name: "Initial",
+      sourceCode: "<!doctype html><title>Initial</title>",
+    });
+    await core.saveAppData(app.appId, { count: 1 });
+    await actions.ensureAppBackedUp(app);
+    await actions.flushRoomLifecycleQueue();
+    await actions.pushAppSource(app);
+    await actions.pushAppData(app.appId, { count: 1 });
+    await actions.flushSourceSyncQueue();
+    await actions.flushAppDataSyncQueue();
+
+    const syncedRecord = await registry.getAppSyncRecord(app.appId);
+    if (!syncedRecord) throw new Error("Expected synced app record.");
+
+    const localApp = await core.updateApp({
+      appId: app.appId,
+      name: "Local pending",
+      sourceCode: "<!doctype html><title>Local pending</title>",
+    });
+    await core.saveAppData(app.appId, { count: 2 });
+    await enqueueSaveSource(queueStore, localApp);
+    await enqueueSaveAppData({
+      appId: app.appId,
+      baseData: { count: 1 },
+      baseRemoteVersion: syncedRecord.dataRoom.lastSeenVersion,
+      data: { count: 2 },
+      roomId: syncedRecord.dataRoom.roomId,
+      store: queueStore,
+    });
+
+    await saveRemoteAppSource({
+      app: {
+        ...localApp,
+        name: "Remote newer",
+        sourceCode: "<!doctype html><title>Remote newer</title>",
+      },
+      provider,
+      syncRecord: syncedRecord,
+    });
+    await saveRemoteAppData({
+      appData: { count: 99 },
+      provider,
+      syncRecord: syncedRecord,
+    });
+
+    await actions.pullLatestAppRooms(app.appId);
+
+    await expect(core.getApp(app.appId)).resolves.toMatchObject({
+      name: "Local pending",
+      sourceCode: "<!doctype html><title>Local pending</title>",
+    });
+    await expect(core.getAppData(app.appId)).resolves.toEqual({ count: 2 });
   });
 });

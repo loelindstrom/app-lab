@@ -30,6 +30,9 @@ test.describe("source sync", () => {
     await ownerContext.setOffline(true);
     await saveSource(owner, htmlForTitle(offlineTitle));
     await expect(owner.getByRole("heading", { name: offlineTitle })).toBeVisible();
+    await owner.getByRole("button", { name: "‹ Apps" }).click();
+    await owner.getByRole("button", { name: "Open", exact: true }).click();
+    await expect(owner.getByRole("heading", { name: offlineTitle })).toBeVisible();
 
     await ownerContext.setOffline(false);
     await owner.evaluate(() => window.dispatchEvent(new Event("online")));
@@ -97,6 +100,9 @@ test.describe("source sync", () => {
     await ownerContext.setOffline(true);
     await appFrame(owner).getByLabel("New item").fill("Offline item");
     await appFrame(owner).getByRole("button", { name: "Add" }).click();
+    await expect(appFrame(owner).getByText("Offline item")).toBeVisible();
+    await owner.getByRole("button", { name: "‹ Apps" }).click();
+    await owner.getByRole("button", { name: "Open", exact: true }).click();
     await expect(appFrame(owner).getByText("Offline item")).toBeVisible();
 
     await ownerContext.setOffline(false);

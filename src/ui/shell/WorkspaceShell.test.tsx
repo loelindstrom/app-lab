@@ -1,5 +1,5 @@
-import { render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createMemoryCore } from "../../core/memoryCore";
 import { createMemorySyncQueueStore, enqueueSaveSource } from "../../sync/syncQueue";
 import { createMemoryWorkspaceSyncStore, createWorkspaceSyncRegistry } from "../../sync/workspaceSync";
@@ -7,6 +7,8 @@ import type { WorkspaceSyncActions } from "../../sync/workspaceSyncActions";
 import { WorkspaceShell } from "./WorkspaceShell";
 
 describe("WorkspaceShell sync wake-ups", () => {
+  afterEach(() => cleanup());
+
   it("drains queued room and source sync on startup", async () => {
     const syncActions = createSyncActionsStub();
 
@@ -75,6 +77,32 @@ describe("WorkspaceShell sync wake-ups", () => {
 
     expect(await screen.findByText("Private")).toBeTruthy();
     expect((await screen.findByTitle("Local changes are queued for remote sync.")).textContent).toBe("☁ …");
+  });
+
+  it("opens the local app without waiting for remote pull", async () => {
+    const syncActions = createSyncActionsStub();
+    const core = createMemoryCore();
+    await core.createApp({
+      description: "Offline open",
+      name: "Offline local app",
+      sourceCode: "<!doctype html><title>Offline local app</title>",
+    });
+    vi.mocked(syncActions.pullLatestAppRooms).mockReturnValue(new Promise(() => {}));
+
+    render(
+      <WorkspaceShell
+        core={core}
+        syncActionsOverride={syncActions}
+        syncQueueStore={createMemorySyncQueueStore()}
+        syncRegistry={createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore())}
+      />,
+    );
+
+    expect(await screen.findByText("Offline local app")).toBeTruthy();
+    fireEvent.click(await screen.findByRole("button", { name: "Open" }));
+
+    expect(await screen.findByRole("button", { name: /Apps/ })).toBeTruthy();
+    expect(syncActions.pullLatestAppRooms).toHaveBeenCalledTimes(1);
   });
 });
 
