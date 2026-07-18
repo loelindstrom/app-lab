@@ -5,7 +5,6 @@ import {
   decryptRoomSnapshot,
   encryptRoomPayload,
   rememberSnapshotVersion,
-  toReadOnlyCapability,
 } from "./crypto";
 
 describe("sync room crypto", () => {
@@ -76,16 +75,11 @@ describe("sync room crypto", () => {
     ).rejects.toThrow(/older/);
   });
 
-  it("removes write authority from read-only capabilities", () => {
+  it("creates one full-access room token for provider read and write slots", () => {
     const capability = createRoomCapability();
-    const readOnly = toReadOnlyCapability(capability);
 
-    expect(readOnly).toMatchObject({
-      roomId: capability.roomId,
-      decryptSecret: capability.decryptSecret,
-      readToken: capability.readToken,
-      permission: "read",
-    });
-    expect(readOnly.writeToken).toBeUndefined();
+    expect(capability.accessToken).toMatch(/^room_access_/);
+    expect(capability.readToken).toBe(capability.accessToken);
+    expect(capability.writeToken).toBe(capability.accessToken);
   });
 });

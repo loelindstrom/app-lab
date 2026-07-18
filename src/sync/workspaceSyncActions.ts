@@ -1,11 +1,12 @@
 import type { AppLabCore, AppRecord, JsonValue } from "../core/types";
-import { deleteRemoteAppRooms, ensureRemoteAppRooms, isRemoteAppDeletedError, loadRemoteAppRooms, saveRemoteAppData, saveRemoteAppSource } from "./appRooms";
+import { isRemoteAppDeletedError, loadRemoteAppRooms, loadRemoteAppSource, saveRemoteAppData, saveRemoteAppSource } from "./appRooms";
 import { processAppDataSyncQueue } from "./appDataSyncWorker";
-import { decryptRoomSnapshot, rememberSnapshotVersion } from "./crypto";
+import { decryptRoomSnapshot, rememberSnapshotVersion, roomReadToken } from "./crypto";
 import { createFirebaseRealtimeSyncProvider, createFirebaseSdkRealtimeDriver } from "./firebaseRealtimeProvider";
+import { processOwnedAppDeletionQueue } from "./ownedAppDeletionWorker";
 import { processRoomLifecycleQueue } from "./roomLifecycleWorker";
 import { processSourceSyncQueue } from "./sourceSyncWorker";
-import { enqueueEnsureAppRooms, enqueueSaveAppData, enqueueSaveSource, type SyncQueueStore } from "./syncQueue";
+import { enqueueDeleteOwnedApp, enqueueEnsureAppRooms, enqueueSaveAppData, enqueueSaveSource, enqueueSaveWorkspaceManifest, saveAppDataQueueId, type SyncQueueStore } from "./syncQueue";
 import type { RealtimeSyncProvider } from "./types";
 import type { AppInvitePayload, AppSyncRecord, RemoteProviderReference, StorageProfile, WorkspaceSyncRegistry } from "./workspaceSync";
 import {
@@ -13,8 +14,8 @@ import {
   decodeWorkspaceRecoveryMaterial,
   encodeWorkspaceRecoveryMaterial,
   loadWorkspaceManifest,
-  saveWorkspaceManifest,
 } from "./workspaceManifest";
+import { processWorkspaceManifestQueue } from "./workspaceManifestWorker";
 
 interface WorkspaceSyncActionsInput {
   core: AppLabCore;
@@ -54,6 +55,11 @@ export function createWorkspaceSyncActions(input: WorkspaceSyncActionsInput) {
   let appDataFlushPromise: Promise<void> | null = null;
   let sourceFlushAgain = false;
   let sourceFlushPromise: Promise<void> | null = null;
+  let manifestFlushAgain = false;
+  let manifestFlushPromise: Promise<void> | null = null;
+  let deletionFlushAgain = false;
+  let deletionFlushPromise: Promise<void> | null = null;
+  const localAppDataWriteBarriers = new Map<string, number>();
 
   async function createInvite(appId: string): Promise<AppInvitePayload> {
     const app = await core.getApp(appId);
@@ -71,7 +77,10 @@ export function createWorkspaceSyncActions(input: WorkspaceSyncActionsInput) {
       await syncCurrentAppToRemote(app, createProviderFromStorageProfile(profile), syncRecord);
     }
 
-    return syncRegistry.createInvite(appId);
+    const invite = await syncRegistry.createInvite(appId);
+    await enqueueCurrentWorkspaceManifest();
+    void flushWorkspaceManifestQueue();
+    return invite;
   }
 
   async function importInvite(invite: AppInvitePayload): Promise<void> {
@@ -97,6 +106,8 @@ export function createWorkspaceSyncActions(input: WorkspaceSyncActionsInput) {
       sourceProvider: invite.provider,
       sourceRoom: loaded.sourceRoom,
     });
+    await enqueueCurrentWorkspaceManifest();
+    void flushWorkspaceManifestQueue();
   }
 
   async function pushAppSource(app: AppRecord): Promise<void> {
@@ -112,6 +123,7 @@ export function createWorkspaceSyncActions(input: WorkspaceSyncActionsInput) {
   }
 
   async function pushAppData(appId: string, data: JsonValue): Promise<void> {
+    markRecentLocalAppDataWrite(appId);
     const record = await syncRegistry.getAppSyncRecord(appId);
     let syncRecord = record;
     if (!syncRecord) {
@@ -136,6 +148,7 @@ export function createWorkspaceSyncActions(input: WorkspaceSyncActionsInput) {
     if (!profile) return;
     await syncRegistry.ensureOwnedAppRooms(app.appId);
     await enqueueEnsureAppRooms(queueStore, app.appId);
+    await enqueueCurrentWorkspaceManifest();
     void flushRoomLifecycleQueue();
   }
 
@@ -147,6 +160,8 @@ export function createWorkspaceSyncActions(input: WorkspaceSyncActionsInput) {
       if (fullApp) await ensureAppBackedUp(fullApp);
     }
     await flushRoomLifecycleQueue();
+    await enqueueCurrentWorkspaceManifest();
+    await flushWorkspaceManifestQueue();
   }
 
   async function pullLatestAppRooms(appId: string): Promise<PullLatestResult> {
@@ -163,10 +178,12 @@ export function createWorkspaceSyncActions(input: WorkspaceSyncActionsInput) {
         dataRoom: loaded.dataRoom,
         sourceRoom: loaded.sourceRoom,
       });
+      await enqueueCurrentWorkspaceManifest();
       return { app: loaded.app };
     } catch (error) {
       if (!isRemoteAppDeletedError(error)) throw error;
       await syncRegistry.markRemoteAppDeleted(appId, error.deletedAt);
+      await enqueueCurrentWorkspaceManifest();
       return { deletedAt: error.deletedAt };
     }
   }
@@ -176,47 +193,16 @@ export function createWorkspaceSyncActions(input: WorkspaceSyncActionsInput) {
     if (!record || record.kind === "joined") return;
     const app = await core.getApp(appId);
     if (!app) return;
-    const sourceProvider = await createSourceProviderForSyncRecord(record);
-    const dataProvider = await createProviderForSyncRecord(record);
-    if (!sourceProvider || !dataProvider) return;
-    let syncRecord = record;
-    const sourceRoom = await loadCurrentRemoteRoomCapability(sourceProvider, syncRecord.sourceRoom);
-    const dataRoom = await loadCurrentRemoteRoomCapability(dataProvider, syncRecord.dataRoom);
-    syncRecord = {
-      ...syncRecord,
-      dataRoom,
-      sourceRoom,
-    };
-    await syncRegistry.rememberAppRoomVersions({ appId, dataRoom, sourceRoom });
-    await deleteRemoteAppRooms({
-      app,
-      dataProvider,
-      sourceProvider,
-      syncRecord,
-    });
-  }
-
-  async function loadCurrentRemoteRoomCapability(provider: RealtimeSyncProvider, capability: AppSyncRecord["sourceRoom"]) {
-    try {
-      const snapshot = await provider.loadRoom({
-        readToken: capability.readToken,
-        roomId: capability.roomId,
-      });
-      return {
-        ...capability,
-        lastSeenVersion: snapshot.version,
-      };
-    } catch (error) {
-      if (!isRoomNotFoundError(error)) throw error;
-      return {
-        ...capability,
-        lastSeenVersion: 0,
-      };
-    }
+    await enqueueDeleteOwnedApp({ app, store: queueStore, syncRecord: record });
+    void flushOwnedAppDeletionQueue();
   }
 
   async function exportWorkspaceRecovery(): Promise<string> {
     await syncRegistry.ensureWorkspaceManifestRoom();
+    await flushRoomLifecycleQueue();
+    await flushSourceSyncQueue();
+    await flushAppDataSyncQueue();
+
     let state = await syncRegistry.getState();
     if (!state.storageProfile) throw new Error("Storage profile is required.");
     const provider = createProviderFromStorageProfile(state.storageProfile);
@@ -224,20 +210,13 @@ export function createWorkspaceSyncActions(input: WorkspaceSyncActionsInput) {
       const app = await core.getApp(appSummary.appId);
       const syncRecord = await syncRegistry.getAppSyncRecord(appSummary.appId);
       if (!app || !syncRecord || syncRecord.kind === "joined") continue;
-      await ensureRemoteAppRooms({
-        app,
-        appData: await core.getAppData(app.appId),
-        provider,
-        syncRecord,
-      });
+      await syncCurrentAppToRemote(app, provider, syncRecord);
     }
+    await enqueueCurrentWorkspaceManifest();
+    void flushWorkspaceManifestQueue();
     state = await syncRegistry.getState();
-    const savedState = await saveWorkspaceManifest({
-      provider,
-      state,
-    });
-    await syncRegistry.replaceState(savedState);
-    return encodeWorkspaceRecoveryMaterial(createWorkspaceRecoveryMaterial(savedState));
+    const material = createWorkspaceRecoveryMaterial(state);
+    return encodeWorkspaceRecoveryMaterial(material);
   }
 
   async function restoreWorkspaceRecovery(recoveryText: string): Promise<void> {
@@ -248,6 +227,8 @@ export function createWorkspaceSyncActions(input: WorkspaceSyncActionsInput) {
     });
     await hydrateWorkspaceAppsFromRooms(restoredState);
     await syncRegistry.replaceState(restoredState);
+    await enqueueCurrentWorkspaceManifest();
+    void flushWorkspaceManifestQueue();
   }
 
   async function subscribeAppData(
@@ -257,15 +238,20 @@ export function createWorkspaceSyncActions(input: WorkspaceSyncActionsInput) {
     const record = await syncRegistry.getAppSyncRecord(appId);
     const provider = await createProviderForSyncRecord(record);
     if (!record || !provider) return () => {};
+    const subscriptionBaselineVersion = record.dataRoom.lastSeenVersion;
+    let initialSnapshotSeen = false;
 
     return provider.subscribeRoom({
-      readToken: record.dataRoom.readToken,
+      readToken: roomReadToken(record.dataRoom),
       roomId: record.dataRoom.roomId,
       onChange: (snapshot) => {
         void (async () => {
           try {
+            const isInitialSnapshot = !initialSnapshotSeen;
+            initialSnapshotSeen = true;
             const latestRecord = await syncRegistry.getAppSyncRecord(appId);
             if (!latestRecord || snapshot.version <= latestRecord.dataRoom.lastSeenVersion) return;
+            if (await shouldPreferLocalAppData(appId)) return;
             const data = await decryptRoomSnapshot({
               capability: latestRecord.dataRoom,
               roomType: "app-data",
@@ -274,6 +260,8 @@ export function createWorkspaceSyncActions(input: WorkspaceSyncActionsInput) {
             await core.saveAppData(appId, data);
             const dataRoom = rememberSnapshotVersion(latestRecord.dataRoom, snapshot);
             await syncRegistry.rememberAppRoomVersions({ appId, dataRoom });
+            await enqueueCurrentWorkspaceManifest();
+            if (isInitialSnapshot && subscriptionBaselineVersion === 0) return;
             onChange({ data, version: snapshot.version });
           } catch (error) {
             if (isRoomNotFoundError(error)) return;
@@ -294,21 +282,20 @@ export function createWorkspaceSyncActions(input: WorkspaceSyncActionsInput) {
     if (!record || !provider) return () => {};
 
     return provider.subscribeRoom({
-      readToken: record.sourceRoom.readToken,
+      readToken: roomReadToken(record.sourceRoom),
       roomId: record.sourceRoom.roomId,
       onChange: (snapshot) => {
         void (async () => {
           const latestRecord = await syncRegistry.getAppSyncRecord(appId);
           if (!latestRecord || snapshot.version <= latestRecord.sourceRoom.lastSeenVersion) return;
           try {
-            const loaded = await loadRemoteAppRooms({ provider, syncRecord: latestRecord });
+            const loaded = await loadRemoteAppSource({ provider, syncRecord: latestRecord });
             await core.upsertApp(loaded.app);
-            await core.saveAppData(loaded.app.appId, loaded.appData);
             await syncRegistry.rememberAppRoomVersions({
               appId: loaded.app.appId,
-              dataRoom: loaded.dataRoom,
               sourceRoom: loaded.sourceRoom,
             });
+            await enqueueCurrentWorkspaceManifest();
             onChange({ app: loaded.app });
           } catch (error) {
             if (isRoomNotFoundError(error)) return;
@@ -317,6 +304,7 @@ export function createWorkspaceSyncActions(input: WorkspaceSyncActionsInput) {
               return;
             }
             await syncRegistry.markRemoteAppDeleted(appId, error.deletedAt);
+            await enqueueCurrentWorkspaceManifest();
             onDeleted({ deletedAt: error.deletedAt });
           }
         })();
@@ -337,6 +325,7 @@ export function createWorkspaceSyncActions(input: WorkspaceSyncActionsInput) {
       syncRecord: { ...record, sourceRoom },
     });
     await syncRegistry.rememberAppRoomVersions({ appId: app.appId, dataRoom, sourceRoom });
+    await enqueueCurrentWorkspaceManifest();
   }
 
   async function createProviderForSyncRecord(record: AppSyncRecord | null): Promise<RealtimeSyncProvider | null> {
@@ -405,6 +394,8 @@ export function createWorkspaceSyncActions(input: WorkspaceSyncActionsInput) {
           syncRegistry,
         });
       } while (sourceFlushAgain);
+      await enqueueCurrentWorkspaceManifest();
+      void flushWorkspaceManifestQueue();
     })().finally(() => {
       sourceFlushPromise = null;
     });
@@ -425,11 +416,101 @@ export function createWorkspaceSyncActions(input: WorkspaceSyncActionsInput) {
           queueStore,
           syncRegistry,
         });
+        await clearSettledLocalAppDataWriteBarriers();
       } while (appDataFlushAgain);
+      await enqueueCurrentWorkspaceManifest();
+      void flushWorkspaceManifestQueue();
     })().finally(() => {
       appDataFlushPromise = null;
     });
     return appDataFlushPromise;
+  }
+
+  async function enqueueCurrentWorkspaceManifest(): Promise<void> {
+    const state = await syncRegistry.getState();
+    if (!state.storageProfile) return;
+    await syncRegistry.ensureWorkspaceManifestRoom();
+    await enqueueSaveWorkspaceManifest(queueStore, state.workspaceId);
+  }
+
+  async function queueWorkspaceManifestSave(): Promise<void> {
+    await enqueueCurrentWorkspaceManifest();
+  }
+
+  function noteLocalAppDataEdit(appId: string): void {
+    markRecentLocalAppDataWrite(appId);
+  }
+
+  async function flushWorkspaceManifestQueue(options: { throwOnError?: boolean } = {}): Promise<void> {
+    if (manifestFlushPromise) {
+      manifestFlushAgain = true;
+      await manifestFlushPromise;
+      if (!options.throwOnError) return;
+    }
+    manifestFlushPromise = (async () => {
+      do {
+        manifestFlushAgain = false;
+        await processWorkspaceManifestQueue({
+          createProviderFromStorageProfile,
+          queueStore,
+          syncRegistry,
+          throwOnError: options.throwOnError,
+        });
+      } while (manifestFlushAgain);
+    })().finally(() => {
+      manifestFlushPromise = null;
+    });
+    return manifestFlushPromise;
+  }
+
+  async function hasPendingLocalAppData(appId: string): Promise<boolean> {
+    const item = await queueStore.getItem(saveAppDataQueueId(appId));
+    return item?.kind === "save-app-data";
+  }
+
+  async function shouldPreferLocalAppData(appId: string): Promise<boolean> {
+    return (await hasPendingLocalAppData(appId)) || hasRecentLocalAppDataWrite(appId);
+  }
+
+  function markRecentLocalAppDataWrite(appId: string) {
+    localAppDataWriteBarriers.set(appId, Date.now() + 1500);
+  }
+
+  function hasRecentLocalAppDataWrite(appId: string): boolean {
+    const expiresAt = localAppDataWriteBarriers.get(appId);
+    if (!expiresAt) return false;
+    if (Date.now() <= expiresAt) return true;
+    localAppDataWriteBarriers.delete(appId);
+    return false;
+  }
+
+  async function clearSettledLocalAppDataWriteBarriers(): Promise<void> {
+    await Promise.all(
+      [...localAppDataWriteBarriers.keys()].map(async (appId) => {
+        if (await hasPendingLocalAppData(appId)) return;
+        localAppDataWriteBarriers.delete(appId);
+      }),
+    );
+  }
+
+  async function flushOwnedAppDeletionQueue(): Promise<void> {
+    if (deletionFlushPromise) {
+      deletionFlushAgain = true;
+      return deletionFlushPromise;
+    }
+    deletionFlushPromise = (async () => {
+      do {
+        deletionFlushAgain = false;
+        await processOwnedAppDeletionQueue({
+          createProviderFromStorageProfile,
+          queueStore,
+          syncRegistry,
+        });
+      } while (deletionFlushAgain);
+    })().finally(() => {
+      deletionFlushPromise = null;
+    });
+    return deletionFlushPromise;
   }
 
   return {
@@ -439,12 +520,16 @@ export function createWorkspaceSyncActions(input: WorkspaceSyncActionsInput) {
     ensureAppBackedUp,
     exportWorkspaceRecovery,
     flushAppDataSyncQueue,
+    flushOwnedAppDeletionQueue,
+    flushWorkspaceManifestQueue,
     flushSourceSyncQueue,
     flushRoomLifecycleQueue,
     importInvite,
+    noteLocalAppDataEdit,
     pullLatestAppRooms,
     pushAppData,
     pushAppSource,
+    queueWorkspaceManifestSave,
     restoreWorkspaceRecovery,
     subscribeAppData,
     subscribeAppSource,

@@ -5,6 +5,7 @@ import { createMemorySyncProvider } from "./memorySyncProvider";
 import { createMemorySyncQueueStore } from "./syncQueue";
 import { createWorkspaceSyncActions } from "./workspaceSyncActions";
 import { createMemoryWorkspaceSyncStore, createWorkspaceSyncRegistry } from "./workspaceSync";
+import { createWorkspaceRecoveryMaterial, loadWorkspaceManifest } from "./workspaceManifest";
 
 describe("workspace sync actions", () => {
   it("backs up an owned app, imports the invite into another workspace, and streams data changes", async () => {
@@ -154,14 +155,133 @@ describe("workspace sync actions", () => {
     });
 
     await expect(ownerActions.deleteSyncedAppRooms(app.appId)).resolves.toBeUndefined();
+    await ownerActions.flushOwnedAppDeletionQueue();
 
-    const latestRecord = await ownerRegistry.getAppSyncRecord(app.appId);
-    if (!latestRecord) throw new Error("Expected app sync record.");
     try {
-      await loadRemoteAppRooms({ provider, syncRecord: latestRecord });
+      await loadRemoteAppRooms({ provider, syncRecord: staleRecord });
       throw new Error("Expected remote app to be marked deleted.");
     } catch (error) {
       expect(isRemoteAppDeletedError(error)).toBe(true);
     }
+  });
+
+  it("does not delete remote rooms when a joined workspace removes a shared app", async () => {
+    const provider = createMemorySyncProvider();
+    const ownerCore = createMemoryCore();
+    const ownerRegistry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
+    await ownerRegistry.configureStorageProfile({ databaseUrl: "https://example.firebaseio.com" });
+    const ownerActions = createWorkspaceSyncActions({
+      core: ownerCore,
+      createProviderFromReference: () => provider,
+      createProviderFromStorageProfile: () => provider,
+      queueStore: createMemorySyncQueueStore(),
+      syncRegistry: ownerRegistry,
+    });
+
+    const app = await ownerCore.createApp({
+      description: "Joined delete test",
+      name: "Joined delete test",
+      sourceCode: "<!doctype html><title>Joined delete test</title>",
+    });
+    await ownerCore.saveAppData(app.appId, { count: 1 });
+    await ownerActions.ensureAppBackedUp(app);
+    await ownerActions.flushRoomLifecycleQueue();
+    const invite = await ownerActions.createInvite(app.appId);
+
+    const joinedCore = createMemoryCore();
+    const joinedRegistry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
+    const joinedActions = createWorkspaceSyncActions({
+      core: joinedCore,
+      createProviderFromReference: () => provider,
+      createProviderFromStorageProfile: () => provider,
+      queueStore: createMemorySyncQueueStore(),
+      syncRegistry: joinedRegistry,
+    });
+    await joinedActions.importInvite(invite);
+
+    await expect(joinedActions.deleteSyncedAppRooms(app.appId)).resolves.toBeUndefined();
+    await joinedActions.flushOwnedAppDeletionQueue();
+
+    const ownerRecord = await ownerRegistry.getAppSyncRecord(app.appId);
+    if (!ownerRecord) throw new Error("Expected owner sync record.");
+    await expect(loadRemoteAppRooms({ provider, syncRecord: ownerRecord })).resolves.toMatchObject({
+      app: { appId: app.appId, name: "Joined delete test" },
+      appData: { count: 1 },
+    });
+  });
+
+  it("writes a restorable workspace manifest after backing up local apps", async () => {
+    const provider = createMemorySyncProvider();
+    const ownerCore = createMemoryCore();
+    const ownerRegistry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
+    await ownerRegistry.configureStorageProfile({ databaseUrl: "https://example.firebaseio.com" });
+    const ownerActions = createWorkspaceSyncActions({
+      core: ownerCore,
+      createProviderFromReference: () => provider,
+      createProviderFromStorageProfile: () => provider,
+      queueStore: createMemorySyncQueueStore(),
+      syncRegistry: ownerRegistry,
+    });
+
+    const app = await ownerCore.createApp({
+      description: "Manifest test",
+      name: "Manifest test",
+      sourceCode: "<!doctype html><title>Manifest test</title>",
+    });
+    await ownerCore.saveAppData(app.appId, { count: 1 });
+
+    await ownerActions.backUpLocalApps();
+
+    const state = await ownerRegistry.getState();
+    expect(state.manifestRoom?.lastSeenVersion).toBe(1);
+    const restored = await loadWorkspaceManifest({
+      provider,
+      recoveryMaterial: createWorkspaceRecoveryMaterial(state),
+    });
+    expect(restored.apps[app.appId]).toMatchObject({ appId: app.appId, kind: "owned" });
+  });
+
+  it("exports recovery material that hydrates apps into a clean workspace", async () => {
+    const provider = createMemorySyncProvider();
+    const ownerCore = createMemoryCore();
+    const ownerRegistry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
+    await ownerRegistry.configureStorageProfile({ databaseUrl: "https://example.firebaseio.com" });
+    const ownerActions = createWorkspaceSyncActions({
+      core: ownerCore,
+      createProviderFromReference: () => provider,
+      createProviderFromStorageProfile: () => provider,
+      queueStore: createMemorySyncQueueStore(),
+      syncRegistry: ownerRegistry,
+    });
+
+    const app = await ownerCore.createApp({
+      description: "Recovery export test",
+      name: "Recovery export test",
+      sourceCode: "<!doctype html><title>Recovery export test</title>",
+    });
+    await ownerCore.saveAppData(app.appId, { count: 4 });
+    await ownerActions.ensureAppBackedUp(app);
+    await ownerActions.pushAppSource(app);
+    await ownerActions.pushAppData(app.appId, { count: 4 });
+
+    const recoveryText = await ownerActions.exportWorkspaceRecovery();
+
+    const restoredCore = createMemoryCore();
+    const restoredRegistry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
+    const restoredActions = createWorkspaceSyncActions({
+      core: restoredCore,
+      createProviderFromReference: () => provider,
+      createProviderFromStorageProfile: () => provider,
+      queueStore: createMemorySyncQueueStore(),
+      syncRegistry: restoredRegistry,
+    });
+
+    await restoredActions.restoreWorkspaceRecovery(recoveryText);
+
+    await expect(restoredCore.getApp(app.appId)).resolves.toMatchObject({
+      appId: app.appId,
+      name: "Recovery export test",
+    });
+    await expect(restoredCore.getAppData(app.appId)).resolves.toEqual({ count: 4 });
   });
 });

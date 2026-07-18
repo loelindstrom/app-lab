@@ -59,6 +59,27 @@ describe("workspace manifest sync", () => {
     expect(restored.apps["app-2"]).toMatchObject({ appId: "app-2", kind: "owned" });
   });
 
+  it("recreates a missing manifest room when the local state remembers a version", async () => {
+    const provider = createMemorySyncProvider();
+    const registry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
+    await registry.configureStorageProfile({
+      databaseUrl: "https://example.firebaseio.com",
+      firebaseConfigText: JSON.stringify({ databaseURL: "https://example.firebaseio.com" }),
+    });
+    await registry.ensureWorkspaceManifestRoom();
+    await registry.rememberWorkspaceManifestVersion(1);
+    await registry.ensureOwnedAppRooms("app-1");
+
+    const savedState = await saveWorkspaceManifest({ provider, state: await registry.getState() });
+
+    expect(savedState.manifestRoom?.lastSeenVersion).toBe(1);
+    const restored = await loadWorkspaceManifest({
+      provider,
+      recoveryMaterial: createWorkspaceRecoveryMaterial(savedState),
+    });
+    expect(restored.apps["app-1"]).toMatchObject({ appId: "app-1", kind: "owned" });
+  });
+
   it("rejects invalid recovery material", () => {
     expect(() => decodeWorkspaceRecoveryMaterial("not-a-recovery-key")).toThrow(/recovery material/i);
   });

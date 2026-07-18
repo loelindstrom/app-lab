@@ -1,5 +1,5 @@
 import type { JsonValue } from "../core/types";
-import { decryptRoomSnapshot, encryptRoomPayload, rememberSnapshotVersion } from "./crypto";
+import { decryptRoomSnapshot, encryptRoomPayload, rememberSnapshotVersion, roomReadToken, roomWriteToken } from "./crypto";
 import type { FirebaseWebAppConfig } from "./firebaseConfig";
 import type { RealtimeSyncProvider, RoomCapability } from "./types";
 import type { RemoteProviderReference, StorageProfile, WorkspaceSyncState } from "./workspaceSync";
@@ -14,6 +14,7 @@ export interface WorkspaceRecoveryMaterial {
     firebaseConfig: FirebaseWebAppConfig;
   };
   schemaVersion: typeof WORKSPACE_RECOVERY_SCHEMA_VERSION;
+  workspaceState?: JsonValue;
   workspaceId: string;
 }
 
@@ -32,6 +33,7 @@ export function createWorkspaceRecoveryMaterial(state: WorkspaceSyncState): Work
       provider: state.storageProfile.provider,
     },
     schemaVersion: WORKSPACE_RECOVERY_SCHEMA_VERSION,
+    workspaceState: toWorkspaceManifestPayload(state),
     workspaceId: state.workspaceId,
   };
 }
@@ -72,8 +74,12 @@ export async function loadWorkspaceManifest(input: {
   provider: RealtimeSyncProvider;
   recoveryMaterial: WorkspaceRecoveryMaterial;
 }): Promise<WorkspaceSyncState> {
+  if (input.recoveryMaterial.workspaceState) {
+    return withRecoveryProviderMetadata(parseWorkspaceManifestPayload(input.recoveryMaterial.workspaceState), input.recoveryMaterial);
+  }
+
   const snapshot = await input.provider.loadRoom({
-    readToken: input.recoveryMaterial.manifestRoom.readToken,
+    readToken: roomReadToken(input.recoveryMaterial.manifestRoom),
     roomId: input.recoveryMaterial.manifestRoom.roomId,
   });
   const payload = await decryptRoomSnapshot({
@@ -82,16 +88,26 @@ export async function loadWorkspaceManifest(input: {
     snapshot,
   });
   const state = parseWorkspaceManifestPayload(payload);
+  return withRecoveryProviderMetadata(
+    {
+      ...state,
+      manifestRoom: rememberSnapshotVersion(input.recoveryMaterial.manifestRoom, snapshot),
+    },
+    input.recoveryMaterial,
+  );
+}
+
+function withRecoveryProviderMetadata(state: WorkspaceSyncState, recoveryMaterial: WorkspaceRecoveryMaterial): WorkspaceSyncState {
   return {
     ...state,
-    manifestRoom: rememberSnapshotVersion(input.recoveryMaterial.manifestRoom, snapshot),
+    manifestRoom: state.manifestRoom ?? recoveryMaterial.manifestRoom,
     storageProfile: {
-      createdAt: state.storageProfile?.createdAt ?? input.recoveryMaterial.createdAt,
-      databaseUrl: input.recoveryMaterial.provider.databaseUrl,
+      createdAt: state.storageProfile?.createdAt ?? recoveryMaterial.createdAt,
+      databaseUrl: recoveryMaterial.provider.databaseUrl,
       displayName: state.storageProfile?.displayName ?? "Firebase Realtime Database",
-      firebaseConfig: input.recoveryMaterial.provider.firebaseConfig,
-      profileId: input.recoveryMaterial.provider.profileId ?? state.storageProfile?.profileId ?? `profile_${crypto.randomUUID()}`,
-      provider: input.recoveryMaterial.provider.provider,
+      firebaseConfig: recoveryMaterial.provider.firebaseConfig,
+      profileId: recoveryMaterial.provider.profileId ?? state.storageProfile?.profileId ?? `profile_${crypto.randomUUID()}`,
+      provider: recoveryMaterial.provider.provider,
       updatedAt: new Date().toISOString(),
     },
   };
@@ -102,7 +118,7 @@ async function createOrUpdateManifestRoom(provider: RealtimeSyncProvider, capabi
     return await createManifestRoom(provider, capability, state);
   } catch (error) {
     if (!(error instanceof Error) || !/already exists/i.test(error.message)) throw error;
-    const current = await provider.loadRoom({ readToken: capability.readToken, roomId: capability.roomId });
+    const current = await provider.loadRoom({ readToken: roomReadToken(capability), roomId: capability.roomId });
     return saveManifestRoom(provider, capability, state, current.version);
   }
 }
@@ -110,19 +126,31 @@ async function createOrUpdateManifestRoom(provider: RealtimeSyncProvider, capabi
 async function createManifestRoom(provider: RealtimeSyncProvider, capability: RoomCapability, state: WorkspaceSyncState) {
   return provider.createRoom({
     encryptedPayload: await encryptWorkspaceManifest(capability, state, 1),
-    readToken: capability.readToken,
+    readToken: roomReadToken(capability),
     roomId: capability.roomId,
-    writeToken: requireWriteToken(capability),
+    writeToken: roomWriteToken(capability),
   });
 }
 
 async function saveManifestRoom(provider: RealtimeSyncProvider, capability: RoomCapability, state: WorkspaceSyncState, expectedVersion: number) {
-  return provider.saveRoom({
-    encryptedPayload: await encryptWorkspaceManifest(capability, state, expectedVersion + 1),
-    expectedVersion,
-    roomId: capability.roomId,
-    writeToken: requireWriteToken(capability),
-  });
+  try {
+    return await provider.saveRoom({
+      encryptedPayload: await encryptWorkspaceManifest(capability, state, expectedVersion + 1),
+      expectedVersion,
+      roomId: capability.roomId,
+      writeToken: roomWriteToken(capability),
+    });
+  } catch (error) {
+    if (isRoomNotFoundError(error)) return createManifestRoom(provider, capability, state);
+    if (!isRoomVersionConflictError(error)) throw error;
+    const current = await provider.loadRoom({ readToken: roomReadToken(capability), roomId: capability.roomId });
+    return provider.saveRoom({
+      encryptedPayload: await encryptWorkspaceManifest(capability, state, current.version + 1),
+      expectedVersion: current.version,
+      roomId: capability.roomId,
+      writeToken: roomWriteToken(capability),
+    });
+  }
 }
 
 function encryptWorkspaceManifest(capability: RoomCapability, state: WorkspaceSyncState, roomVersion: number) {
@@ -188,13 +216,16 @@ function requireManifestCapability(state: WorkspaceSyncState): RoomCapability {
   return state.manifestRoom;
 }
 
-function requireWriteToken(capability: RoomCapability): string {
-  if (!capability.writeToken) throw new Error("Workspace manifest room is read-only.");
-  return capability.writeToken;
-}
-
 function isRecord(value: unknown): value is Record<string, JsonValue> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function isRoomNotFoundError(error: unknown): boolean {
+  return error instanceof Error && /(not found|found missing)/i.test(error.message);
+}
+
+function isRoomVersionConflictError(error: unknown): boolean {
+  return error instanceof Error && /room version conflict/i.test(error.message);
 }
 
 function bytesToBase64Url(bytes: Uint8Array): string {

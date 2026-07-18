@@ -36,10 +36,14 @@ export function SettingsDialog({
     setDisplayName(storageProfile?.displayName ?? "");
     setDatabaseUrl(storageProfile?.databaseUrl ?? "");
     setFirebaseConfigText(storageProfile ? JSON.stringify(storageProfile.firebaseConfig, null, 2) : "");
+  }, [storageProfile]);
+
+  useEffect(() => {
+    if (!isOpen) return;
     setRecoveryText("");
     setRestoreText("");
     setStatus("Ready");
-  }, [storageProfile, isOpen]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -70,7 +74,7 @@ export function SettingsDialog({
       const material = await onExportWorkspaceRecovery();
       setRecoveryText(material);
       setStatus("Recovery material ready. Treat it like a password.");
-      await navigator.clipboard?.writeText(material);
+      void navigator.clipboard?.writeText(material).catch(() => {});
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Could not export recovery material.");
     }
@@ -81,7 +85,7 @@ export function SettingsDialog({
     setStatus("Restoring workspace manifest...");
     try {
       await onRestoreWorkspaceRecovery(restoreText);
-      setStatus("Workspace metadata restored. App hydration from rooms is the next sync slice.");
+      setStatus("Workspace restored. Synced apps are being hydrated from their rooms.");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Could not restore workspace.");
     }

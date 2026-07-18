@@ -1,5 +1,5 @@
 import type { AppRecord, JsonValue } from "../core/types";
-import { decryptRoomSnapshot, encryptRoomPayload, rememberSnapshotVersion } from "./crypto";
+import { decryptRoomSnapshot, encryptRoomPayload, rememberSnapshotVersion, roomReadToken, roomWriteToken } from "./crypto";
 import type { AppSyncRecord, OwnedAppSyncRecord, PrivateCopySyncRecord } from "./workspaceSync";
 import type { RealtimeSyncProvider, RoomCapability, RoomType } from "./types";
 
@@ -71,9 +71,6 @@ export async function saveRemoteAppSource(input: {
   provider: RealtimeSyncProvider;
   syncRecord: AppSyncRecord;
 }): Promise<RoomCapability> {
-  if (!input.syncRecord.sourceRoom.writeToken) {
-    throw new Error("App source room is read-only.");
-  }
   const sourcePayload: AppPackageRoomPayload = {
     app: {
       appId: input.app.appId,
@@ -99,9 +96,6 @@ export async function saveRemoteAppData(input: {
   provider: RealtimeSyncProvider;
   syncRecord: OwnedAppSyncRecord | PrivateCopySyncRecord | Extract<AppSyncRecord, { kind: "joined" }>;
 }): Promise<RoomCapability> {
-  if (!input.syncRecord.dataRoom.writeToken) {
-    throw new Error("App data room is read-only.");
-  }
   return saveRemoteRoom({
     capability: input.syncRecord.dataRoom,
     data: input.appData,
@@ -118,12 +112,17 @@ export interface LoadedRemoteAppRooms {
   sourceRoom: RoomCapability;
 }
 
-export async function loadRemoteAppRooms(input: {
+export interface LoadedRemoteAppSource {
+  app: AppRecord;
+  sourceRoom: RoomCapability;
+}
+
+export async function loadRemoteAppSource(input: {
   provider: RealtimeSyncProvider;
   syncRecord: AppSyncRecord;
-}): Promise<LoadedRemoteAppRooms> {
+}): Promise<LoadedRemoteAppSource> {
   const sourceSnapshot = await input.provider.loadRoom({
-    readToken: input.syncRecord.sourceRoom.readToken,
+    readToken: roomReadToken(input.syncRecord.sourceRoom),
     roomId: input.syncRecord.sourceRoom.roomId,
   });
   const sourcePayload = await decryptRoomSnapshot({
@@ -131,10 +130,21 @@ export async function loadRemoteAppRooms(input: {
     roomType: "app-package",
     snapshot: sourceSnapshot,
   });
-  const app = parseAppPackagePayload(sourcePayload);
+
+  return {
+    app: parseAppPackagePayload(sourcePayload),
+    sourceRoom: rememberSnapshotVersion(input.syncRecord.sourceRoom, sourceSnapshot),
+  };
+}
+
+export async function loadRemoteAppRooms(input: {
+  provider: RealtimeSyncProvider;
+  syncRecord: AppSyncRecord;
+}): Promise<LoadedRemoteAppRooms> {
+  const source = await loadRemoteAppSource(input);
 
   const dataSnapshot = await input.provider.loadRoom({
-    readToken: input.syncRecord.dataRoom.readToken,
+    readToken: roomReadToken(input.syncRecord.dataRoom),
     roomId: input.syncRecord.dataRoom.roomId,
   });
   const dataPayload = await decryptRoomSnapshot({
@@ -144,10 +154,10 @@ export async function loadRemoteAppRooms(input: {
   });
 
   return {
-    app,
+    app: source.app,
     appData: dataPayload,
     dataRoom: rememberSnapshotVersion(input.syncRecord.dataRoom, dataSnapshot),
-    sourceRoom: rememberSnapshotVersion(input.syncRecord.sourceRoom, sourceSnapshot),
+    sourceRoom: source.sourceRoom,
   };
 }
 
@@ -157,10 +167,6 @@ export async function deleteRemoteAppRooms(input: {
   sourceProvider: RealtimeSyncProvider;
   syncRecord: AppSyncRecord;
 }): Promise<void> {
-  if (!input.syncRecord.sourceRoom.writeToken || !input.syncRecord.dataRoom.writeToken) {
-    throw new Error("Shared rooms cannot be deleted without write access.");
-  }
-
   if (input.app) {
     await markRemoteAppDeleted({
       app: input.app,
@@ -178,9 +184,6 @@ export async function markRemoteAppDeleted(input: {
   provider: RealtimeSyncProvider;
   syncRecord: AppSyncRecord;
 }): Promise<RoomCapability> {
-  if (!input.syncRecord.sourceRoom.writeToken) {
-    throw new Error("App source room is read-only.");
-  }
   const deletedPayload: DeletedAppPackageRoomPayload = {
     appId: input.app.appId,
     deleted: true,
@@ -214,25 +217,24 @@ async function ensureRemoteRoom(input: {
   try {
     await input.provider.createRoom({
       encryptedPayload,
-      readToken: input.capability.readToken,
+      readToken: roomReadToken(input.capability),
       roomId: input.capability.roomId,
-      writeToken: input.capability.writeToken ?? "",
+      writeToken: roomWriteToken(input.capability),
     });
   } catch (error) {
     if (!isRoomAlreadyExistsError(error)) throw error;
     await input.provider.loadRoom({
-      readToken: input.capability.readToken,
+      readToken: roomReadToken(input.capability),
       roomId: input.capability.roomId,
     });
   }
 }
 
 async function deleteRemoteRoom(provider: RealtimeSyncProvider, capability: RoomCapability): Promise<void> {
-  if (!capability.writeToken) throw new Error("Room is read-only.");
   try {
     await provider.deleteRoom({
       roomId: capability.roomId,
-      writeToken: capability.writeToken,
+      writeToken: roomWriteToken(capability),
     });
   } catch (error) {
     if (!isRoomNotFoundError(error)) throw error;
@@ -246,12 +248,11 @@ async function saveRemoteRoom(input: {
   recreateIfMissing?: boolean;
   roomType: RoomType;
 }): Promise<RoomCapability> {
-  if (!input.capability.writeToken) throw new Error("Room is read-only.");
   let expectedVersion = input.capability.lastSeenVersion;
   if (expectedVersion === 0) {
     try {
       const snapshot = await input.provider.loadRoom({
-        readToken: input.capability.readToken,
+        readToken: roomReadToken(input.capability),
         roomId: input.capability.roomId,
       });
       expectedVersion = snapshot.version;
@@ -259,7 +260,7 @@ async function saveRemoteRoom(input: {
       if (!isRoomNotFoundError(error)) throw error;
       await ensureRemoteRoom(input);
       const snapshot = await input.provider.loadRoom({
-        readToken: input.capability.readToken,
+        readToken: roomReadToken(input.capability),
         roomId: input.capability.roomId,
       });
       return rememberExactSnapshotVersion(input.capability, snapshot);
@@ -279,13 +280,13 @@ async function saveRemoteRoom(input: {
       encryptedPayload,
       expectedVersion,
       roomId: input.capability.roomId,
-      writeToken: input.capability.writeToken,
+      writeToken: roomWriteToken(input.capability),
     });
   } catch (error) {
     if (!input.recreateIfMissing || !isRoomNotFoundError(error)) throw error;
     await ensureRemoteRoom(input);
     snapshot = await input.provider.loadRoom({
-      readToken: input.capability.readToken,
+      readToken: roomReadToken(input.capability),
       roomId: input.capability.roomId,
     });
     return rememberExactSnapshotVersion(input.capability, snapshot);

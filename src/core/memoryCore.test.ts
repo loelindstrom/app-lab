@@ -18,7 +18,9 @@ describe("createMemoryCore", () => {
     expect(app.sourceCode).toContain("<html");
     expect(app.sourceCode).toContain("AppLab.getData");
     expect(app.sourceCode).toContain("AppLab.saveData");
-    expect(app.sourceCode).toContain("Persisted counter");
+    expect(app.sourceCode).toContain("AppLab.onDataChange");
+    expect(app.sourceCode).toContain("crypto.randomUUID");
+    expect(app.sourceCode).toContain("Persisted records with stable IDs");
   });
 
   it("saves app-owned JSON data", async () => {

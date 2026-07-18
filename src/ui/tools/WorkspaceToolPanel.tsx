@@ -161,7 +161,7 @@ function ConsoleView({ entries, onClear }: { entries: SandboxConsoleEntry[]; onC
     }
 
     try {
-      await navigator.clipboard.writeText(consoleText);
+      await withTimeout(navigator.clipboard.writeText(consoleText), 1500);
       setStatus("Copied.");
     } catch (_) {
       setStatus("Select and copy manually.");
@@ -211,6 +211,22 @@ function ConsoleView({ entries, onClear }: { entries: SandboxConsoleEntry[]; onC
   );
 }
 
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeout = window.setTimeout(() => reject(new Error("Timed out.")), timeoutMs);
+    promise.then(
+      (value) => {
+        window.clearTimeout(timeout);
+        resolve(value);
+      },
+      (error: unknown) => {
+        window.clearTimeout(timeout);
+        reject(error);
+      },
+    );
+  });
+}
+
 function createPromptWithCode(appName: string, sourceCode: string): string {
   return `You are helping me edit an App Lab sandbox app named "${appName}".
 
@@ -225,6 +241,7 @@ Runtime rules:
 - Use pointer events for drag/drop interactions.
 - Include a visible status/error area so runtime failures are shown to the user.
 - For saved data changes, use a schemaVersion and migrate older saved shapes defensively before saving the new shape.
+- For lists or collections, prefer records with stable high-entropy id fields using crypto.randomUUID() or a fallback. This is not required for tiny state, but it makes future sync merging safer.
 - For small state objects with known keys, put "use strict"; at the top of the script and call Object.seal(state) after creating the state object, so property-name typos become visible errors.
 
 Persistence API:
@@ -232,8 +249,10 @@ Persistence API:
 - Save app-owned JSON data with: await AppLab.saveData(jsonValue)
 - For live shared data, register AppLab.onDataChange((nextData, info) => { ... }).
 - In onDataChange, update the app's persisted data model and refresh only the data-dependent UI.
+- If a local save is currently in flight, ignore or defer onDataChange so an older remote echo cannot overwrite the user's local edit.
 - Do not reset transient UI state during onDataChange: preserve active tab, scroll position, open dialogs, focused inputs, and unsaved drafts.
 - Keep persisted data separate from view state. Persist records/settings; keep current tab, modal state, and form focus in local variables.
+- Current App Lab sync uses latest-local-wins for unresolved offline conflicts. Design shared apps so occasional full-state overwrites are acceptable.
 - JSON data must be primitives, arrays, and plain objects only.
 - You can show unexpected runtime errors with AppLab.onError((message) => { ... }).
 - Do not use raw postMessage unless the user explicitly asks for low-level App Lab runtime code.

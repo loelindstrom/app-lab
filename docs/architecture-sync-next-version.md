@@ -1,8 +1,22 @@
-# App Lab Sync: Next Version
+# App Lab Sync Architecture
 
-This is a design proposal for the next sync iteration. It is not the current implementation. The goal is to separate the different
-kinds of sync, make local-first behavior explicit, and add a realistic path toward better conflict handling without giving
-generated apps direct access to Firebase or provider details.
+This document describes the current sync direction and the parts already implemented in the React version of App Lab. The goal is
+to separate the different kinds of sync, make local-first behavior explicit, and keep a realistic path toward better conflict
+handling without giving generated apps direct access to Firebase or provider details.
+
+Current implementation status:
+
+- implemented: encrypted app source/data rooms, Firebase Realtime Database provider, invite import/share, realtime active-app
+  subscriptions, durable queue records for room creation, source saves, app-data saves, and workspace manifest saves
+- implemented: generated apps use `AppLab.getData`, `AppLab.saveData`, and `AppLab.onDataChange`; provider details stay in the
+  host shell
+- implemented: new room capabilities are full-access bearer capabilities; provider read/write slots are compatibility details
+- implemented: workspace manifest recovery export/restore and background manifest writes for current local sync metadata
+- implemented: local-first owned-app deletion queues remote tombstone/data-room cleanup; joined-app deletion remains local-only
+- implemented: launcher relationship labels are separate from queue-derived cloud sync health
+- implemented: example app and copy-paste prompt demonstrate `onDataChange` and future-merge-friendly record IDs for collection data
+- decided: do not add TanStack Query for this sync iteration; App Lab still needs domain-specific queue records and workers
+- not implemented: advanced ID-based app-data merge
 
 ## Product Goal
 
@@ -132,7 +146,8 @@ A remote room record contains provider-visible metadata and encrypted payload:
   "roomId": "room_...",
   "version": 4,
   "updatedAt": "2026-06-25T10:00:00.000Z",
-  "accessTokenHash": "sha256...",
+  "readTokenHash": "sha256...",
+  "writeTokenHash": "sha256...",
   "encryptedPayload": "{\"schemaVersion\":1,\"algorithm\":\"AES-GCM\",...}"
 }
 ```
@@ -160,14 +175,13 @@ Meanings:
 - `accessToken`: bearer capability used to load, subscribe, save, and delete the room
 - `lastSeenVersion`: newest provider-accepted room version known locally
 
-The next version should treat invites as full-access bearer capabilities. If someone has the room capability, they can read, write,
-and forward it. This matches the current practical sharing model and avoids pretending that App Lab can provide read-only sharing
-without provider-enforced authorization.
+App Lab treats invites as full-access bearer capabilities. If someone has the room capability, they can read, write, and forward
+it. This matches the current practical sharing model and avoids pretending that App Lab can provide read-only sharing without
+provider-enforced authorization.
 
-Current code still has `readToken`, `writeToken`, and `permission` fields. Those are legacy from an earlier design that explored
-read-only/write sharing. With the current broad Firebase prototype rules, that distinction is not a product-level security
-boundary. A cleanup pass should collapse the next model toward one full-access room token unless provider-enforced read-only
-sharing becomes a real requirement later.
+New rooms use one `accessToken` for both provider read and write slots. The Firebase provider still stores `readTokenHash` and
+`writeTokenHash` internally because that was the earlier provider record shape; new capabilities set both tokens to the same
+access token. This keeps old room records compatible while making the product model full-access.
 
 If a future provider can genuinely enforce read-only access, add it as a deliberate second sharing mode. Do not keep semi-enforced
 read/write distinctions in the normal model.
@@ -280,7 +294,7 @@ When a user configures remote storage:
 When a user restores another device:
 
 1. User provides recovery material.
-2. App Lab loads and decrypts the remote manifest room.
+2. App Lab reads the embedded workspace manifest snapshot from the recovery material.
 3. App Lab stores that manifest as local sync metadata.
 4. App Lab loads/decrypts app source/data rooms referenced by the manifest.
 5. Apps appear locally and continue syncing through their referenced rooms.
@@ -290,7 +304,7 @@ material or local browser storage.
 
 ### Recovery Material
 
-Recovery material is the map to the encrypted manifest room:
+Recovery material is the map to the encrypted workspace plus a point-in-time manifest snapshot:
 
 ```json
 {
@@ -310,6 +324,19 @@ Recovery material is the map to the encrypted manifest room:
     "decryptSecret": "...",
     "accessToken": "...",
     "lastSeenVersion": 4
+  },
+  "workspaceState": {
+    "schemaVersion": 1,
+    "workspaceId": "workspace_123",
+    "apps": {
+      "app_gym": {
+        "kind": "owned",
+        "appId": "app_gym",
+        "sourceRoom": { "roomId": "room_source", "decryptSecret": "...", "accessToken": "...", "lastSeenVersion": 7 },
+        "dataRoom": { "roomId": "room_data", "decryptSecret": "...", "accessToken": "...", "lastSeenVersion": 12 }
+      }
+    },
+    "deletedApps": {}
   }
 }
 ```
@@ -318,12 +345,14 @@ Recovery chain:
 
 ```text
 recovery material
-  -> provider config + manifest room capability
-  -> load encrypted manifest room
-  -> decrypt manifest
+  -> embedded manifest snapshot
   -> get source/data room capabilities
   -> load/decrypt apps and app data
 ```
+
+The remote manifest room still exists and is written in the background as the cloud backup/cross-device sync copy of local sync
+metadata. The embedded snapshot makes explicit recovery export deterministic: the text the user saves contains the room references
+needed for restore even if a background manifest write is stale or delayed.
 
 If IndexedDB is wiped and the user has not saved recovery material, Firebase access alone should not be enough to restore the
 encrypted workspace. This is intentional. Storing decrypt secrets in Firebase would make Firebase account access equivalent to
@@ -443,6 +472,9 @@ Rules:
 - preserve the original `baseData` and `baseRemoteVersion` until the pending write is accepted remotely
 - if a local save happens while a provider write is in flight, keep the pending record and flush again after the current attempt
 - if the provider is unavailable, keep the pending record and retry later
+- source-room subscriptions must not load or apply app-data room payloads
+- when a local app-data save starts, suppress queued/stale remote data echoes for that app while the local write is pending or
+  briefly recent; clear that suppression as soon as the app-data queue settles
 
 This is the same path online and offline. Online just means the queue usually drains quickly.
 
@@ -576,7 +608,14 @@ It should track:
 - local tombstones for apps
 - last-seen remote room versions
 
-Manifest writes can be queued and retried. Conflicts should use host-defined merge rules, not generated-app JSON rules.
+Current implementation supports explicit workspace recovery export/restore and background manifest writes. Export returns recovery
+material with an embedded manifest snapshot that can restore the workspace on another device. A remote manifest write is also
+queued, but explicit recovery does not depend on that background write being fresh.
+
+The manifest worker enqueues and retries manifest updates when apps are created, imported, shared, deleted, or when room versions
+are updated. It is intentionally separate from source/data workers so slow manifest backup should not block normal app usage.
+
+Manifest conflicts should use host-defined merge rules, not generated-app JSON rules.
 
 Reasonable manifest merge:
 
@@ -602,8 +641,14 @@ AppLab.onDataChange((nextData, info) => {
 });
 ```
 
-The example app and app-building prompt should show `saveData` with merge-friendly JSON: records in arrays get UUID-style IDs,
-and transient UI state stays outside persisted data.
+The example app and app-building prompt should show `onDataChange` so shared live data can update without reloading the iframe.
+They do not need to require UUID-style record IDs yet; that becomes more important if App Lab later implements ID-based merge.
+Generated apps should ignore or defer `onDataChange` while a local `saveData` call is in flight; under latest-local-wins, local
+edits should not be overwritten by delayed remote echoes.
+
+Realtime subscriptions receive an initial provider snapshot. The host treats that first snapshot as baseline room state and should
+not show a "remote data changed" warning for it. User warnings are reserved for later remote changes that arrive after the app is
+open and cannot be handled by the generated app.
 
 ## Sharing Mechanics
 
@@ -725,120 +770,24 @@ Conflict behavior for the first local-first version:
 - provider/auth/decryption/deleted-room problems show a clear warning
 - avoid user choice dialogs until real conflict-resolution UX is needed
 
-## Implementation Slices
+## TanStack Query Decision
 
-Each slice should build, typecheck, and pass automated tests before moving on. Manual testing is listed only where it adds signal
-that unit tests cannot easily cover.
+TanStack Query is not added in this iteration.
 
-### Slice 1: Queue Types And Store
+Reasoning:
 
-Change:
+- App Lab queue items are not generic HTTP mutations. They are domain commands such as `ensure-app-rooms`, `save-source`,
+  `save-app-data`, `delete-owned-app`, and `save-workspace-manifest`.
+- Each command needs App Lab-specific encryption, room capability lookup, version handling, and registry updates.
+- The current workers are small and directly testable, and the Firebase smoke/E2E tests exercise the real provider path.
 
-- collapse the next-version room capability model to full-access room capabilities rather than read/write permission fields
-- add durable pending sync queue storage in IndexedDB/memory core
-- define queue item types for room lifecycle, source save, app data save, app delete, and manifest save
-- no behavior changes in the UI yet
+This can be revisited if retry/backoff/pause/resume code grows enough that TanStack would remove meaningful complexity without
+obscuring the room-specific rules.
 
-Done when:
+## Remaining Implementation Slices
 
-- room capability naming matches the full-access model in new queue/sync code
-- queue items can be added, listed, updated, and removed
-- queue survives reload in IndexedDB-backed tests
-- current app creation/save behavior is unchanged
-
-Manual test:
-
-- none required
-
-### Slice 2: Room Lifecycle Worker
-
-Change:
-
-- move remote room creation/deletion into a room lifecycle worker
-- app creation generates local app and room capabilities immediately
-- remote room creation becomes queued/idempotent instead of blocking the UI
-
-Done when:
-
-- creating an app while online still creates remote rooms
-- creating an app while offline/local provider failure still creates a usable local app
-- queued room creation succeeds when the provider is available again
-
-Manual test:
-
-- with storage configured, disable network, create an app, verify the app opens locally
-- restore network, verify source/data rooms appear remotely
-
-### Slice 3: Source Worker
-
-Change:
-
-- source saves update local IndexedDB immediately and enqueue remote source writes
-- source worker uses latest-write-wins for source room conflicts
-
-Done when:
-
-- source editing no longer waits on provider availability
-- queued source write eventually reaches remote room
-- source room conflicts resolve predictably by latest queued write
-
-Manual test:
-
-- save source while offline, reload App Lab, verify local source remains
-- restore network, verify shared/imported view can receive the new source
-
-### Slice 4: App Data Queue
-
-Change:
-
-- `AppLab.saveData` stores local data immediately and enqueues an app-data write with `baseData`, `localData`, and
-  `baseRemoteVersion`
-- pending app-data writes coalesce to one latest local state per app data room
-- remote version conflicts use latest local pending data
-
-Done when:
-
-- app data saves work locally while offline
-- pending app-data writes retry when online
-- many offline app-data saves produce one pending app-data write per app data room
-- stale remote version is resolved by latest local pending data
-
-Manual test:
-
-- use an app while offline and confirm multiple local saves remain possible after reload
-- create a remote version conflict and confirm local pending data eventually reaches remote
-
-### Slice 5: Prompt And Example App
-
-Change:
-
-- update generated app prompt and example app to model future merge-friendly JSON
-- use `crypto.randomUUID()` or a high-entropy fallback for record IDs
-- keep using `getData`, `saveData`, and `onDataChange`
-
-Done when:
-
-- example app demonstrates UUID-style IDs, arrays of records, and live data updates
-- prompt explains that ID-based records are future-merge-friendly, while current sync is latest-local-wins
-
-Manual test:
-
-- create a new example app, share it, and verify live updates still work
-
-### Slice 6: Review TanStack Query
-
-Change:
-
-- after queue semantics are implemented, decide whether TanStack Query adds enough retry/pause/resume value to adopt
-
-Done when:
-
-- decision is documented
-- no dependency is added unless it clearly reduces code or improves reliability
-
-Manual test:
-
-- none required
+Each remaining slice should build, typecheck, and pass automated tests before moving on. Manual testing is listed only where it
+adds signal that unit tests cannot easily cover.
 
 ### Future Slice: ID-Based Merge
 
@@ -869,7 +818,7 @@ Manual test:
 
 ## Design Checkpoints
 
-Before replacing the current sync architecture doc with this design, verify:
+Before considering this sync iteration complete, verify:
 
 - creating apps offline does not block
 - source saves are local-first

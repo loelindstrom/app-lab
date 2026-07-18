@@ -1,4 +1,5 @@
 import { saveRemoteAppData } from "./appRooms";
+import { roomReadToken } from "./crypto";
 import {
   isQueueItemStaleSyncing,
   markQueueItemFailed,
@@ -77,7 +78,7 @@ async function saveLatestLocalAppData(input: {
 
 async function loadCurrentRemoteRoomCapability(provider: RealtimeSyncProvider, capability: RoomCapability): Promise<RoomCapability> {
   const snapshot = await provider.loadRoom({
-    readToken: capability.readToken,
+    readToken: roomReadToken(capability),
     roomId: capability.roomId,
   });
   return {

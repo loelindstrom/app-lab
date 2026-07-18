@@ -442,12 +442,12 @@ export function createEmptyWorkspaceSyncState(): WorkspaceSyncState {
 }
 
 export function toAppSyncBadge(record: AppSyncRecord | null): AppSyncBadge {
-  if (!record) return { kind: "local-only", label: "Local only", tone: "neutral" };
+  if (!record) return { kind: "local-only", label: "Private", tone: "neutral" };
   if (record.kind === "joined" && record.remoteDeletedAt) return { kind: "needs-attention", label: "Deleted by owner", tone: "attention" };
   if (record.kind === "joined") return { kind: "shared-with-me", label: "Shared with me", tone: "shared" };
   if (record.kind === "private-copy") return { kind: "private-copy", label: "Private copy", tone: "good" };
   if (record.shareState === "invite-created") return { kind: "shared-by-me", label: "Shared by me", tone: "shared" };
-  return { kind: "backed-up", label: "Backed up", tone: "good" };
+  return { kind: "backed-up", label: "Private", tone: "neutral" };
 }
 
 function requireStorageProfile(state: WorkspaceSyncState): StorageProfile {
@@ -541,11 +541,15 @@ function normalizeStoredStorageProfile(value: unknown): StorageProfile | null {
 function normalizeRoomCapability(value: unknown): RoomCapability | undefined {
   if (!value || typeof value !== "object") return undefined;
   const capability = value as Partial<RoomCapability>;
+  const readToken = typeof capability.readToken === "string" ? capability.readToken : undefined;
+  const writeToken = typeof capability.writeToken === "string" ? capability.writeToken : undefined;
+  const accessToken = typeof capability.accessToken === "string" ? capability.accessToken : writeToken ?? readToken;
   if (
     typeof capability.roomId !== "string" ||
     typeof capability.decryptSecret !== "string" ||
-    typeof capability.readToken !== "string" ||
-    capability.permission !== "write" ||
+    typeof accessToken !== "string" ||
+    typeof readToken !== "string" ||
+    typeof writeToken !== "string" ||
     typeof capability.lastSeenVersion !== "number"
   ) {
     return undefined;
@@ -553,9 +557,9 @@ function normalizeRoomCapability(value: unknown): RoomCapability | undefined {
   return {
     roomId: capability.roomId,
     decryptSecret: capability.decryptSecret,
-    readToken: capability.readToken,
-    writeToken: typeof capability.writeToken === "string" ? capability.writeToken : undefined,
-    permission: capability.permission,
+    accessToken,
+    readToken,
+    writeToken,
     lastSeenVersion: capability.lastSeenVersion,
   };
 }

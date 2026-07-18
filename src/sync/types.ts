@@ -2,14 +2,15 @@ import type { JsonValue } from "../core/types";
 
 export type RoomType = "workspace-manifest" | "app-package" | "app-data";
 
-export type RoomPermission = "read" | "write";
-
 export interface RoomCapability {
   roomId: string;
   decryptSecret: string;
+  accessToken: string;
+  /**
+   * Provider compatibility tokens. New rooms use accessToken for both.
+   */
   readToken: string;
-  writeToken?: string;
-  permission: RoomPermission;
+  writeToken: string;
   lastSeenVersion: number;
 }
 

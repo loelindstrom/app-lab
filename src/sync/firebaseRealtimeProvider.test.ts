@@ -28,7 +28,7 @@ describe("firebase realtime sync provider", () => {
     await expect(provider.loadRoom({ readToken: "wrong", roomId: capability.roomId })).rejects.toThrow(/Read token/);
   });
 
-  it("rejects writes without the write token", async () => {
+  it("rejects writes without the room access token", async () => {
     const provider = createFirebaseRealtimeSyncProvider({ driver: createMemoryFirebaseRealtimeDriver() });
     const capability = createRoomCapability();
     const encryptedPayload = await encryptRoomPayload({
@@ -50,7 +50,7 @@ describe("firebase realtime sync provider", () => {
         encryptedPayload,
         expectedVersion: 1,
         roomId: capability.roomId,
-        writeToken: capability.readToken,
+        writeToken: "wrong",
       }),
     ).rejects.toThrow(/Write token/);
   });
@@ -108,7 +108,7 @@ describe("firebase realtime sync provider", () => {
     expect(seenVersions).toEqual([2]);
   });
 
-  it("deletes rooms only with the write token", async () => {
+  it("deletes rooms only with the room access token", async () => {
     const provider = createFirebaseRealtimeSyncProvider({ driver: createMemoryFirebaseRealtimeDriver() });
     const capability = createRoomCapability();
     const encryptedPayload = await encryptRoomPayload({
@@ -125,7 +125,7 @@ describe("firebase realtime sync provider", () => {
       writeToken: capability.writeToken ?? "",
     });
 
-    await expect(provider.deleteRoom({ roomId: capability.roomId, writeToken: capability.readToken })).rejects.toThrow(/Write token/);
+    await expect(provider.deleteRoom({ roomId: capability.roomId, writeToken: "wrong" })).rejects.toThrow(/Write token/);
     await provider.deleteRoom({ roomId: capability.roomId, writeToken: capability.writeToken ?? "" });
     await expect(provider.loadRoom({ readToken: capability.readToken, roomId: capability.roomId })).rejects.toThrow(/not found/i);
   });

@@ -1,6 +1,6 @@
 import { normalizeJsonValue } from "../core/jsonData";
 import type { JsonValue } from "../core/types";
-import type { DecryptRoomPayloadInput, DecryptRoomSnapshotInput, EncryptRoomPayloadInput, RoomCapability, RoomPermission } from "./types";
+import type { DecryptRoomPayloadInput, DecryptRoomSnapshotInput, EncryptRoomPayloadInput, RoomCapability } from "./types";
 
 const ENCRYPTED_ROOM_SCHEMA_VERSION = 1;
 const ROOM_KEY_BYTES = 32;
@@ -15,25 +15,24 @@ interface EncryptedRoomEnvelope {
   ciphertext: string;
 }
 
-export function createRoomCapability(permission: RoomPermission = "write"): RoomCapability {
+export function createRoomCapability(): RoomCapability {
+  const accessToken = `room_access_${randomBase64Url(ROOM_TOKEN_BYTES)}`;
   return {
     roomId: `room_${randomBase64Url(ROOM_ID_BYTES)}`,
     decryptSecret: randomBase64Url(ROOM_KEY_BYTES),
-    readToken: `read_${randomBase64Url(ROOM_TOKEN_BYTES)}`,
-    writeToken: permission === "write" ? `write_${randomBase64Url(ROOM_TOKEN_BYTES)}` : undefined,
-    permission,
+    accessToken,
+    readToken: accessToken,
+    writeToken: accessToken,
     lastSeenVersion: 0,
   };
 }
 
-export function toReadOnlyCapability(capability: RoomCapability): RoomCapability {
-  return {
-    roomId: capability.roomId,
-    decryptSecret: capability.decryptSecret,
-    readToken: capability.readToken,
-    permission: "read",
-    lastSeenVersion: capability.lastSeenVersion,
-  };
+export function roomReadToken(capability: RoomCapability): string {
+  return capability.readToken ?? capability.accessToken;
+}
+
+export function roomWriteToken(capability: RoomCapability): string {
+  return capability.writeToken ?? capability.accessToken;
 }
 
 export async function encryptRoomPayload(input: EncryptRoomPayloadInput): Promise<string> {

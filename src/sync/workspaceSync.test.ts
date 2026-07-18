@@ -17,7 +17,7 @@ describe("workspace sync registry", () => {
     expect(first.dataRoom.roomId).toBe(second.dataRoom.roomId);
     expect(await registry.getAppSyncBadge("app-1")).toMatchObject({
       kind: "backed-up",
-      label: "Backed up",
+      label: "Private",
     });
   });
 

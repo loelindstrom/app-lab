@@ -22,11 +22,11 @@ export const EXAMPLE_APP_SOURCE = `<!doctype html>
         font-family: Inter, ui-sans-serif, system-ui, sans-serif;
         margin: 0;
         min-height: 100vh;
-        padding: 28px;
+        padding: 24px;
       }
       main { display: grid; gap: 18px; max-width: 760px; }
-      h1 { font-size: clamp(42px, 10vw, 84px); letter-spacing: -0.04em; line-height: .92; margin: 0; }
-      p { color: #a7b5c2; font-size: 18px; line-height: 1.55; margin: 0; }
+      h1 { font-size: clamp(38px, 9vw, 76px); letter-spacing: -0.04em; line-height: .94; margin: 0; }
+      p { color: #a7b5c2; font-size: 17px; line-height: 1.55; margin: 0; }
       section {
         background: #121e2b;
         border: 1px solid #334155;
@@ -36,15 +36,14 @@ export const EXAMPLE_APP_SOURCE = `<!doctype html>
         padding: 16px;
       }
       label { color: #cbd5e1; display: grid; gap: 8px; font-weight: 800; }
-      textarea {
+      input {
         background: #172333;
         border: 1px solid #334155;
-        border-radius: 10px;
+        border-radius: 999px;
         color: #f8fafc;
         font: inherit;
-        min-height: 160px;
-        padding: 14px;
-        resize: vertical;
+        min-height: 44px;
+        padding: 0 14px;
       }
       button {
         background: #8b5cf6;
@@ -54,11 +53,27 @@ export const EXAMPLE_APP_SOURCE = `<!doctype html>
         cursor: pointer;
         font: inherit;
         font-weight: 850;
-        justify-self: start;
         min-height: 40px;
-        padding: 0 18px;
+        padding: 0 16px;
+      }
+      button.secondary {
+        background: transparent;
+        border: 1px solid #334155;
+        color: #dbeafe;
       }
       output { color: #93c5fd; min-height: 22px; }
+      ul { display: grid; gap: 10px; list-style: none; margin: 0; padding: 0; }
+      li {
+        align-items: center;
+        background: #172333;
+        border: 1px solid #334155;
+        border-radius: 14px;
+        display: grid;
+        gap: 10px;
+        grid-template-columns: minmax(0, 1fr) auto auto;
+        padding: 12px;
+      }
+      li.done span { color: #94a3b8; text-decoration: line-through; }
       .bar { align-items: center; display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; }
       .badge {
         background: #172333;
@@ -70,111 +85,186 @@ export const EXAMPLE_APP_SOURCE = `<!doctype html>
         padding: 7px 10px;
       }
       .hint { color: #94a3b8; font-size: 14px; }
-      .counter { align-items: center; display: flex; flex-wrap: wrap; gap: 12px; }
-      .counter strong { color: #f8fafc; font-size: 44px; min-width: 72px; }
+      .new-row { display: grid; gap: 10px; grid-template-columns: minmax(0, 1fr) auto; }
+      @media (max-width: 520px) {
+        body { padding: 18px; }
+        .new-row { grid-template-columns: 1fr; }
+        li { grid-template-columns: minmax(0, 1fr); }
+        li button { justify-self: start; }
+      }
     </style>
   </head>
   <body>
     <main>
       <header>
-        <h1>Sandbox notes</h1>
-        <p>This app persists JSON through the AppLab helper and updates live when shared data changes remotely.</p>
+        <h1>Sandbox checklist</h1>
+        <p>This app persists JSON through AppLab and updates live when shared data changes remotely.</p>
       </header>
 
       <section>
         <div class="bar">
-          <p class="hint">Persisted counter</p>
+          <p class="hint">Persisted records with stable IDs</p>
           <span id="live" class="badge">Live data ready</span>
         </div>
-        <div>
-          <div class="counter">
-            <strong id="count">0</strong>
-            <button id="increment" type="button">+1 and save</button>
-          </div>
+
+        <div class="new-row">
+          <label>
+            New item
+            <input id="draft" autocomplete="off" placeholder="Add something to remember">
+          </label>
+          <button id="add" type="button">Add</button>
         </div>
 
-        <label>
-          Saved note
-          <textarea id="note" placeholder="Write something, save, then reload the page."></textarea>
-        </label>
-
-        <button id="save" type="button">Save note</button>
+        <ul id="items" aria-label="Saved items"></ul>
       </section>
 
       <output id="status">Loading saved data...</output>
-      <p class="hint">Contract: load with AppLab.getData(fallback), save with AppLab.saveData(json), and react to shared updates with AppLab.onDataChange(handler).</p>
+      <p class="hint">Contract: AppLab.getData(fallback), AppLab.saveData(json), and AppLab.onDataChange(handler). Current sync is latest-local-wins; stable item IDs prepare this data for richer merging later.</p>
     </main>
 
     <script>
       "use strict";
 
-      const note = document.querySelector("#note");
-      const count = document.querySelector("#count");
-      const increment = document.querySelector("#increment");
-      const save = document.querySelector("#save");
+      const draft = document.querySelector("#draft");
+      const add = document.querySelector("#add");
+      const list = document.querySelector("#items");
       const status = document.querySelector("#status");
       const live = document.querySelector("#live");
-      const state = { count: 0, note: "", savedAt: null };
+      const state = { schemaVersion: 1, items: [], savedAt: null };
+      let saveInFlight = 0;
       Object.seal(state);
 
       AppLab.onError((message) => {
         status.textContent = "Error: " + message;
       });
 
+      function createId() {
+        if (window.crypto && typeof window.crypto.randomUUID === "function") return window.crypto.randomUUID();
+        return "id_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2);
+      }
+
       function normalizeData(data) {
+        const sourceItems = Array.isArray(data && data.items) ? data.items : [];
         return {
-          count: Number(data && data.count || 0),
-          note: data && typeof data.note === "string" ? data.note : "",
+          schemaVersion: 1,
+          items: sourceItems
+            .filter((item) => item && typeof item === "object")
+            .map((item) => ({
+              id: typeof item.id === "string" ? item.id : createId(),
+              text: typeof item.text === "string" ? item.text : "",
+              done: Boolean(item.done),
+              createdAt: typeof item.createdAt === "string" ? item.createdAt : new Date().toISOString()
+            }))
+            .filter((item) => item.text.trim()),
           savedAt: data && typeof data.savedAt === "string" ? data.savedAt : null
         };
       }
 
       function applyData(data, source) {
         const next = normalizeData(data);
-        const noteWasFocused = document.activeElement === note;
-        state.count = next.count;
-        state.note = next.note;
+        const draftWasFocused = document.activeElement === draft;
+        state.items = next.items;
         state.savedAt = next.savedAt;
-        render({ preserveDraft: noteWasFocused && source === "remote" });
+        render({ preserveDraft: draftWasFocused && source === "remote" });
       }
 
       function render(options = {}) {
-        count.textContent = String(state.count);
-        if (!options.preserveDraft) note.value = state.note;
+        list.replaceChildren();
+        if (!options.preserveDraft && state.items.length === 0) draft.value = "";
+
+        for (const item of state.items) {
+          const row = document.createElement("li");
+          if (item.done) row.classList.add("done");
+
+          const text = document.createElement("span");
+          text.textContent = item.text;
+
+          const toggle = document.createElement("button");
+          toggle.className = "secondary";
+          toggle.type = "button";
+          toggle.textContent = item.done ? "Undo" : "Done";
+          toggle.addEventListener("click", () => {
+            item.done = !item.done;
+            render({ preserveDraft: true });
+            saveState("Saving item...");
+          });
+
+          const remove = document.createElement("button");
+          remove.className = "secondary";
+          remove.type = "button";
+          remove.textContent = "Delete";
+          remove.addEventListener("click", () => {
+            state.items = state.items.filter((candidate) => candidate.id !== item.id);
+            render({ preserveDraft: true });
+            saveState("Deleting item...");
+          });
+
+          row.append(text, toggle, remove);
+          list.append(row);
+        }
+
+        if (state.items.length === 0) {
+          const empty = document.createElement("li");
+          const text = document.createElement("span");
+          text.className = "hint";
+          text.textContent = "No saved items yet.";
+          empty.append(text);
+          list.append(empty);
+        }
+
         live.textContent = state.savedAt ? "Last saved " + new Date(state.savedAt).toLocaleTimeString() : "Live data ready";
       }
 
       async function loadState() {
         status.textContent = "Loading saved data...";
-        const saved = await AppLab.getData({ count: 0, note: "" });
+        const saved = await AppLab.getData({ schemaVersion: 1, items: [], savedAt: null });
         applyData(saved, "load");
         status.textContent = "Loaded.";
       }
 
       async function saveState(statusText) {
         status.textContent = statusText;
-        await AppLab.saveData({
-          count: state.count,
-          note: state.note,
-          savedAt: new Date().toISOString()
-        });
-        status.textContent = "Saved.";
+        state.savedAt = new Date().toISOString();
+        saveInFlight += 1;
+        try {
+          await AppLab.saveData({
+            schemaVersion: state.schemaVersion,
+            items: state.items,
+            savedAt: state.savedAt
+          });
+          live.textContent = "Last saved " + new Date(state.savedAt).toLocaleTimeString();
+          status.textContent = "Saved.";
+        } finally {
+          saveInFlight -= 1;
+        }
       }
 
       AppLab.onDataChange((nextData, info) => {
+        if (saveInFlight > 0) {
+          status.textContent = "Kept local edit while saving.";
+          return;
+        }
         applyData(nextData, "remote");
         status.textContent = "Live update received" + (info && info.version ? " v" + info.version : "") + ".";
       });
 
-      increment.addEventListener("click", () => {
-        state.count += 1;
-        render();
-        saveState("Saving counter...");
+      add.addEventListener("click", () => {
+        const text = draft.value.trim();
+        if (!text) return;
+        state.items = [
+          ...state.items,
+          { id: createId(), text, done: false, createdAt: new Date().toISOString() }
+        ];
+        draft.value = "";
+        render({ preserveDraft: true });
+        saveState("Saving new item...");
       });
 
-      save.addEventListener("click", () => {
-        state.note = note.value;
-        saveState("Saving...");
+      draft.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          add.click();
+        }
       });
 
       loadState();

@@ -1,5 +1,6 @@
 import type { JsonValue } from "../core/types";
 import type { AppRecord } from "../core/types";
+import type { OwnedAppSyncRecord, PrivateCopySyncRecord } from "./workspaceSync";
 
 const QUEUE_DB_NAME = "app-lab-sync-queue-v1";
 const QUEUE_DB_VERSION = 1;
@@ -38,7 +39,9 @@ export interface SaveAppDataQueueItem extends PendingSyncItemBase {
 }
 
 export interface DeleteOwnedAppQueueItem extends PendingSyncItemBase {
+  app: AppRecord;
   kind: "delete-owned-app";
+  syncRecord: OwnedAppSyncRecord | PrivateCopySyncRecord;
 }
 
 export interface SaveWorkspaceManifestQueueItem extends PendingSyncItemBase {
@@ -72,6 +75,14 @@ export function saveAppDataQueueId(appId: string): string {
   return `save-app-data:${appId}`;
 }
 
+export function deleteOwnedAppQueueId(appId: string): string {
+  return `delete-owned-app:${appId}`;
+}
+
+export function saveWorkspaceManifestQueueId(workspaceId: string): string {
+  return `save-workspace-manifest:${workspaceId}`;
+}
+
 export async function enqueueEnsureAppRooms(store: SyncQueueStore, appId: string): Promise<EnsureAppRoomsQueueItem> {
   const id = ensureAppRoomsQueueId(appId);
   const existing = await store.getItem(id);
@@ -86,6 +97,29 @@ export async function enqueueEnsureAppRooms(store: SyncQueueStore, appId: string
     updatedAt: now,
   };
   await store.putItem(item);
+  return item;
+}
+
+export async function enqueueDeleteOwnedApp(input: {
+  app: AppRecord;
+  store: SyncQueueStore;
+  syncRecord: OwnedAppSyncRecord | PrivateCopySyncRecord;
+}): Promise<DeleteOwnedAppQueueItem> {
+  const id = deleteOwnedAppQueueId(input.app.appId);
+  const existing = await input.store.getItem(id);
+  const now = new Date().toISOString();
+  const item: DeleteOwnedAppQueueItem = {
+    app: input.app,
+    appId: input.app.appId,
+    attempts: existing?.attempts ?? 0,
+    createdAt: existing?.createdAt ?? now,
+    id,
+    kind: "delete-owned-app",
+    status: "pending",
+    syncRecord: input.syncRecord,
+    updatedAt: now,
+  };
+  await input.store.putItem(item);
   return item;
 }
 
@@ -135,6 +169,24 @@ export async function enqueueSaveAppData(input: {
     updatedAt: now,
   };
   await input.store.putItem(item);
+  return item;
+}
+
+export async function enqueueSaveWorkspaceManifest(store: SyncQueueStore, workspaceId: string): Promise<SaveWorkspaceManifestQueueItem> {
+  const id = saveWorkspaceManifestQueueId(workspaceId);
+  const existing = await store.getItem(id);
+  const now = new Date().toISOString();
+  const item: SaveWorkspaceManifestQueueItem = {
+    appId: workspaceId,
+    attempts: existing?.attempts ?? 0,
+    createdAt: existing?.createdAt ?? now,
+    id,
+    kind: "save-workspace-manifest",
+    status: "pending",
+    updatedAt: now,
+    workspaceId,
+  };
+  await store.putItem(item);
   return item;
 }
 

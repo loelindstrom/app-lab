@@ -40,6 +40,36 @@ test.describe("source sync", () => {
     await joinedContext.close();
   });
 
+  test("open shared app receives repeated live source updates without reloading", async ({ browser }) => {
+    if (!firebaseConfig) throw new Error("APP_LAB_FIREBASE_SMOKE_CONFIG is required.");
+
+    const ownerContext = await browser.newContext();
+    const joinedContext = await browser.newContext();
+    const owner = await ownerContext.newPage();
+    const joined = await joinedContext.newPage();
+    const initialTitle = `E2E source initial ${Date.now()}`;
+
+    await owner.goto("/");
+    await configureStorage(owner, firebaseConfig);
+    await createExampleApp(owner);
+    await saveSource(owner, htmlForTitle(initialTitle));
+    const inviteUrl = await createInvite(owner);
+
+    await joined.goto(inviteUrl);
+    await joined.getByRole("button", { name: "Import", exact: true }).click();
+    await expect(joined.getByText(initialTitle).first()).toBeVisible();
+    await joined.getByRole("button", { name: "Open", exact: true }).click();
+    await expect(joined.getByRole("heading", { name: initialTitle })).toBeVisible();
+
+    for (const title of [`E2E source one ${Date.now()}`, `E2E source two ${Date.now()}`, `E2E source three ${Date.now()}`]) {
+      await saveSource(owner, htmlForTitle(title));
+      await expect(joined.getByRole("heading", { name: title })).toBeVisible({ timeout: 15_000 });
+    }
+
+    await ownerContext.close();
+    await joinedContext.close();
+  });
+
   test("queued offline app data save syncs to another browser when the owner comes back online", async ({ browser }) => {
     if (!firebaseConfig) throw new Error("APP_LAB_FIREBASE_SMOKE_CONFIG is required.");
 
@@ -57,22 +87,91 @@ test.describe("source sync", () => {
     await joined.getByRole("button", { name: "Import", exact: true }).click();
     await expect(joined.getByText("Example App").first()).toBeVisible();
     await joined.getByRole("button", { name: "Open", exact: true }).click();
-    await expect(appFrame(joined).getByRole("heading", { name: "Sandbox notes" })).toBeVisible();
+    await expect(appFrame(joined).getByRole("heading", { name: "Sandbox checklist" })).toBeVisible();
 
-    await appFrame(owner).getByRole("button", { name: "+1 and save" }).click();
-    await expect(appFrame(joined).locator("#count")).toHaveText("1");
+    await appFrame(owner).getByLabel("New item").fill("Online item");
+    await appFrame(owner).getByRole("button", { name: "Add" }).click();
+    await expect(appFrame(joined).getByText("Online item")).toBeVisible();
+    await expect(appFrame(owner).getByText("Online item")).toBeVisible();
 
     await ownerContext.setOffline(true);
-    await appFrame(owner).getByRole("button", { name: "+1 and save" }).click();
-    await expect(appFrame(owner).locator("#count")).toHaveText("2");
+    await appFrame(owner).getByLabel("New item").fill("Offline item");
+    await appFrame(owner).getByRole("button", { name: "Add" }).click();
+    await expect(appFrame(owner).getByText("Offline item")).toBeVisible();
 
     await ownerContext.setOffline(false);
     await owner.evaluate(() => window.dispatchEvent(new Event("online")));
 
-    await expect(appFrame(joined).locator("#count")).toHaveText("2", { timeout: 15_000 });
+    await expect(appFrame(joined).getByText("Offline item")).toBeVisible({ timeout: 15_000 });
 
     await ownerContext.close();
     await joinedContext.close();
+  });
+
+  test("open shared app receives repeated live app data updates without reloading", async ({ browser }) => {
+    if (!firebaseConfig) throw new Error("APP_LAB_FIREBASE_SMOKE_CONFIG is required.");
+
+    const ownerContext = await browser.newContext();
+    const joinedContext = await browser.newContext();
+    const owner = await ownerContext.newPage();
+    const joined = await joinedContext.newPage();
+
+    await owner.goto("/");
+    await configureStorage(owner, firebaseConfig);
+    await createExampleApp(owner);
+    const inviteUrl = await createInvite(owner);
+
+    await joined.goto(inviteUrl);
+    await joined.getByRole("button", { name: "Import", exact: true }).click();
+    await expect(joined.getByText("Example App").first()).toBeVisible();
+    await joined.getByRole("button", { name: "Open", exact: true }).click();
+    await expect(appFrame(joined).getByRole("heading", { name: "Sandbox checklist" })).toBeVisible();
+
+    for (const item of ["Live one", "Live two", "Live three"]) {
+      await appFrame(owner).getByLabel("New item").fill(item);
+      await appFrame(owner).getByRole("button", { name: "Add" }).click();
+      await expect(appFrame(owner).getByText(item, { exact: true })).toBeVisible();
+      await expect(appFrame(joined).getByText(item, { exact: true })).toBeVisible({ timeout: 15_000 });
+    }
+
+    await ownerContext.close();
+    await joinedContext.close();
+  });
+
+  test("multiple offline app data edits keep updating locally before sync resumes", async ({ browser }) => {
+    if (!firebaseConfig) throw new Error("APP_LAB_FIREBASE_SMOKE_CONFIG is required.");
+
+    const ownerContext = await browser.newContext();
+    const owner = await ownerContext.newPage();
+
+    await owner.goto("/");
+    await configureStorage(owner, firebaseConfig);
+    await createExampleApp(owner);
+
+    for (const item of ["One", "Two", "Three"]) {
+      await appFrame(owner).getByLabel("New item").fill(item);
+      await appFrame(owner).getByRole("button", { name: "Add" }).click();
+      await expect(appFrame(owner).getByText(item, { exact: true })).toBeVisible();
+    }
+
+    await ownerContext.setOffline(true);
+
+    await appFrame(owner).getByRole("button", { name: "Delete" }).first().click();
+    await expect(appFrame(owner).getByText("One", { exact: true })).toBeHidden();
+
+    await appFrame(owner).getByLabel("New item").fill("Four");
+    await appFrame(owner).getByRole("button", { name: "Add" }).click();
+    await expect(appFrame(owner).getByText("Four", { exact: true })).toBeVisible();
+
+    await appFrame(owner).getByRole("button", { name: "Delete" }).first().click();
+    await expect(appFrame(owner).getByText("Two", { exact: true })).toBeHidden();
+    await expect(appFrame(owner).getByText("Three", { exact: true })).toBeVisible();
+    await expect(appFrame(owner).getByText("Four", { exact: true })).toBeVisible();
+
+    await ownerContext.setOffline(false);
+    await owner.evaluate(() => window.dispatchEvent(new Event("online")));
+
+    await ownerContext.close();
   });
 });
 
@@ -127,7 +226,7 @@ function htmlForTitle(title: string) {
 }
 
 function appFrame(page: Page) {
-  return page.frameLocator("iframe");
+  return page.frameLocator('iframe[title$=" app"]');
 }
 
 function readFirebaseSmokeConfig(): Record<string, string> | null {

@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { createMemorySyncQueueStore, enqueueEnsureAppRooms, enqueueSaveAppData, enqueueSaveSource, markQueueItemFailed, markQueueItemSyncing } from "./syncQueue";
+import {
+  createMemorySyncQueueStore,
+  enqueueEnsureAppRooms,
+  enqueueSaveAppData,
+  enqueueSaveSource,
+  enqueueSaveWorkspaceManifest,
+  markQueueItemFailed,
+  markQueueItemSyncing,
+} from "./syncQueue";
 
 describe("sync queue store", () => {
   it("coalesces ensure-app-rooms work per app", async () => {
@@ -94,6 +102,22 @@ describe("sync queue store", () => {
       localData: { count: 2 },
       localRevision: 2,
       status: "pending",
+    });
+  });
+
+  it("coalesces workspace manifest saves per workspace", async () => {
+    const store = createMemorySyncQueueStore();
+
+    const first = await enqueueSaveWorkspaceManifest(store, "workspace-1");
+    const second = await enqueueSaveWorkspaceManifest(store, "workspace-1");
+
+    expect(first.id).toBe(second.id);
+    await expect(store.listItems()).resolves.toHaveLength(1);
+    await expect(store.getItem(first.id)).resolves.toMatchObject({
+      appId: "workspace-1",
+      kind: "save-workspace-manifest",
+      status: "pending",
+      workspaceId: "workspace-1",
     });
   });
 });

@@ -7,13 +7,13 @@ export default defineConfig({
     timeout: 10_000,
   },
   use: {
-    baseURL: "http://127.0.0.1:5176",
+    baseURL: "http://127.0.0.1:5175",
     trace: "retain-on-failure",
   },
   webServer: {
-    command: "pnpm exec vite --host 127.0.0.1 --port 5176",
+    command: "pnpm exec vite --host 127.0.0.1 --port 5175",
     reuseExistingServer: !process.env.CI,
-    url: "http://127.0.0.1:5176",
+    url: "http://127.0.0.1:5175",
   },
   projects: [
     {

@@ -10,12 +10,21 @@ import type {
   StorageProfile,
   WorkspaceSyncRegistry,
 } from "../../sync/workspaceSync";
-import type { SyncQueueStore } from "../../sync/syncQueue";
+import type { PendingSyncItem, SyncQueueStore } from "../../sync/syncQueue";
 import { createWorkspaceSyncActions, type WorkspaceSyncActions } from "../../sync/workspaceSyncActions";
 import { SettingsDialog } from "../dialogs/SettingsDialog";
 import { ToolPanelMode, WorkspaceToolPanel } from "../tools/WorkspaceToolPanel";
 
 type WorkspaceMode = "launcher" | "app";
+
+type AppSyncHealthKind = "none" | "offline" | "pending" | "problem" | "synced" | "syncing";
+
+interface AppSyncHealth {
+  kind: AppSyncHealthKind;
+  label: string;
+  title: string;
+  tone: "attention" | "good" | "neutral" | "working";
+}
 
 interface WorkspaceShellProps {
   core: AppLabCore;
@@ -27,6 +36,7 @@ interface WorkspaceShellProps {
 export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, syncRegistry }: WorkspaceShellProps) {
   const [apps, setApps] = useState<AppSummary[]>([]);
   const [syncBadges, setSyncBadges] = useState<Record<string, AppSyncBadge>>({});
+  const [syncHealth, setSyncHealth] = useState<Record<string, AppSyncHealth>>({});
   const [storageProfile, setStorageProfile] = useState<StorageProfile | null>(null);
   const [activeApp, setActiveApp] = useState<AppRecord | null>(null);
   const [mode, setMode] = useState<WorkspaceMode>("launcher");
@@ -56,6 +66,8 @@ export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, sync
         await syncActions.flushRoomLifecycleQueue();
         await syncActions.flushSourceSyncQueue();
         await syncActions.flushAppDataSyncQueue();
+        await syncActions.flushOwnedAppDeletionQueue();
+        await syncActions.flushWorkspaceManifestQueue();
         if (!cancelled) await refreshApps();
       } catch (error) {
         const detail = error instanceof Error ? error.message : "Unknown sync error.";
@@ -67,12 +79,18 @@ export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, sync
       if (document.visibilityState === "visible") void wakePendingSync();
     }
 
+    function markOffline() {
+      void refreshApps();
+    }
+
     void wakePendingSync();
     window.addEventListener("online", wakeIfVisible);
+    window.addEventListener("offline", markOffline);
     document.addEventListener("visibilitychange", wakeIfVisible);
     return () => {
       cancelled = true;
       window.removeEventListener("online", wakeIfVisible);
+      window.removeEventListener("offline", markOffline);
       document.removeEventListener("visibilitychange", wakeIfVisible);
     };
   }, [syncActions]);
@@ -147,8 +165,11 @@ export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, sync
 
   async function refreshApps() {
     const nextApps = await core.listApps();
+    const nextBadges = await syncRegistry.listAppSyncBadges(nextApps.map((app) => app.appId));
+    const queueItems = await syncQueueStore.listItems();
     setApps(nextApps);
-    setSyncBadges(await syncRegistry.listAppSyncBadges(nextApps.map((app) => app.appId)));
+    setSyncBadges(nextBadges);
+    setSyncHealth(buildAppSyncHealthMap({ apps: nextApps, badges: nextBadges, isOnline: navigator.onLine, queueItems }));
     setStorageProfile(await syncRegistry.getStorageProfile());
   }
 
@@ -168,6 +189,7 @@ export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, sync
   async function createApp() {
     const app = await core.createBlankApp();
     await trySync("App created locally. Remote backup failed", () => syncActions.ensureAppBackedUp(app));
+    refreshWhenSettled(syncActions.flushRoomLifecycleQueue());
     await refreshApps();
     setActiveApp(app);
     setMode("app");
@@ -293,12 +315,15 @@ export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, sync
               await syncActions.deleteSyncedAppRooms(appId);
               await core.deleteApp(appId);
               await syncRegistry.removeLocalAppSync(appId);
+              await syncActions.queueWorkspaceManifestSave();
+              void syncActions.flushWorkspaceManifestQueue();
               await refreshApps();
             }}
             onOpenApp={openApp}
             onShareApp={(app) => setSharingApp(app)}
             storageProfile={storageProfile}
             syncBadges={syncBadges}
+            syncHealth={syncHealth}
             onUpdateApp={async (appId, input) => {
               await core.updateApp({ appId, ...input });
               await refreshApps();
@@ -314,8 +339,12 @@ export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, sync
               setConsoleEntries((entries) => [...entries.slice(-199), entry]);
             }}
             onSaveAppData={async (appId, data) => {
+              setRemoteDataChange(null);
+              syncActions.noteLocalAppDataEdit(appId);
               await core.saveAppData(appId, data);
               await trySync("App data saved locally. Remote data sync failed", () => syncActions.pushAppData(appId, data));
+              refreshWhenSettled(syncActions.flushAppDataSyncQueue());
+              await refreshApps();
             }}
             onUnhandledRemoteDataChange={() => {
               setSyncStatus("Remote data changed. This app does not handle live updates yet; reopen it to reload latest data.");
@@ -345,6 +374,7 @@ export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, sync
               const nextName = readHtmlTitle(sourceCode) || activeApp.name;
               const updated = await core.updateApp({ appId: activeApp.appId, name: nextName, sourceCode });
               await trySync("Source saved locally. Remote source sync failed", () => syncActions.pushAppSource(updated));
+              refreshWhenSettled(syncActions.flushSourceSyncQueue());
               setActiveApp(updated);
               setConsoleEntries([]);
               await refreshApps();
@@ -376,13 +406,11 @@ export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, sync
           await refreshApps();
         }}
         onExportWorkspaceRecovery={async () => {
-          const recovery = await syncActions.exportWorkspaceRecovery();
-          await refreshApps();
-          return recovery;
+          return syncActions.exportWorkspaceRecovery();
         }}
         onRestoreWorkspaceRecovery={async (recoveryText) => {
           await syncActions.restoreWorkspaceRecovery(recoveryText);
-          await refreshApps();
+          window.setTimeout(() => void refreshApps(), 0);
         }}
       />
       <ShareAppDialog
@@ -430,6 +458,12 @@ export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, sync
     }
   }
 
+  function refreshWhenSettled(promise: Promise<void>) {
+    void promise.finally(() => {
+      void refreshApps();
+    });
+  }
+
 }
 
 interface LauncherViewProps {
@@ -439,6 +473,7 @@ interface LauncherViewProps {
   onShareApp: (app: AppSummary) => void;
   storageProfile: StorageProfile | null;
   syncBadges: Record<string, AppSyncBadge>;
+  syncHealth: Record<string, AppSyncHealth>;
   onUpdateApp: (appId: string, input: { name: string; description: string }) => Promise<void>;
 }
 
@@ -514,7 +549,7 @@ function ToolSwitch({ activeTool, aiAttentionDismissed, aiAttentionKey, consoleC
   );
 }
 
-function LauncherView({ apps, onDeleteApp, onOpenApp, onShareApp, onUpdateApp, storageProfile, syncBadges }: LauncherViewProps) {
+function LauncherView({ apps, onDeleteApp, onOpenApp, onShareApp, onUpdateApp, storageProfile, syncBadges, syncHealth }: LauncherViewProps) {
   const [editingApp, setEditingApp] = useState<AppSummary | null>(null);
 
   return (
@@ -540,7 +575,8 @@ function LauncherView({ apps, onDeleteApp, onOpenApp, onShareApp, onUpdateApp, s
               onEdit={() => setEditingApp(app)}
               onOpen={() => onOpenApp(app.appId)}
               onShare={() => onShareApp(app)}
-              syncBadge={syncBadges[app.appId] ?? { kind: "local-only", label: "Local only", tone: "neutral" }}
+              syncBadge={syncBadges[app.appId] ?? { kind: "local-only", label: "Private", tone: "neutral" }}
+              syncHealth={syncHealth[app.appId] ?? { kind: "none", label: "", title: "", tone: "neutral" }}
             />
           ))}
         </div>
@@ -573,12 +609,14 @@ function LauncherCard({
   onOpen,
   onShare,
   syncBadge,
+  syncHealth,
 }: {
   app: AppSummary;
   onEdit: () => void;
   onOpen: () => void;
   onShare: () => void;
   syncBadge: AppSyncBadge;
+  syncHealth: AppSyncHealth;
 }) {
   const isRemoteDeleted = syncBadge.kind === "needs-attention";
   return (
@@ -610,6 +648,11 @@ function LauncherCard({
           {syncBadge.label}
           {isRemoteDeleted ? " ⓘ" : ""}
         </span>
+        {syncHealth.kind !== "none" ? (
+          <span className={`rounded-full px-2 py-1 text-[11px] font-extrabold uppercase ${syncHealthClassName(syncHealth.tone)}`} title={syncHealth.title}>
+            {syncHealth.label}
+          </span>
+        ) : null}
       </div>
       <div className="mt-auto flex items-center justify-between gap-2 border-t border-app-line pt-3">
         <span className="truncate text-xs font-bold text-app-muted">{formatDate(app.updatedAt)}</span>
@@ -643,6 +686,66 @@ function syncBadgeClassName(tone: AppSyncBadge["tone"]): string {
   return "bg-slate-100 text-app-muted";
 }
 
+function syncHealthClassName(tone: AppSyncHealth["tone"]): string {
+  if (tone === "good") return "bg-emerald-50 text-emerald-700";
+  if (tone === "working") return "bg-sky-50 text-sky-700";
+  if (tone === "attention") return "bg-amber-50 text-amber-800";
+  return "bg-slate-100 text-app-muted";
+}
+
+function buildAppSyncHealthMap(input: {
+  apps: AppSummary[];
+  badges: Record<string, AppSyncBadge>;
+  isOnline: boolean;
+  queueItems: PendingSyncItem[];
+}): Record<string, AppSyncHealth> {
+  return Object.fromEntries(
+    input.apps.map((app) => {
+      const badge = input.badges[app.appId];
+      const items = input.queueItems.filter((item) => item.appId === app.appId);
+      return [app.appId, describeAppSyncHealth({ badge, isOnline: input.isOnline, items })];
+    }),
+  );
+}
+
+function describeAppSyncHealth(input: { badge?: AppSyncBadge; isOnline: boolean; items: PendingSyncItem[] }): AppSyncHealth {
+  if (input.badge?.kind === "local-only" || input.badge?.kind === "needs-attention") return { kind: "none", label: "", title: "", tone: "neutral" };
+  if (!input.items.length) return { kind: "synced", label: "☁ ✓", title: "Synced with remote storage.", tone: "good" };
+
+  const problem = input.items.find((item) => item.lastError || item.status === "problem");
+  if (problem) {
+    return {
+      kind: "problem",
+      label: "☁ !",
+      title: `Could not sync ${formatQueueKind(problem.kind)}. App Lab will retry when sync wakes up. ${problem.lastError ?? ""}`.trim(),
+      tone: "attention",
+    };
+  }
+
+  if (!input.isOnline) {
+    return {
+      kind: "offline",
+      label: "☁ ×",
+      title: "Offline. Local changes are saved and will sync when the browser comes back online.",
+      tone: "attention",
+    };
+  }
+
+  if (input.items.some((item) => item.status === "syncing")) {
+    return { kind: "syncing", label: "☁ …", title: "Syncing local changes to remote storage.", tone: "working" };
+  }
+
+  return { kind: "pending", label: "☁ …", title: "Local changes are queued for remote sync.", tone: "working" };
+}
+
+function formatQueueKind(kind: PendingSyncItem["kind"]): string {
+  if (kind === "ensure-app-rooms") return "app rooms";
+  if (kind === "save-source") return "source code";
+  if (kind === "save-app-data") return "app data";
+  if (kind === "delete-owned-app") return "app deletion";
+  return "workspace manifest";
+}
+
 function ShareAppDialog({
   app,
   hasStorageProfile,
@@ -672,7 +775,7 @@ function ShareAppDialog({
       const url = `${window.location.origin}${window.location.pathname}#${encodeAppInvite(invite)}`;
       setInviteUrl(url);
       setStatus("Invite ready. It reuses this app's stable source and data rooms.");
-      await navigator.clipboard?.writeText(url);
+      void navigator.clipboard?.writeText(url).catch(() => {});
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Could not create invite.");
     }
