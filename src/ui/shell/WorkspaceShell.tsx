@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { AppLabCore, AppRecord, AppSummary, JsonValue } from "../../core/types";
 import { encodeAppInvite, readInviteFromHash } from "../../sync/invites";
 import type { RemoteDataChange, SandboxConsoleEntry } from "../../runtime/SandboxFrame";
@@ -10,7 +10,7 @@ import type {
   StorageProfile,
   WorkspaceSyncRegistry,
 } from "../../sync/workspaceSync";
-import type { PendingSyncItem, SyncQueueStore } from "../../sync/syncQueue";
+import { resetSyncingQueueItems, type PendingSyncItem, type SyncQueueStore } from "../../sync/syncQueue";
 import { createWorkspaceSyncActions, type WorkspaceSyncActions } from "../../sync/workspaceSyncActions";
 import { SettingsDialog } from "../dialogs/SettingsDialog";
 import { ToolPanelMode, WorkspaceToolPanel } from "../tools/WorkspaceToolPanel";
@@ -51,24 +51,35 @@ export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, sync
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
   const [syncStatusOpen, setSyncStatusOpen] = useState(false);
   const [sandboxReloadKey, setSandboxReloadKey] = useState(0);
+  const browserOnlineRef = useRef(navigator.onLine);
+  const providerOnlineRef = useRef<boolean | null>(null);
   const defaultSyncActions = useMemo(() => createWorkspaceSyncActions({ core, queueStore: syncQueueStore, syncRegistry }), [core, syncQueueStore, syncRegistry]);
   const syncActions = syncActionsOverride ?? defaultSyncActions;
 
+  function isSyncReachable() {
+    return browserOnlineRef.current && providerOnlineRef.current !== false;
+  }
+
   useEffect(() => {
-    refreshApps();
+    void refreshApps(isSyncReachable());
   }, []);
 
   useEffect(() => {
     let cancelled = false;
+    let unsubscribeConnection: (() => void) | null = null;
 
-    async function wakePendingSync() {
+    async function wakePendingSync(online = isSyncReachable()) {
       try {
+        if (!online) {
+          if (!cancelled) await refreshApps(false);
+          return;
+        }
         await syncActions.flushRoomLifecycleQueue();
         await syncActions.flushSourceSyncQueue();
         await syncActions.flushAppDataSyncQueue();
         await syncActions.flushOwnedAppDeletionQueue();
         await syncActions.flushWorkspaceManifestQueue();
-        if (!cancelled) await refreshApps();
+        if (!cancelled) await refreshApps(true);
       } catch (error) {
         const detail = error instanceof Error ? error.message : "Unknown sync error.";
         if (!cancelled) setSyncStatus(`Could not retry pending sync: ${detail}`);
@@ -76,24 +87,47 @@ export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, sync
     }
 
     function wakeIfVisible() {
-      if (document.visibilityState === "visible") void wakePendingSync();
+      if (document.visibilityState === "visible") void wakePendingSync(isSyncReachable());
+    }
+
+    function markOnline() {
+      browserOnlineRef.current = true;
+      void wakePendingSync(isSyncReachable());
     }
 
     function markOffline() {
-      void refreshApps();
+      browserOnlineRef.current = false;
+      void refreshApps(false);
     }
 
-    void wakePendingSync();
-    window.addEventListener("online", wakeIfVisible);
+    async function startSyncWakeups() {
+      await resetSyncingQueueItems(syncQueueStore);
+      const profile = await syncRegistry.getStorageProfile();
+      if (!profile) {
+        void wakePendingSync(isSyncReachable());
+        return;
+      }
+
+      unsubscribeConnection = await syncActions.subscribeStorageConnection((connected) => {
+        providerOnlineRef.current = connected;
+        if (connected) void wakePendingSync(isSyncReachable());
+        else void refreshApps(false);
+      });
+    }
+
+    providerOnlineRef.current = null;
+    void startSyncWakeups();
+    window.addEventListener("online", markOnline);
     window.addEventListener("offline", markOffline);
     document.addEventListener("visibilitychange", wakeIfVisible);
     return () => {
       cancelled = true;
-      window.removeEventListener("online", wakeIfVisible);
+      unsubscribeConnection?.();
+      window.removeEventListener("online", markOnline);
       window.removeEventListener("offline", markOffline);
       document.removeEventListener("visibilitychange", wakeIfVisible);
     };
-  }, [syncActions]);
+  }, [storageProfile?.profileId, storageProfile?.databaseUrl, syncActions, syncQueueStore, syncRegistry]);
 
   useEffect(() => {
     function readHashInvite() {
@@ -163,13 +197,13 @@ export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, sync
     };
   }, [activeApp?.appId, syncActions]);
 
-  async function refreshApps() {
+  async function refreshApps(online = isSyncReachable()) {
     const nextApps = await core.listApps();
     const nextBadges = await syncRegistry.listAppSyncBadges(nextApps.map((app) => app.appId));
     const queueItems = await syncQueueStore.listItems();
     setApps(nextApps);
     setSyncBadges(nextBadges);
-    setSyncHealth(buildAppSyncHealthMap({ apps: nextApps, badges: nextBadges, isOnline: navigator.onLine, queueItems }));
+    setSyncHealth(buildAppSyncHealthMap({ apps: nextApps, badges: nextBadges, isOnline: online, queueItems }));
     setStorageProfile(await syncRegistry.getStorageProfile());
   }
 
@@ -217,6 +251,15 @@ export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, sync
     if (mode === "launcher") return "App Lab";
     return activeApp?.name ?? "App";
   }, [activeApp?.name, mode]);
+  const activeAppSyncHealth = activeApp ? syncHealth[activeApp.appId] : undefined;
+  const headerSyncHealth = syncStatus
+    ? ({
+        kind: "problem",
+        label: "",
+        title: syncStatus,
+        tone: "attention",
+      } satisfies AppSyncHealth)
+    : activeAppSyncHealth;
 
   return (
     <div className="grid min-h-[calc(100dvh+1px)] grid-rows-[44px_minmax(0,1fr)_auto] overflow-x-hidden lg:min-h-dvh">
@@ -234,45 +277,22 @@ export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, sync
         </div>
         <h1 className="max-w-[50vw] truncate text-center text-[17px] font-extrabold">{title}</h1>
         <nav className="relative flex items-center justify-end gap-1 lg:gap-3" aria-label="Workspace actions">
-          {mode === "app" && syncStatus ? (
-            <div className="relative">
-              <button
-                className="grid h-8 min-h-8 w-8 place-items-center rounded-full border border-amber-200 bg-amber-50 text-sm font-extrabold text-amber-900 hover:bg-amber-100"
-                type="button"
-                aria-label="Open sync warning"
-                title={syncStatus}
-                onClick={() => setSyncStatusOpen((open) => !open)}
-              >
-                !
-              </button>
-              {syncStatusOpen ? (
-                <div className="absolute right-0 top-10 z-40 grid w-72 gap-3 rounded-lg border border-amber-200 bg-white p-3 text-left shadow-panel">
-                  <p className="text-sm font-bold leading-snug text-amber-950">{syncStatus}</p>
-                  <div className="flex items-center justify-end gap-2">
-                    <button
-                      className="min-h-8 rounded-md border border-app-line bg-white px-3 text-sm font-bold text-app-ink hover:border-app-accent"
-                      type="button"
-                      onClick={() => setSyncStatusOpen(false)}
-                    >
-                      Close
-                    </button>
-                    <button
-                      className="grid h-8 min-h-8 w-8 place-items-center rounded-md border border-app-accent bg-app-accent text-lg font-bold text-white hover:bg-app-strong"
-                      type="button"
-                      aria-label="Reload app"
-                      title="Reload app"
-                      onClick={() => {
-                        setSandboxReloadKey((key) => key + 1);
-                        setSyncStatus(null);
-                        setSyncStatusOpen(false);
-                      }}
-                    >
-                      ↻
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-            </div>
+          {mode === "app" && headerSyncHealth && headerSyncHealth.kind !== "none" ? (
+            <CloudSyncIndicator
+              health={headerSyncHealth}
+              onReload={
+                syncStatus
+                  ? () => {
+                      setSandboxReloadKey((key) => key + 1);
+                      setSyncStatus(null);
+                      setSyncStatusOpen(false);
+                    }
+                  : undefined
+              }
+              open={syncStatusOpen}
+              onOpenChange={setSyncStatusOpen}
+              popoverAlign="right"
+            />
           ) : null}
           {mode === "app" && activeApp ? (
             <button
@@ -649,9 +669,7 @@ function LauncherCard({
           {isRemoteDeleted ? " ⓘ" : ""}
         </span>
         {syncHealth.kind !== "none" ? (
-          <span className={`rounded-full px-2 py-1 text-[11px] font-extrabold uppercase ${syncHealthClassName(syncHealth.tone)}`} title={syncHealth.title}>
-            {syncHealth.label}
-          </span>
+          <CloudSyncIndicator health={syncHealth} popoverAlign="left" />
         ) : null}
       </div>
       <div className="mt-auto flex items-center justify-between gap-2 border-t border-app-line pt-3">
@@ -686,13 +704,6 @@ function syncBadgeClassName(tone: AppSyncBadge["tone"]): string {
   return "bg-slate-100 text-app-muted";
 }
 
-function syncHealthClassName(tone: AppSyncHealth["tone"]): string {
-  if (tone === "good") return "bg-emerald-50 text-emerald-700";
-  if (tone === "working") return "bg-sky-50 text-sky-700";
-  if (tone === "attention") return "bg-amber-50 text-amber-800";
-  return "bg-slate-100 text-app-muted";
-}
-
 function buildAppSyncHealthMap(input: {
   apps: AppSummary[];
   badges: Record<string, AppSyncBadge>;
@@ -709,8 +720,25 @@ function buildAppSyncHealthMap(input: {
 }
 
 function describeAppSyncHealth(input: { badge?: AppSyncBadge; isOnline: boolean; items: PendingSyncItem[] }): AppSyncHealth {
-  if (input.badge?.kind === "local-only" || input.badge?.kind === "needs-attention") return { kind: "none", label: "", title: "", tone: "neutral" };
+  if (input.badge?.kind === "local-only") return { kind: "none", label: "", title: "", tone: "neutral" };
+  if (input.badge?.kind === "needs-attention") {
+    return {
+      kind: "problem",
+      label: "",
+      title: "This shared app was deleted by its owner. You can remove this local entry from the edit menu.",
+      tone: "attention",
+    };
+  }
   if (!input.items.length) return { kind: "synced", label: "☁ ✓", title: "Synced with remote storage.", tone: "good" };
+
+  if (!input.isOnline) {
+    return {
+      kind: "offline",
+      label: "☁ ×",
+      title: "Offline. Local changes are saved and will sync when the browser comes back online.",
+      tone: "attention",
+    };
+  }
 
   const problem = input.items.find((item) => item.lastError || item.status === "problem");
   if (problem) {
@@ -722,20 +750,153 @@ function describeAppSyncHealth(input: { badge?: AppSyncBadge; isOnline: boolean;
     };
   }
 
-  if (!input.isOnline) {
-    return {
-      kind: "offline",
-      label: "☁ ×",
-      title: "Offline. Local changes are saved and will sync when the browser comes back online.",
-      tone: "attention",
-    };
-  }
-
   if (input.items.some((item) => item.status === "syncing")) {
     return { kind: "syncing", label: "☁ …", title: "Syncing local changes to remote storage.", tone: "working" };
   }
 
   return { kind: "pending", label: "☁ …", title: "Local changes are queued for remote sync.", tone: "working" };
+}
+
+function CloudSyncIndicator({
+  health,
+  onOpenChange,
+  onReload,
+  open,
+  popoverAlign = "right",
+}: {
+  health: AppSyncHealth;
+  onOpenChange?: (open: boolean) => void;
+  onReload?: () => void;
+  open?: boolean;
+  popoverAlign?: "left" | "right";
+}) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isOpen = open ?? internalOpen;
+  const setOpen = onOpenChange ?? setInternalOpen;
+  const toneClass =
+    health.kind === "synced"
+      ? "text-emerald-600 hover:bg-emerald-50"
+      : health.kind === "pending" || health.kind === "syncing"
+        ? "text-blue-600 hover:bg-blue-50"
+        : health.kind === "offline"
+          ? "text-slate-500 hover:bg-slate-100"
+          : "text-red-600 hover:bg-red-50";
+  const popoverToneClass =
+    health.kind === "synced"
+      ? "border-emerald-100"
+      : health.kind === "pending" || health.kind === "syncing"
+        ? "border-blue-100"
+        : health.kind === "offline"
+          ? "border-slate-200"
+          : "border-red-100";
+
+  return (
+    <div className="relative inline-grid place-items-center">
+      <button
+        aria-label={`Open sync status: ${health.title}`}
+        className={`grid h-9 min-h-9 w-9 place-items-center rounded-md border border-transparent bg-transparent ${toneClass}`}
+        title={health.title}
+        type="button"
+        onClick={() => setOpen(!isOpen)}
+      >
+        <CloudSyncIcon kind={health.kind} />
+      </button>
+      {isOpen ? (
+        <div
+          className={`absolute top-10 z-40 grid w-72 gap-3 rounded-lg border ${popoverToneClass} bg-white p-3 text-left text-app-ink shadow-panel ${
+            popoverAlign === "left" ? "left-0" : "right-0"
+          }`}
+        >
+          <div className="flex items-start gap-3">
+            <div className={toneClass.replace(/hover:[^ ]+/g, "")}>
+              <CloudSyncIcon kind={health.kind} />
+            </div>
+            <div className="grid gap-1">
+              <p className="text-xs font-extrabold uppercase text-app-muted">Sync status</p>
+              <p className="text-sm font-bold leading-snug">{health.title}</p>
+            </div>
+          </div>
+          <div className="flex items-center justify-end gap-2">
+            <button
+              className="min-h-8 rounded-md border border-app-line bg-white px-3 text-sm font-bold text-app-ink hover:border-app-accent"
+              type="button"
+              onClick={() => setOpen(false)}
+            >
+              Close
+            </button>
+            {onReload ? (
+              <button
+                aria-label="Reload app"
+                className="grid h-8 min-h-8 w-8 place-items-center rounded-md border border-app-accent bg-app-accent text-lg font-bold text-white hover:bg-app-strong"
+                title="Reload app"
+                type="button"
+                onClick={onReload}
+              >
+                ↻
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function CloudSyncIcon({ kind }: { kind: AppSyncHealthKind }) {
+  return (
+    <svg aria-hidden="true" className="block h-7 w-7" viewBox="0 0 64 64">
+      <path
+        d="M20 46h26a12 12 0 0 0 1.2-23.9A17 17 0 0 0 15.5 27.5 9.5 9.5 0 0 0 20 46Z"
+        fill="#f8fafc"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="2.8"
+      />
+      {kind === "synced" ? (
+        <path d="m25 35 5 5 10-12" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="3.4" />
+      ) : null}
+      {kind === "pending" ? (
+        <>
+          <circle className="cloud-sync-dot-one" cx="27" cy="36" fill="currentColor" r="2.4" />
+          <circle className="cloud-sync-dot-two" cx="32" cy="36" fill="currentColor" r="2.4" />
+          <circle className="cloud-sync-dot-three" cx="37" cy="36" fill="currentColor" r="2.4" />
+        </>
+      ) : null}
+      {kind === "syncing" ? (
+        <g className="cloud-sync-spin">
+          <path d="M37.7 27.3a8 8 0 0 1 2.1 8.8" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="3.4" />
+          <path
+            d="M24 33a8 8 0 0 1 13.7-5.7"
+            fill="none"
+            opacity="0.58"
+            stroke="currentColor"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="3.4"
+          />
+          <path
+            d="M26.4 38.7A8 8 0 0 1 24 33"
+            fill="none"
+            opacity="0.24"
+            stroke="currentColor"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="3.4"
+          />
+        </g>
+      ) : null}
+      {kind === "offline" ? (
+        <path d="M17 17 47 47" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="3.4" />
+      ) : null}
+      {kind === "problem" ? (
+        <>
+          <path d="M32 21.8v9.4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="3.4" />
+          <circle cx="32" cy="38.8" fill="currentColor" r="2.4" />
+        </>
+      ) : null}
+    </svg>
+  );
 }
 
 function formatQueueKind(kind: PendingSyncItem["kind"]): string {

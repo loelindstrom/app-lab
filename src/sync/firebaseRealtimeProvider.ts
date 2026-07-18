@@ -27,6 +27,7 @@ export interface FirebaseRealtimeDriver {
     roomId: string;
     writeTokenHash: string;
   }): Promise<{ currentRecord: FirebaseRealtimeRoomRecord | null; ok: boolean }>;
+  subscribeConnection(onChange: (connected: boolean) => void): () => void;
   subscribeRoom(roomId: string, onChange: (record: FirebaseRealtimeRoomRecord | null) => void): () => void;
 }
 
@@ -132,6 +133,7 @@ export function createFirebaseRealtimeSyncProvider(input: { driver: FirebaseReal
     deleteRoom,
     loadRoom,
     saveRoom,
+    subscribeConnection: input.driver.subscribeConnection,
     subscribeRoom,
   };
 }
@@ -183,6 +185,11 @@ export function createFirebaseRealtimeDriverFromDatabase(database: Database): Fi
       await remove(reference);
       return { currentRecord: null, ok: true };
     },
+    subscribeConnection(onChange) {
+      return onValue(ref(database, ".info/connected"), (snapshot) => {
+        onChange(snapshot.val() === true);
+      });
+    },
     subscribeRoom(roomId, onChange) {
       return onValue(roomRef(database, roomId), (snapshot) => {
         onChange(parseRoomRecord(snapshot.val(), roomId));
@@ -228,6 +235,10 @@ export function createMemoryFirebaseRealtimeDriver(): FirebaseRealtimeDriver {
       rooms.delete(input.roomId);
       emit(input.roomId);
       return { currentRecord: null, ok: true };
+    },
+    subscribeConnection(onChange) {
+      onChange(true);
+      return () => {};
     },
     subscribeRoom(roomId, onChange) {
       let roomSubscribers = subscribers.get(roomId);

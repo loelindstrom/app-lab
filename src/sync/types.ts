@@ -59,6 +59,7 @@ export interface SyncProvider {
 }
 
 export interface RealtimeSyncProvider extends SyncProvider {
+  subscribeConnection?(onChange: (connected: boolean) => void): () => void;
   subscribeRoom(input: SubscribeRoomInput): () => void;
 }
 

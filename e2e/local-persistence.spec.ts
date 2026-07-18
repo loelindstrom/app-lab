@@ -127,12 +127,14 @@ test.describe("synced app persistence", () => {
     await page.getByRole("button", { name: "Open", exact: true }).click();
 
     await context.setOffline(true);
+    await page.evaluate(() => window.dispatchEvent(new Event("offline")));
 
     await appFrame(page).getByLabel("New item").fill("Offline first");
     await appFrame(page).getByRole("button", { name: "Add" }).click();
     await expect(appFrame(page).getByText("Offline first", { exact: true })).toBeVisible();
 
     await page.getByRole("button", { name: "‹ Apps" }).click();
+    await expect(page.getByRole("button", { name: /Open sync status: Offline/ })).toBeVisible();
     await page.getByRole("button", { name: "Open", exact: true }).click();
     await expect(appFrame(page).getByText("Offline first", { exact: true })).toBeVisible();
 
@@ -170,10 +172,12 @@ test.describe("synced app persistence", () => {
     await page.getByRole("button", { name: "Open", exact: true }).click();
 
     await context.setOffline(true);
+    await page.evaluate(() => window.dispatchEvent(new Event("offline")));
 
     await saveSource(page, htmlForChecklistTitle("Offline Source One"));
     await expect(appFrame(page).getByRole("heading", { name: "Offline Source One" })).toBeVisible();
     await page.getByRole("button", { name: "‹ Apps" }).click();
+    await expect(page.getByRole("button", { name: /Open sync status: Offline/ })).toBeVisible();
     await page.getByRole("button", { name: "Open", exact: true }).click();
     await expect(appFrame(page).getByRole("heading", { name: "Offline Source One" })).toBeVisible();
 

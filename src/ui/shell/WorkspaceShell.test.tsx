@@ -76,7 +76,57 @@ describe("WorkspaceShell sync wake-ups", () => {
     );
 
     expect(await screen.findByText("Private")).toBeTruthy();
-    expect((await screen.findByTitle("Local changes are queued for remote sync.")).textContent).toBe("☁ …");
+    expect(await screen.findByRole("button", { name: "Open sync status: Local changes are queued for remote sync." })).toBeTruthy();
+  });
+
+  it("shows offline sync health for queued work when the browser reports offline", async () => {
+    const syncActions = createSyncActionsStub();
+    const core = createMemoryCore();
+    const app = await core.createBlankApp();
+    const queueStore = createMemorySyncQueueStore();
+    const syncRegistry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
+    await syncRegistry.configureStorageProfile({ databaseUrl: "https://example.firebaseio.com" });
+    await syncRegistry.ensureOwnedAppRooms(app.appId);
+    await enqueueSaveSource(queueStore, app);
+
+    render(
+      <WorkspaceShell
+        core={core}
+        syncActionsOverride={syncActions}
+        syncQueueStore={queueStore}
+        syncRegistry={syncRegistry}
+      />,
+    );
+
+    window.dispatchEvent(new Event("offline"));
+
+    expect(await screen.findByRole("button", { name: "Open sync status: Offline. Local changes are saved and will sync when the browser comes back online." })).toBeTruthy();
+  });
+
+  it("shows offline sync health for queued work when the storage provider reports disconnected", async () => {
+    const syncActions = createSyncActionsStub();
+    vi.mocked(syncActions.subscribeStorageConnection).mockImplementation(async (onChange) => {
+      onChange(false);
+      return () => {};
+    });
+    const core = createMemoryCore();
+    const app = await core.createBlankApp();
+    const queueStore = createMemorySyncQueueStore();
+    const syncRegistry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
+    await syncRegistry.configureStorageProfile({ databaseUrl: "https://example.firebaseio.com" });
+    await syncRegistry.ensureOwnedAppRooms(app.appId);
+    await enqueueSaveSource(queueStore, app);
+
+    render(
+      <WorkspaceShell
+        core={core}
+        syncActionsOverride={syncActions}
+        syncQueueStore={queueStore}
+        syncRegistry={syncRegistry}
+      />,
+    );
+
+    expect(await screen.findByRole("button", { name: "Open sync status: Offline. Local changes are saved and will sync when the browser comes back online." })).toBeTruthy();
   });
 
   it("opens the local app without waiting for remote pull", async () => {
@@ -127,5 +177,6 @@ function createSyncActionsStub(): WorkspaceSyncActions {
     restoreWorkspaceRecovery: vi.fn().mockResolvedValue(undefined),
     subscribeAppData: vi.fn().mockResolvedValue(() => {}),
     subscribeAppSource: vi.fn().mockResolvedValue(() => {}),
+    subscribeStorageConnection: vi.fn().mockResolvedValue(() => {}),
   };
 }

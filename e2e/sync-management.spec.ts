@@ -53,7 +53,7 @@ test.describe("sync management", () => {
 
     await deleteCurrentOwnerApp(owner, title);
 
-    const syncWarning = joined.getByRole("button", { name: "Open sync warning" });
+    const syncWarning = joined.getByRole("button", { name: /Open sync status: This shared app was deleted by its owner/ });
     await expect(syncWarning).toBeVisible({ timeout: 15_000 });
     await syncWarning.click();
     await expect(joined.getByText("This shared app was deleted by its owner.")).toBeVisible();

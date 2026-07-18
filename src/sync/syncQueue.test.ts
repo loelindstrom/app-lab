@@ -7,6 +7,7 @@ import {
   enqueueSaveWorkspaceManifest,
   markQueueItemFailed,
   markQueueItemSyncing,
+  resetSyncingQueueItems,
 } from "./syncQueue";
 
 describe("sync queue store", () => {
@@ -39,6 +40,20 @@ describe("sync queue store", () => {
     });
     await expect(store.getItem(item.id)).resolves.toMatchObject({
       attempts: 1,
+      status: "pending",
+    });
+  });
+
+  it("resets abandoned syncing work to pending on startup", async () => {
+    const store = createMemorySyncQueueStore();
+    const item = await enqueueEnsureAppRooms(store, "app-1");
+    await markQueueItemSyncing(store, item);
+
+    await resetSyncingQueueItems(store);
+
+    await expect(store.getItem(item.id)).resolves.toMatchObject({
+      appId: "app-1",
+      kind: "ensure-app-rooms",
       status: "pending",
     });
   });

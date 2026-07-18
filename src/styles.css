@@ -35,6 +35,24 @@
     stroke-dashoffset: 0;
     stroke-width: 4;
   }
+
+  .cloud-sync-spin {
+    animation: cloud-sync-spin 1.15s linear infinite;
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+
+  .cloud-sync-dot-one {
+    animation: cloud-sync-pulse 1.2s ease-in-out infinite;
+  }
+
+  .cloud-sync-dot-two {
+    animation: cloud-sync-pulse 1.2s ease-in-out 0.15s infinite;
+  }
+
+  .cloud-sync-dot-three {
+    animation: cloud-sync-pulse 1.2s ease-in-out 0.3s infinite;
+  }
 }
 
 @keyframes ai-text-shimmer {
@@ -78,5 +96,24 @@
   100% {
     opacity: 0;
     stroke-dashoffset: -272;
+  }
+}
+
+@keyframes cloud-sync-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes cloud-sync-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+
+  45% {
+    opacity: 1;
+    transform: translateY(-1px);
   }
 }

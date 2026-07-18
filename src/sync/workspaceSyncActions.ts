@@ -323,6 +323,13 @@ export function createWorkspaceSyncActions(input: WorkspaceSyncActionsInput) {
     });
   }
 
+  async function subscribeStorageConnection(onChange: (connected: boolean) => void): Promise<() => void> {
+    const profile = await syncRegistry.getStorageProfile();
+    if (!profile) return () => {};
+    const provider = createProviderFromStorageProfile(profile);
+    return provider.subscribeConnection?.(onChange) ?? (() => {});
+  }
+
   async function syncCurrentAppToRemote(
     app: AppRecord,
     provider: RealtimeSyncProvider,
@@ -553,6 +560,7 @@ export function createWorkspaceSyncActions(input: WorkspaceSyncActionsInput) {
     restoreWorkspaceRecovery,
     subscribeAppData,
     subscribeAppSource,
+    subscribeStorageConnection,
   };
 }
 

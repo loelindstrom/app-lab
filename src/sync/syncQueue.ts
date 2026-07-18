@@ -222,6 +222,22 @@ export async function removeQueueItemIfCurrent(store: SyncQueueStore, item: Pend
   await store.removeItem(item.id);
 }
 
+export async function resetSyncingQueueItems(store: SyncQueueStore): Promise<void> {
+  const items = await store.listItems();
+  const now = new Date().toISOString();
+  await Promise.all(
+    items
+      .filter((item) => item.status === "syncing")
+      .map((item) =>
+        store.putItem({
+          ...item,
+          status: "pending" as const,
+          updatedAt: now,
+        }),
+      ),
+  );
+}
+
 export function createMemorySyncQueueStore(initialItems: PendingSyncItem[] = []): SyncQueueStore {
   const items = new Map(initialItems.map((item) => [item.id, cloneItem(item)]));
 
