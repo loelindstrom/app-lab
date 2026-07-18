@@ -3,6 +3,8 @@
 node_modules/
 dist/
 *.tsbuildinfo
+vite.config.js
+vite.config.d.ts
 .env.local
 .env.*.local
 playwright-report/
