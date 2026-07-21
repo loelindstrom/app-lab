@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createExampleAppInput } from "../../core/exampleApp";
 import { createAlpineExampleAppInput } from "../../core/alpineExampleApp";
 import type { AppLabCore, AppRecord, AppSummary, CreateAppInput, JsonValue } from "../../core/types";
 import { encodeAppInvite, readInviteFromHash } from "../../sync/invites";
@@ -250,10 +249,6 @@ export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, sync
   }
 
   async function createApp() {
-    await createAppFromInput(createExampleAppInput());
-  }
-
-  async function createAlpineExampleApp() {
     await createAppFromInput(createAlpineExampleAppInput());
   }
 
@@ -367,10 +362,6 @@ export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, sync
             storageProfile={storageProfile}
             syncBadges={syncBadges}
             syncHealth={syncHealth}
-            onUpdateApp={async (appId, input) => {
-              await core.updateApp({ appId, ...input });
-              await refreshApps();
-            }}
           />
         ) : activeApp ? (
           <AppView
@@ -414,9 +405,8 @@ export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, sync
             onClearConsole={() => setConsoleEntries([])}
             onClose={() => setActiveTool(null)}
             onSaveSource={async (sourceCode) => {
-              const nextName = readHtmlTitle(sourceCode) || activeApp.name;
               const compiledStyles = await compileAppStyles(sourceCode);
-              const updated = await core.updateApp({ appId: activeApp.appId, name: nextName, sourceCode, ...compiledStyles });
+              const updated = await core.updateApp({ appId: activeApp.appId, sourceCode, ...compiledStyles });
               await trySync("Source saved locally. Remote source sync failed", () => syncActions.pushAppSource(updated));
               refreshWhenSettled(syncActions.flushSourceSyncQueue());
               setActiveApp(updated);
@@ -427,14 +417,6 @@ export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, sync
         </>
       ) : mode === "launcher" ? (
         <>
-          <button
-            className="fixed bottom-5 right-24 z-20 min-h-14 rounded-full border border-app-line bg-white px-4 text-sm font-extrabold text-app-ink shadow-panel hover:border-app-accent hover:text-app-accent"
-            type="button"
-            aria-label="Create Alpine example app"
-            onClick={createAlpineExampleApp}
-          >
-            Alpine
-          </button>
           <button
             className="fixed bottom-5 right-5 z-20 grid h-14 min-h-14 w-14 place-items-center rounded-full border border-app-accent bg-app-accent text-3xl font-light leading-none text-white shadow-panel hover:bg-app-strong"
             type="button"
@@ -528,7 +510,6 @@ interface LauncherViewProps {
   storageProfile: StorageProfile | null;
   syncBadges: Record<string, AppSyncBadge>;
   syncHealth: Record<string, AppSyncHealth>;
-  onUpdateApp: (appId: string, input: { name: string; description: string }) => Promise<void>;
 }
 
 interface ToolSwitchProps {
@@ -603,8 +584,8 @@ function ToolSwitch({ activeTool, aiAttentionDismissed, aiAttentionKey, consoleC
   );
 }
 
-function LauncherView({ apps, onDeleteApp, onOpenApp, onShareApp, onUpdateApp, storageProfile, syncBadges, syncHealth }: LauncherViewProps) {
-  const [editingApp, setEditingApp] = useState<AppSummary | null>(null);
+function LauncherView({ apps, onDeleteApp, onOpenApp, onShareApp, storageProfile, syncBadges, syncHealth }: LauncherViewProps) {
+  const [selectedApp, setSelectedApp] = useState<AppSummary | null>(null);
 
   return (
     <section className="mx-auto h-full w-full max-w-5xl overflow-auto px-4 py-7 pb-24" aria-label="Apps">
@@ -626,7 +607,7 @@ function LauncherView({ apps, onDeleteApp, onOpenApp, onShareApp, onUpdateApp, s
             <LauncherCard
               app={app}
               key={app.appId}
-              onEdit={() => setEditingApp(app)}
+              onOpenActions={() => setSelectedApp(app)}
               onOpen={() => onOpenApp(app.appId)}
               onShare={() => onShareApp(app)}
               syncBadge={syncBadges[app.appId] ?? { kind: "local-only", label: "Private", tone: "neutral" }}
@@ -640,18 +621,14 @@ function LauncherView({ apps, onDeleteApp, onOpenApp, onShareApp, onUpdateApp, s
         </div>
       )}
 
-      <LauncherEditDialog
-        app={editingApp}
-        onClose={() => setEditingApp(null)}
+      <LauncherAppActionsDialog
+        app={selectedApp}
+        onClose={() => setSelectedApp(null)}
         onDeleteApp={async (appId) => {
           await onDeleteApp(appId);
-          setEditingApp(null);
+          setSelectedApp(null);
         }}
-        syncBadge={editingApp ? syncBadges[editingApp.appId] : undefined}
-        onUpdateApp={async (appId, input) => {
-          await onUpdateApp(appId, input);
-          setEditingApp(null);
-        }}
+        syncBadge={selectedApp ? syncBadges[selectedApp.appId] : undefined}
       />
     </section>
   );
@@ -659,14 +636,14 @@ function LauncherView({ apps, onDeleteApp, onOpenApp, onShareApp, onUpdateApp, s
 
 function LauncherCard({
   app,
-  onEdit,
+  onOpenActions,
   onOpen,
   onShare,
   syncBadge,
   syncHealth,
 }: {
   app: AppSummary;
-  onEdit: () => void;
+  onOpenActions: () => void;
   onOpen: () => void;
   onShare: () => void;
   syncBadge: AppSyncBadge;
@@ -682,13 +659,15 @@ function LauncherCard({
       <button
         className="absolute right-3 top-3 grid h-8 min-h-8 w-8 place-items-center rounded-md border border-transparent bg-white/80 text-base text-app-muted hover:border-app-accent hover:text-app-accent"
         type="button"
-        aria-label={`Edit ${app.name}`}
-        title="Edit"
-        onClick={onEdit}
+        aria-label={`Open app actions for ${app.name}`}
+        title="App actions"
+        onClick={onOpenActions}
       >
-        <span className="inline-block scale-x-[-1]" aria-hidden="true">
-          ✎
-        </span>
+        <svg className="h-4 w-4" aria-hidden="true" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M4.2 19.8 6.4 14.1 9.9 17.6 4.2 19.8Z"></path>
+          <path d="M8.1 12.4 13.4 7.1 16.9 10.6 11.6 15.9Z"></path>
+          <path d="M15.1 5.4 17.4 3.1 20.9 6.6 18.6 8.9Z"></path>
+        </svg>
       </button>
       <button className="grid gap-2 pr-9 text-left disabled:cursor-default" type="button" disabled={isRemoteDeleted} onClick={onOpen}>
         <strong className={`text-lg leading-tight ${isRemoteDeleted ? "line-through decoration-2" : ""}`}>{app.name}</strong>
@@ -697,7 +676,7 @@ function LauncherCard({
       <div className="flex flex-wrap gap-2">
         <span
           className={`rounded-full px-2 py-1 text-[11px] font-extrabold uppercase ${syncBadgeClassName(syncBadge.tone)}`}
-          title={isRemoteDeleted ? "The owner deleted this shared app. You can remove this local entry from the edit menu." : undefined}
+          title={isRemoteDeleted ? "The owner deleted this shared app. You can remove this local entry from app actions." : undefined}
         >
           {syncBadge.label}
           {isRemoteDeleted ? " ⓘ" : ""}
@@ -759,7 +738,7 @@ function describeAppSyncHealth(input: { badge?: AppSyncBadge; isOnline: boolean;
     return {
       kind: "problem",
       label: "",
-      title: "This shared app was deleted by its owner. You can remove this local entry from the edit menu.",
+      title: "This shared app was deleted by its owner. You can remove this local entry from app actions.",
       tone: "attention",
     };
   }
@@ -1112,40 +1091,24 @@ function InviteImportDialog({
   );
 }
 
-function LauncherEditDialog({
+function LauncherAppActionsDialog({
   app,
   onClose,
   onDeleteApp,
   syncBadge,
-  onUpdateApp,
 }: {
   app: AppSummary | null;
   onClose: () => void;
   onDeleteApp: (appId: string) => Promise<void>;
   syncBadge?: AppSyncBadge;
-  onUpdateApp: (appId: string, input: { name: string; description: string }) => Promise<void>;
 }) {
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [status, setStatus] = useState("Ready");
+  const [status, setStatus] = useState("");
 
   useEffect(() => {
-    setName(app?.name ?? "");
-    setDescription(app?.description ?? "");
-    setStatus("Ready");
+    setStatus("");
   }, [app]);
 
   if (!app) return null;
-
-  async function save() {
-    if (!app || !name.trim()) return;
-    setStatus("Saving...");
-    try {
-      await onUpdateApp(app.appId, { name: name.trim(), description: description.trim() });
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Could not save app.");
-    }
-  }
 
   async function deleteApp() {
     if (!app) return;
@@ -1160,35 +1123,24 @@ function LauncherEditDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-40 grid place-items-center bg-black/35 px-4" role="dialog" aria-modal="true" aria-label="Edit app">
+    <div className="fixed inset-0 z-40 grid place-items-center bg-black/35 px-4" role="dialog" aria-modal="true" aria-label="App actions">
       <div className="grid w-full max-w-md gap-4 rounded-xl border border-app-line bg-app-panel p-4 shadow-panel">
         <div className="flex items-center justify-between gap-3">
-          <h2 className="text-lg font-extrabold">Edit app</h2>
+          <h2 className="text-lg font-extrabold">App actions</h2>
           <button
             className="grid h-8 min-h-8 w-8 place-items-center rounded-full text-xl text-app-muted hover:bg-app-accent/10 hover:text-app-accent"
             type="button"
-            aria-label="Close app editor"
+            aria-label="Close app actions"
             onClick={onClose}
           >
             ×
           </button>
         </div>
-        <label className="grid gap-2 text-sm font-bold text-app-muted">
-          Name
-          <input
-            className="min-h-10 rounded-md border border-app-line bg-white px-3 text-base font-semibold text-app-ink outline-none focus:border-app-accent"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-          />
-        </label>
-        <label className="grid gap-2 text-sm font-bold text-app-muted">
-          Description
-          <textarea
-            className="min-h-24 resize-y rounded-md border border-app-line bg-white px-3 py-2 text-base font-medium text-app-ink outline-none focus:border-app-accent"
-            value={description}
-            onChange={(event) => setDescription(event.target.value)}
-          />
-        </label>
+        <div className="grid gap-1 rounded-lg border border-app-line bg-white p-3">
+          <p className="text-xs font-extrabold uppercase text-app-muted">Selected app</p>
+          <p className="truncate text-base font-extrabold text-app-ink">{app.name}</p>
+          {app.description ? <p className="line-clamp-3 text-sm leading-snug text-app-muted">{app.description}</p> : null}
+        </div>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <button
             className="min-h-9 rounded-md border border-red-200 bg-red-50 px-3 text-sm font-bold text-red-700 hover:bg-red-100"
@@ -1205,14 +1157,6 @@ function LauncherEditDialog({
               onClick={onClose}
             >
               Cancel
-            </button>
-            <button
-              className="min-h-9 rounded-md border border-app-accent bg-app-accent px-3 text-sm font-bold text-white hover:bg-app-strong disabled:opacity-50"
-              type="button"
-              disabled={!name.trim()}
-              onClick={save}
-            >
-              Save
             </button>
           </div>
         </div>
@@ -1233,11 +1177,6 @@ function deleteConfirmationMessage(app: AppSummary, syncBadge?: AppSyncBadge): s
     return `${base}\n\nIts remote source and data backup rooms will also be deleted.`;
   }
   return base;
-}
-
-function readHtmlTitle(sourceCode: string): string {
-  const document = new DOMParser().parseFromString(sourceCode, "text/html");
-  return document.title.trim();
 }
 
 function AppView({

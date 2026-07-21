@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createMemoryCore } from "../../core/memoryCore";
 import { createMemorySyncQueueStore, enqueueSaveSource } from "../../sync/syncQueue";
@@ -153,6 +153,61 @@ describe("WorkspaceShell sync wake-ups", () => {
 
     expect(await screen.findByRole("button", { name: /Apps/ })).toBeTruthy();
     expect(syncActions.pullLatestAppRooms).toHaveBeenCalledTimes(1);
+  });
+
+  it("updates launcher metadata from the saved source HTML head", async () => {
+    const syncActions = createSyncActionsStub();
+    const core = createMemoryCore();
+    await core.createApp({
+      description: "Initial description",
+      name: "Initial fallback",
+      sourceCode: "<!doctype html><html><head><title>Initial app</title></head><body></body></html>",
+    });
+
+    render(
+      <WorkspaceShell
+        core={core}
+        syncActionsOverride={syncActions}
+        syncQueueStore={createMemorySyncQueueStore()}
+        syncRegistry={createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore())}
+      />,
+    );
+
+    expect(await screen.findByText("Initial app")).toBeTruthy();
+    fireEvent.click(await screen.findByRole("button", { name: "Open" }));
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "Toggle source" }).length).toBeGreaterThan(0));
+    fireEvent.click(screen.getAllByRole("button", { name: "Toggle source" })[0]);
+
+    const sourcePanel = await screen.findByRole("complementary", { name: "Source" });
+    const sourceInput = sourcePanel.querySelector("textarea");
+    if (!(sourceInput instanceof HTMLTextAreaElement)) throw new Error("Expected source textarea.");
+
+    fireEvent.change(sourceInput, {
+      target: {
+        value: `<!doctype html>
+<html>
+  <head>
+    <title>Saved launcher title</title>
+    <meta name="description" content="Saved launcher description">
+  </head>
+  <body></body>
+</html>`,
+      },
+    });
+    fireEvent.click(within(sourcePanel).getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(syncActions.pushAppSource).toHaveBeenCalledWith(
+        expect.objectContaining({
+          description: "Saved launcher description",
+          name: "Saved launcher title",
+        }),
+      ),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: /Apps/ }));
+
+    expect(await screen.findByText("Saved launcher title")).toBeTruthy();
+    expect(await screen.findByText("Saved launcher description")).toBeTruthy();
   });
 });
 

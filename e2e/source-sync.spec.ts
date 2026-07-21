@@ -90,16 +90,14 @@ test.describe("source sync", () => {
     await joined.getByRole("button", { name: "Import", exact: true }).click();
     await expect(joined.getByText("Example App").first()).toBeVisible();
     await joined.getByRole("button", { name: "Open", exact: true }).click();
-    await expect(appFrame(joined).getByRole("heading", { name: "Sandbox checklist" })).toBeVisible();
+    await expect(appFrame(joined).getByRole("heading", { name: "Example App" })).toBeVisible();
 
-    await appFrame(owner).getByLabel("New item").fill("Online item");
-    await appFrame(owner).getByRole("button", { name: "Add" }).click();
+    await addExampleItem(owner, "Online item");
     await expect(appFrame(joined).getByText("Online item")).toBeVisible();
     await expect(appFrame(owner).getByText("Online item")).toBeVisible();
 
     await ownerContext.setOffline(true);
-    await appFrame(owner).getByLabel("New item").fill("Offline item");
-    await appFrame(owner).getByRole("button", { name: "Add" }).click();
+    await addExampleItem(owner, "Offline item");
     await expect(appFrame(owner).getByText("Offline item")).toBeVisible();
     await owner.getByRole("button", { name: "‹ Apps" }).click();
     await owner.getByRole("button", { name: "Open", exact: true }).click();
@@ -131,11 +129,10 @@ test.describe("source sync", () => {
     await joined.getByRole("button", { name: "Import", exact: true }).click();
     await expect(joined.getByText("Example App").first()).toBeVisible();
     await joined.getByRole("button", { name: "Open", exact: true }).click();
-    await expect(appFrame(joined).getByRole("heading", { name: "Sandbox checklist" })).toBeVisible();
+    await expect(appFrame(joined).getByRole("heading", { name: "Example App" })).toBeVisible();
 
     for (const item of ["Live one", "Live two", "Live three"]) {
-      await appFrame(owner).getByLabel("New item").fill(item);
-      await appFrame(owner).getByRole("button", { name: "Add" }).click();
+      await addExampleItem(owner, item);
       await expect(appFrame(owner).getByText(item, { exact: true })).toBeVisible();
       await expect(appFrame(joined).getByText(item, { exact: true })).toBeVisible({ timeout: 15_000 });
     }
@@ -155,21 +152,19 @@ test.describe("source sync", () => {
     await createExampleApp(owner);
 
     for (const item of ["One", "Two", "Three"]) {
-      await appFrame(owner).getByLabel("New item").fill(item);
-      await appFrame(owner).getByRole("button", { name: "Add" }).click();
+      await addExampleItem(owner, item);
       await expect(appFrame(owner).getByText(item, { exact: true })).toBeVisible();
     }
 
     await ownerContext.setOffline(true);
 
-    await appFrame(owner).getByRole("button", { name: "Delete" }).first().click();
+    await deleteExampleItem(owner, "One");
     await expect(appFrame(owner).getByText("One", { exact: true })).toBeHidden();
 
-    await appFrame(owner).getByLabel("New item").fill("Four");
-    await appFrame(owner).getByRole("button", { name: "Add" }).click();
+    await addExampleItem(owner, "Four");
     await expect(appFrame(owner).getByText("Four", { exact: true })).toBeVisible();
 
-    await appFrame(owner).getByRole("button", { name: "Delete" }).first().click();
+    await deleteExampleItem(owner, "Two");
     await expect(appFrame(owner).getByText("Two", { exact: true })).toBeHidden();
     await expect(appFrame(owner).getByText("Three", { exact: true })).toBeVisible();
     await expect(appFrame(owner).getByText("Four", { exact: true })).toBeVisible();
@@ -194,6 +189,21 @@ async function configureStorage(page: Page, config: Record<string, string>) {
 async function createExampleApp(page: Page) {
   await page.getByRole("button", { name: "Create new app" }).click();
   await expect(page.getByRole("button", { name: "Toggle source" })).toBeVisible({ timeout: 30_000 });
+}
+
+async function addExampleItem(page: Page, title: string) {
+  const frame = appFrame(page);
+  await frame.getByRole("button", { name: "New item" }).click();
+  await frame.getByLabel("Title").fill(title);
+  await frame.getByRole("button", { name: "Save" }).click();
+  await expect(frame.getByText(title, { exact: true })).toBeVisible();
+}
+
+async function deleteExampleItem(page: Page, title: string) {
+  const frame = appFrame(page);
+  await frame.locator("details", { hasText: title }).getByRole("button", { name: "Edit item" }).click();
+  await frame.getByRole("button", { name: "Delete this item" }).click();
+  await frame.getByRole("button", { name: "Delete" }).click();
 }
 
 async function saveSource(page: Page, sourceCode: string) {

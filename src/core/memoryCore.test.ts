@@ -19,9 +19,56 @@ describe("createMemoryCore", () => {
     expect(app.sourceCode).toContain("AppLab.getData");
     expect(app.sourceCode).toContain("AppLab.saveData");
     expect(app.sourceCode).toContain("AppLab.onDataChange");
-    expect(app.sourceCode).toContain('x-data="sandboxChecklist"');
+    expect(app.sourceCode).toContain('x-data="todoExample"');
     expect(app.sourceCode).toContain("crypto.randomUUID");
-    expect(app.sourceCode).toContain("Persisted records with stable IDs");
+    expect(app.sourceCode).toContain("New item");
+    expect(app.description).toBe("Small Alpine and Tailwind TODO app with AppLab JSON persistence and live shared data.");
+  });
+
+  it("uses HTML head metadata when creating and updating app source", async () => {
+    const core = createMemoryCore();
+    const app = await core.createApp({
+      description: "Fallback description",
+      name: "Fallback name",
+      sourceCode: `<!doctype html>
+<html>
+  <head>
+    <title>Head name</title>
+    <meta name="description" content="Head description">
+  </head>
+  <body></body>
+</html>`,
+    });
+
+    expect(app.name).toBe("Head name");
+    expect(app.description).toBe("Head description");
+
+    const updated = await core.updateApp({
+      appId: app.appId,
+      description: "Ignored description",
+      name: "Ignored name",
+      sourceCode: `<!doctype html>
+<html>
+  <head>
+    <title>Saved source name</title>
+    <meta name="description" content="Saved source description">
+  </head>
+  <body></body>
+</html>`,
+    });
+
+    expect(updated.name).toBe("Saved source name");
+    expect(updated.description).toBe("Saved source description");
+
+    const missingMetadata = await core.updateApp({
+      appId: app.appId,
+      description: "Ignored missing description",
+      name: "Ignored missing name",
+      sourceCode: "<!doctype html><html><head></head><body></body></html>",
+    });
+
+    expect(missingMetadata.name).toBe("Saved source name");
+    expect(missingMetadata.description).toBe("Saved source description");
   });
 
   it("saves app-owned JSON data", async () => {

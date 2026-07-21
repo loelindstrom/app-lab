@@ -13,44 +13,15 @@ test.describe("local app persistence", () => {
     await page.reload();
 
     await createExampleApp(page);
-    await expect(appFrame(page).getByRole("heading", { name: "Sandbox checklist" })).toBeVisible();
+    await expect(appFrame(page).getByRole("heading", { name: "Example App" })).toBeVisible();
 
-    await appFrame(page).getByLabel("New item").fill("Example persisted item");
-    await appFrame(page).getByRole("button", { name: "Add" }).click();
-    await expect(appFrame(page).getByText("Example persisted item")).toBeVisible();
-    await expect(appFrame(page).locator("#status")).toHaveText("Saved.");
-
-    await page.getByRole("button", { name: "‹ Apps" }).click();
-    await page.getByRole("button", { name: "Open", exact: true }).click();
-
-    await expect(appFrame(page).getByRole("heading", { name: "Sandbox checklist" })).toBeVisible();
-    await expect(appFrame(page).getByText("Example persisted item")).toBeVisible();
-  });
-
-  test("creates the experimental Alpine example app and persists an item", async ({ page }) => {
-    await page.goto("/");
-    await page.evaluate(async () => {
-      indexedDB.deleteDatabase("app-lab-v2");
-      indexedDB.deleteDatabase("app-lab-sync-queue-v1");
-      localStorage.clear();
-    });
-    await page.reload();
-
-    await page.getByRole("button", { name: "Create Alpine example app" }).click();
-    const exampleHeading = appFrame(page).getByRole("heading", { name: "Example App" });
-    await expect(exampleHeading).toBeVisible();
-
-    await appFrame(page).getByRole("button", { name: "New item" }).click();
-    await appFrame(page).getByLabel("Title").fill("Pack a small bag");
-    await appFrame(page).getByLabel("Description").fill("This description should persist.");
-    await appFrame(page).getByRole("button", { name: "Save" }).click();
-    await expect(appFrame(page).getByText("Pack a small bag", { exact: true })).toBeVisible();
+    await addExampleItem(page, "Example persisted item", "This description should persist.");
 
     await page.getByRole("button", { name: "‹ Apps" }).click();
     await page.getByRole("button", { name: "Open", exact: true }).click();
 
     await expect(appFrame(page).getByRole("heading", { name: "Example App" })).toBeVisible();
-    await expect(appFrame(page).getByText("Pack a small bag", { exact: true })).toBeVisible();
+    await expect(appFrame(page).getByText("Example persisted item", { exact: true })).toBeVisible();
   });
 
   test("keeps source and app data after returning to the launcher", async ({ page }) => {
@@ -125,20 +96,18 @@ test.describe("synced app persistence", () => {
     await configureStorage(page, firebaseConfig);
 
     await createExampleApp(page);
-    await expect(appFrame(page).getByRole("heading", { name: "Sandbox checklist" })).toBeVisible();
+    await expect(appFrame(page).getByRole("heading", { name: "Example App" })).toBeVisible();
     await page.getByRole("button", { name: "‹ Apps" }).click();
     await expect(page.getByTitle("Synced with remote storage.")).toBeVisible({ timeout: 15_000 });
     await page.getByRole("button", { name: "Open", exact: true }).click();
 
-    await appFrame(page).getByLabel("New item").fill("Synced persisted item");
-    await appFrame(page).getByRole("button", { name: "Add" }).click();
-    await expect(appFrame(page).getByText("Synced persisted item")).toBeVisible();
+    await addExampleItem(page, "Synced persisted item");
 
     await page.getByRole("button", { name: "‹ Apps" }).click();
     await page.getByRole("button", { name: "Open", exact: true }).click();
 
-    await expect(appFrame(page).getByRole("heading", { name: "Sandbox checklist" })).toBeVisible();
-    await expect(appFrame(page).getByText("Synced persisted item")).toBeVisible();
+    await expect(appFrame(page).getByRole("heading", { name: "Example App" })).toBeVisible();
+    await expect(appFrame(page).getByText("Synced persisted item", { exact: true })).toBeVisible();
   });
 
   test("keeps source edits after returning to the launcher with storage configured", async ({ page }) => {
@@ -176,7 +145,7 @@ test.describe("synced app persistence", () => {
     await configureStorage(page, firebaseConfig);
 
     await createExampleApp(page);
-    await expect(appFrame(page).getByRole("heading", { name: "Sandbox checklist" })).toBeVisible();
+    await expect(appFrame(page).getByRole("heading", { name: "Example App" })).toBeVisible();
     await page.getByRole("button", { name: "‹ Apps" }).click();
     await expect(page.getByTitle("Synced with remote storage.")).toBeVisible({ timeout: 15_000 });
     await page.getByRole("button", { name: "Open", exact: true }).click();
@@ -184,8 +153,7 @@ test.describe("synced app persistence", () => {
     await context.setOffline(true);
     await page.evaluate(() => window.dispatchEvent(new Event("offline")));
 
-    await appFrame(page).getByLabel("New item").fill("Offline first");
-    await appFrame(page).getByRole("button", { name: "Add" }).click();
+    await addExampleItem(page, "Offline first");
     await expect(appFrame(page).getByText("Offline first", { exact: true })).toBeVisible();
 
     await page.getByRole("button", { name: "‹ Apps" }).click();
@@ -193,8 +161,7 @@ test.describe("synced app persistence", () => {
     await page.getByRole("button", { name: "Open", exact: true }).click();
     await expect(appFrame(page).getByText("Offline first", { exact: true })).toBeVisible();
 
-    await appFrame(page).getByLabel("New item").fill("Offline second");
-    await appFrame(page).getByRole("button", { name: "Add" }).click();
+    await addExampleItem(page, "Offline second");
     await expect(appFrame(page).getByText("Offline second", { exact: true })).toBeVisible();
 
     await page.getByRole("button", { name: "‹ Apps" }).click();
@@ -221,7 +188,7 @@ test.describe("synced app persistence", () => {
     await configureStorage(page, firebaseConfig);
 
     await createExampleApp(page);
-    await expect(appFrame(page).getByRole("heading", { name: "Sandbox checklist" })).toBeVisible();
+    await expect(appFrame(page).getByRole("heading", { name: "Example App" })).toBeVisible();
     await page.getByRole("button", { name: "‹ Apps" }).click();
     await expect(page.getByTitle("Synced with remote storage.")).toBeVisible({ timeout: 15_000 });
     await page.getByRole("button", { name: "Open", exact: true }).click();
@@ -252,6 +219,15 @@ test.describe("synced app persistence", () => {
 async function createExampleApp(page: Page) {
   await page.getByRole("button", { name: "Create new app" }).click();
   await expect(page.getByRole("button", { name: "Toggle source" })).toBeVisible({ timeout: 30_000 });
+}
+
+async function addExampleItem(page: Page, title: string, description = "") {
+  const frame = appFrame(page);
+  await frame.getByRole("button", { name: "New item" }).click();
+  await frame.getByLabel("Title").fill(title);
+  if (description) await frame.getByLabel("Description").fill(description);
+  await frame.getByRole("button", { name: "Save" }).click();
+  await expect(frame.getByText(title, { exact: true })).toBeVisible();
 }
 
 async function configureStorage(page: Page, config: Record<string, string>) {

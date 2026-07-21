@@ -1,4 +1,5 @@
-import { createExampleAppInput } from "./exampleApp";
+import { createAlpineExampleAppInput } from "./alpineExampleApp";
+import { readAppHtmlMetadata } from "./htmlMetadata";
 import { normalizeJsonValue } from "./jsonData";
 import type { AppLabCore, AppRecord, AppSummary, CreateAppInput, JsonValue, UpdateAppInput } from "./types";
 
@@ -32,12 +33,13 @@ export function createIndexedDbCore(): AppLabCore {
 
   async function createApp(input: CreateAppInput): Promise<AppRecord> {
     const now = new Date().toISOString();
+    const metadata = readAppHtmlMetadata(input.sourceCode, { description: input.description, name: input.name });
     const record: AppRecord = {
       appId: crypto.randomUUID(),
       compiledCss: input.compiledCss,
       compiledCssSourceHash: input.compiledCssSourceHash,
-      name: input.name,
-      description: input.description,
+      name: metadata.name,
+      description: metadata.description,
       sourceCode: input.sourceCode,
       createdAt: now,
       updatedAt: now,
@@ -48,7 +50,7 @@ export function createIndexedDbCore(): AppLabCore {
   }
 
   function createBlankApp(): Promise<AppRecord> {
-    return createApp(createExampleAppInput());
+    return createApp(createAlpineExampleAppInput());
   }
 
   async function deleteApp(appId: string): Promise<void> {
@@ -63,11 +65,19 @@ export function createIndexedDbCore(): AppLabCore {
     const existing = await getApp(input.appId);
     if (!existing) throw new Error(`App not found: ${input.appId}`);
 
-    const updated: AppRecord = {
-      ...existing,
-      ...input,
-      updatedAt: new Date().toISOString(),
-    };
+    const updated: AppRecord =
+      input.sourceCode === undefined
+        ? {
+            ...existing,
+            ...input,
+            updatedAt: new Date().toISOString(),
+          }
+        : {
+            ...existing,
+            ...input,
+            ...readAppHtmlMetadata(input.sourceCode, { description: existing.description, name: existing.name }),
+            updatedAt: new Date().toISOString(),
+          };
     await putRecord("apps_registry", updated);
     return updated;
   }

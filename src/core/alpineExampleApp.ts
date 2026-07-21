@@ -3,8 +3,7 @@ import type { CreateAppInput } from "./types";
 export function createAlpineExampleAppInput(name = "Example App"): CreateAppInput {
   return {
     name,
-    description:
-      "Compact AppLab example using host-compiled Tailwind, Alpine, dialogs, tabs, collapsible items, and live JSON data.",
+    description: "Small Alpine and Tailwind TODO app with AppLab JSON persistence and live shared data.",
     sourceCode: ALPINE_EXAMPLE_APP_SOURCE,
   };
 }
@@ -14,6 +13,7 @@ export const ALPINE_EXAMPLE_APP_SOURCE = `<!doctype html>
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Small Alpine and Tailwind TODO app with AppLab JSON persistence and live shared data.">
     <meta name="app-lab-tailwind" content="enabled">
     <title>Example App</title>
     <style>
