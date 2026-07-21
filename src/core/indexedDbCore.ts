@@ -34,6 +34,8 @@ export function createIndexedDbCore(): AppLabCore {
     const now = new Date().toISOString();
     const record: AppRecord = {
       appId: crypto.randomUUID(),
+      compiledCss: input.compiledCss,
+      compiledCssSourceHash: input.compiledCssSourceHash,
       name: input.name,
       description: input.description,
       sourceCode: input.sourceCode,

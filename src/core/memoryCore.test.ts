@@ -19,6 +19,7 @@ describe("createMemoryCore", () => {
     expect(app.sourceCode).toContain("AppLab.getData");
     expect(app.sourceCode).toContain("AppLab.saveData");
     expect(app.sourceCode).toContain("AppLab.onDataChange");
+    expect(app.sourceCode).toContain('x-data="sandboxChecklist"');
     expect(app.sourceCode).toContain("crypto.randomUUID");
     expect(app.sourceCode).toContain("Persisted records with stable IDs");
   });

@@ -40,13 +40,14 @@ describe("SandboxFrame", () => {
     fireEvent.load(iframe);
     fireEvent.load(iframe);
 
-    await waitFor(() => expect(getCapability(iframe)).not.toBe(firstCapability));
+    await waitFor(() => expect(getCapability(getIframe(container))).not.toBe(firstCapability));
+    const reloadedIframe = getIframe(container);
 
     dispatchAppMessage(iframe, { type: "GET_MY_DATA", requestId: "old-read", appLabCapability: firstCapability });
     await settle();
     expect(getAppData).not.toHaveBeenCalled();
 
-    dispatchAppMessage(iframe, { type: "GET_MY_DATA", requestId: "new-read", appLabCapability: getCapability(iframe) });
+    dispatchAppMessage(reloadedIframe, { type: "GET_MY_DATA", requestId: "new-read", appLabCapability: getCapability(reloadedIframe) });
     await waitFor(() => expect(getAppData).toHaveBeenCalledWith(app.appId));
   });
 
@@ -165,11 +166,11 @@ function getIframe(container: HTMLElement): HTMLIFrameElement {
 }
 
 function getCapability(iframe: HTMLIFrameElement): string {
-  const match = iframe.srcdoc.match(/value: "([^"]+)"/);
-  if (!match) {
-    throw new Error("Expected sandbox capability in srcdoc.");
+  const capability = iframe.dataset.appLabCapability;
+  if (!capability) {
+    throw new Error("Expected sandbox capability on iframe.");
   }
-  return match[1];
+  return capability;
 }
 
 function dispatchAppMessage(iframe: HTMLIFrameElement, data: unknown) {

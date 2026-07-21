@@ -53,6 +53,8 @@ describe("app room sync", () => {
 
     expect(loaded.app).toMatchObject({
       appId: "app-1",
+      compiledCss: ".bg-slate-950 { background: #020617; }",
+      compiledCssSourceHash: "source-hash",
       name: "Example",
       sourceCode: app.sourceCode,
     });
@@ -174,6 +176,8 @@ describe("app room sync", () => {
 function exampleApp(): AppRecord {
   return {
     appId: "app-1",
+    compiledCss: ".bg-slate-950 { background: #020617; }",
+    compiledCssSourceHash: "source-hash",
     createdAt: "2026-01-01T00:00:00.000Z",
     description: "Example app",
     name: "Example",

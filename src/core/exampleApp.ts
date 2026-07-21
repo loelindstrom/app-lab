@@ -3,7 +3,7 @@ import type { CreateAppInput } from "./types";
 export function createExampleAppInput(name = "Example App"): CreateAppInput {
   return {
     name,
-    description: "Sandbox app with persistence and live shared data.",
+    description: "Sandbox app with Tailwind, Alpine, persistence, and live shared data.",
     sourceCode: EXAMPLE_APP_SOURCE,
   };
 }
@@ -13,261 +13,188 @@ export const EXAMPLE_APP_SOURCE = `<!doctype html>
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="app-lab-tailwind" content="enabled">
     <title>Example App</title>
     <style>
-      * { box-sizing: border-box; }
-      body {
-        background: #101923;
-        color: #e7edf3;
-        font-family: Inter, ui-sans-serif, system-ui, sans-serif;
-        margin: 0;
-        min-height: 100vh;
-        padding: 24px;
-      }
-      main { display: grid; gap: 18px; max-width: 760px; }
-      h1 { font-size: clamp(38px, 9vw, 76px); letter-spacing: -0.04em; line-height: .94; margin: 0; }
-      p { color: #a7b5c2; font-size: 17px; line-height: 1.55; margin: 0; }
-      section {
-        background: #121e2b;
-        border: 1px solid #334155;
-        border-radius: 16px;
-        display: grid;
-        gap: 14px;
-        padding: 16px;
-      }
-      label { color: #cbd5e1; display: grid; gap: 8px; font-weight: 800; }
-      input {
-        background: #172333;
-        border: 1px solid #334155;
-        border-radius: 999px;
-        color: #f8fafc;
-        font: inherit;
-        min-height: 44px;
-        padding: 0 14px;
-      }
-      button {
-        background: #8b5cf6;
-        border: 0;
-        border-radius: 999px;
-        color: white;
-        cursor: pointer;
-        font: inherit;
-        font-weight: 850;
-        min-height: 40px;
-        padding: 0 16px;
-      }
-      button.secondary {
-        background: transparent;
-        border: 1px solid #334155;
-        color: #dbeafe;
-      }
-      output { color: #93c5fd; min-height: 22px; }
-      ul { display: grid; gap: 10px; list-style: none; margin: 0; padding: 0; }
-      li {
-        align-items: center;
-        background: #172333;
-        border: 1px solid #334155;
-        border-radius: 14px;
-        display: grid;
-        gap: 10px;
-        grid-template-columns: minmax(0, 1fr) auto auto;
-        padding: 12px;
-      }
-      li.done span { color: #94a3b8; text-decoration: line-through; }
-      .bar { align-items: center; display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; }
-      .badge {
-        background: #172333;
-        border: 1px solid #334155;
-        border-radius: 999px;
-        color: #c4b5fd;
-        font-size: 13px;
-        font-weight: 850;
-        padding: 7px 10px;
-      }
-      .hint { color: #94a3b8; font-size: 14px; }
-      .new-row { display: grid; gap: 10px; grid-template-columns: minmax(0, 1fr) auto; }
-      @media (max-width: 520px) {
-        body { padding: 18px; }
-        .new-row { grid-template-columns: 1fr; }
-        li { grid-template-columns: minmax(0, 1fr); }
-        li button { justify-self: start; }
-      }
+      [x-cloak] { display: none !important; }
+      [data-done="true"] .item-text { color: #94a3b8; text-decoration: line-through; }
     </style>
   </head>
-  <body>
-    <main>
-      <header>
-        <h1>Sandbox checklist</h1>
-        <p>This app persists JSON through AppLab and updates live when shared data changes remotely.</p>
+  <body class="min-h-screen bg-slate-950 text-slate-100">
+    <main class="mx-auto grid min-h-screen w-full max-w-3xl content-start gap-5 px-5 py-6" x-data="sandboxChecklist" x-init="init()" x-cloak>
+      <header class="grid gap-3">
+        <p class="text-xs font-black uppercase tracking-wide text-violet-300">App Lab example</p>
+        <h1 class="max-w-2xl text-5xl font-black leading-none tracking-tight text-white sm:text-7xl">Sandbox checklist</h1>
+        <p class="max-w-2xl text-base leading-7 text-slate-300">
+          This app uses host-compiled Tailwind for styling, Alpine for UI state, and AppLab for persisted JSON and live shared data.
+        </p>
       </header>
 
-      <section>
-        <div class="bar">
-          <p class="hint">Persisted records with stable IDs</p>
-          <span id="live" class="badge">Live data ready</span>
+      <section class="grid gap-4 rounded-2xl border border-slate-700 bg-slate-900/85 p-4 shadow-2xl shadow-black/20">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <p class="text-sm font-bold text-slate-400">Persisted records with stable IDs</p>
+          <span class="rounded-full border border-violet-400/30 bg-violet-400/10 px-3 py-1 text-xs font-black uppercase text-violet-200" x-text="savedLabel"></span>
         </div>
 
-        <div class="new-row">
-          <label>
-            New item
-            <input id="draft" autocomplete="off" placeholder="Add something to remember">
-          </label>
-          <button id="add" type="button">Add</button>
-        </div>
+        <label class="grid gap-2 text-sm font-black text-slate-300">
+          New item
+          <span class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+            <input
+              class="min-h-12 rounded-full border border-slate-600 bg-slate-950 px-4 text-base font-semibold text-white outline-none placeholder:text-slate-500 focus:border-violet-400"
+              autocomplete="off"
+              placeholder="Add something to remember"
+              x-model="draft"
+              @keydown.enter.prevent="addItem"
+            >
+            <button class="min-h-12 rounded-full bg-violet-500 px-6 text-base font-black text-white hover:bg-violet-400 active:scale-[.98]" type="button" @click="addItem">Add</button>
+          </span>
+        </label>
 
-        <ul id="items" aria-label="Saved items"></ul>
+        <ul class="grid gap-3" aria-label="Saved items">
+          <template x-for="item in state.items" :key="item.id">
+            <li class="grid gap-3 rounded-xl border border-slate-700 bg-slate-950/70 p-3 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center" :data-done="item.done">
+              <span class="item-text min-w-0 break-words text-base font-bold text-white" x-text="item.text"></span>
+              <button
+                class="min-h-10 rounded-full border border-slate-600 px-4 text-sm font-black text-slate-200 hover:border-violet-400 hover:text-violet-200"
+                type="button"
+                @click="toggleItem(item.id)"
+                x-text="item.done ? 'Undo' : 'Done'"
+              ></button>
+              <button
+                class="min-h-10 rounded-full border border-slate-600 px-4 text-sm font-black text-slate-200 hover:border-red-400 hover:text-red-200"
+                type="button"
+                @click="deleteItem(item.id)"
+              >Delete</button>
+            </li>
+          </template>
+          <li class="rounded-xl border border-dashed border-slate-700 p-4 text-sm font-bold text-slate-500" x-show="state.items.length === 0">
+            No saved items yet.
+          </li>
+        </ul>
       </section>
 
-      <output id="status">Loading saved data...</output>
-      <p class="hint">Contract: AppLab.getData(fallback), AppLab.saveData(json), and AppLab.onDataChange(handler). Current sync is latest-local-wins; stable item IDs prepare this data for richer merging later.</p>
+      <section class="grid gap-3 rounded-2xl border border-slate-800 bg-slate-900/45 p-4 text-sm leading-6 text-slate-300">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <output id="status" class="font-black text-sky-300" x-text="status">Loading saved data...</output>
+          <span class="rounded-full bg-emerald-400/10 px-3 py-1 text-xs font-black uppercase text-emerald-200" x-text="completedLabel"></span>
+        </div>
+        <p>
+          Contract: AppLab.getData(fallback), AppLab.saveData(json), and AppLab.onDataChange(handler). Keep persisted data in state and transient UI such as drafts in separate properties.
+        </p>
+      </section>
     </main>
 
     <script>
       "use strict";
 
-      const draft = document.querySelector("#draft");
-      const add = document.querySelector("#add");
-      const list = document.querySelector("#items");
-      const status = document.querySelector("#status");
-      const live = document.querySelector("#live");
-      const state = { schemaVersion: 1, items: [], savedAt: null };
-      let saveInFlight = 0;
-      Object.seal(state);
+      document.addEventListener("alpine:init", () => {
+        Alpine.data("sandboxChecklist", () => ({
+          draft: "",
+          saveInFlight: 0,
+          state: { schemaVersion: 1, items: [], savedAt: null },
+          status: "Loading saved data...",
 
-      AppLab.onError((message) => {
-        status.textContent = "Error: " + message;
-      });
+          async init() {
+            AppLab.onError((message) => {
+              this.status = "Error: " + message;
+            });
 
-      function createId() {
-        if (window.crypto && typeof window.crypto.randomUUID === "function") return window.crypto.randomUUID();
-        return "id_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2);
-      }
+            AppLab.onDataChange((nextData, info) => {
+              if (this.saveInFlight > 0) {
+                this.status = "Kept local edit while saving.";
+                return;
+              }
+              this.applyData(nextData);
+              this.status = "Live update received" + (info && info.version ? " v" + info.version : "") + ".";
+            });
 
-      function normalizeData(data) {
-        const sourceItems = Array.isArray(data && data.items) ? data.items : [];
-        return {
-          schemaVersion: 1,
-          items: sourceItems
-            .filter((item) => item && typeof item === "object")
-            .map((item) => ({
-              id: typeof item.id === "string" ? item.id : createId(),
-              text: typeof item.text === "string" ? item.text : "",
-              done: Boolean(item.done),
-              createdAt: typeof item.createdAt === "string" ? item.createdAt : new Date().toISOString()
-            }))
-            .filter((item) => item.text.trim()),
-          savedAt: data && typeof data.savedAt === "string" ? data.savedAt : null
-        };
-      }
+            const saved = await AppLab.getData({ schemaVersion: 1, items: [], savedAt: null });
+            this.applyData(saved);
+            this.status = "Loaded.";
+          },
 
-      function applyData(data, source) {
-        const next = normalizeData(data);
-        const draftWasFocused = document.activeElement === draft;
-        state.items = next.items;
-        state.savedAt = next.savedAt;
-        render({ preserveDraft: draftWasFocused && source === "remote" });
-      }
+          get completedLabel() {
+            const doneCount = this.state.items.filter((item) => item.done).length;
+            return doneCount + " done / " + this.state.items.length + " total";
+          },
 
-      function render(options = {}) {
-        list.replaceChildren();
-        if (!options.preserveDraft && state.items.length === 0) draft.value = "";
+          get savedLabel() {
+            return this.state.savedAt ? "Last saved " + new Date(this.state.savedAt).toLocaleTimeString() : "Live data ready";
+          },
 
-        for (const item of state.items) {
-          const row = document.createElement("li");
-          if (item.done) row.classList.add("done");
+          addItem() {
+            const text = this.draft.trim();
+            if (!text) return;
+            this.state.items.push({
+              id: this.createId(),
+              text,
+              done: false,
+              createdAt: new Date().toISOString()
+            });
+            this.draft = "";
+            this.saveState("Saving new item...");
+          },
 
-          const text = document.createElement("span");
-          text.textContent = item.text;
-
-          const toggle = document.createElement("button");
-          toggle.className = "secondary";
-          toggle.type = "button";
-          toggle.textContent = item.done ? "Undo" : "Done";
-          toggle.addEventListener("click", () => {
+          toggleItem(id) {
+            const item = this.state.items.find((candidate) => candidate.id === id);
+            if (!item) return;
             item.done = !item.done;
-            render({ preserveDraft: true });
-            saveState("Saving item...");
-          });
+            this.saveState("Saving item...");
+          },
 
-          const remove = document.createElement("button");
-          remove.className = "secondary";
-          remove.type = "button";
-          remove.textContent = "Delete";
-          remove.addEventListener("click", () => {
-            state.items = state.items.filter((candidate) => candidate.id !== item.id);
-            render({ preserveDraft: true });
-            saveState("Deleting item...");
-          });
+          deleteItem(id) {
+            this.state.items = this.state.items.filter((candidate) => candidate.id !== id);
+            this.saveState("Deleting item...");
+          },
 
-          row.append(text, toggle, remove);
-          list.append(row);
-        }
+          async saveState(statusText) {
+            this.status = statusText;
+            this.state.savedAt = new Date().toISOString();
+            this.saveInFlight += 1;
+            try {
+              await AppLab.saveData(this.snapshot());
+              this.status = "Saved.";
+            } finally {
+              this.saveInFlight -= 1;
+            }
+          },
 
-        if (state.items.length === 0) {
-          const empty = document.createElement("li");
-          const text = document.createElement("span");
-          text.className = "hint";
-          text.textContent = "No saved items yet.";
-          empty.append(text);
-          list.append(empty);
-        }
+          applyData(data) {
+            const sourceItems = Array.isArray(data && data.items) ? data.items : [];
+            this.state = {
+              schemaVersion: 1,
+              items: sourceItems
+                .filter((item) => item && typeof item === "object")
+                .map((item) => ({
+                  id: typeof item.id === "string" ? item.id : this.createId(),
+                  text: typeof item.text === "string" ? item.text : "",
+                  done: Boolean(item.done),
+                  createdAt: typeof item.createdAt === "string" ? item.createdAt : new Date().toISOString()
+                }))
+                .filter((item) => item.text.trim()),
+              savedAt: data && typeof data.savedAt === "string" ? data.savedAt : null
+            };
+          },
 
-        live.textContent = state.savedAt ? "Last saved " + new Date(state.savedAt).toLocaleTimeString() : "Live data ready";
-      }
+          snapshot() {
+            return {
+              schemaVersion: this.state.schemaVersion,
+              savedAt: this.state.savedAt,
+              items: this.state.items.map((item) => ({
+                id: item.id,
+                text: item.text,
+                done: item.done,
+                createdAt: item.createdAt
+              }))
+            };
+          },
 
-      async function loadState() {
-        status.textContent = "Loading saved data...";
-        const saved = await AppLab.getData({ schemaVersion: 1, items: [], savedAt: null });
-        applyData(saved, "load");
-        status.textContent = "Loaded.";
-      }
-
-      async function saveState(statusText) {
-        status.textContent = statusText;
-        state.savedAt = new Date().toISOString();
-        saveInFlight += 1;
-        try {
-          await AppLab.saveData({
-            schemaVersion: state.schemaVersion,
-            items: state.items,
-            savedAt: state.savedAt
-          });
-          live.textContent = "Last saved " + new Date(state.savedAt).toLocaleTimeString();
-          status.textContent = "Saved.";
-        } finally {
-          saveInFlight -= 1;
-        }
-      }
-
-      AppLab.onDataChange((nextData, info) => {
-        if (saveInFlight > 0) {
-          status.textContent = "Kept local edit while saving.";
-          return;
-        }
-        applyData(nextData, "remote");
-        status.textContent = "Live update received" + (info && info.version ? " v" + info.version : "") + ".";
+          createId() {
+            if (window.crypto && typeof window.crypto.randomUUID === "function") return window.crypto.randomUUID();
+            return "id_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2);
+          }
+        }));
       });
-
-      add.addEventListener("click", () => {
-        const text = draft.value.trim();
-        if (!text) return;
-        state.items = [
-          ...state.items,
-          { id: createId(), text, done: false, createdAt: new Date().toISOString() }
-        ];
-        draft.value = "";
-        render({ preserveDraft: true });
-        saveState("Saving new item...");
-      });
-
-      draft.addEventListener("keydown", (event) => {
-        if (event.key === "Enter") {
-          event.preventDefault();
-          add.click();
-        }
-      });
-
-      loadState();
     </script>
   </body>
 </html>`;

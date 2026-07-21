@@ -8,6 +8,8 @@ export type AppPackageRoomPayload = ActiveAppPackageRoomPayload | DeletedAppPack
 export interface ActiveAppPackageRoomPayload {
   app: {
     appId: string;
+    compiledCss?: string;
+    compiledCssSourceHash?: string;
     createdAt: string;
     description: string;
     name: string;
@@ -43,6 +45,8 @@ export async function ensureRemoteAppRooms(input: {
   const sourcePayload: AppPackageRoomPayload = {
     app: {
       appId: input.app.appId,
+      compiledCss: input.app.compiledCss,
+      compiledCssSourceHash: input.app.compiledCssSourceHash,
       createdAt: input.app.createdAt,
       description: input.app.description,
       name: input.app.name,
@@ -74,6 +78,8 @@ export async function saveRemoteAppSource(input: {
   const sourcePayload: AppPackageRoomPayload = {
     app: {
       appId: input.app.appId,
+      compiledCss: input.app.compiledCss,
+      compiledCssSourceHash: input.app.compiledCssSourceHash,
       createdAt: input.app.createdAt,
       description: input.app.description,
       name: input.app.name,
@@ -328,6 +334,8 @@ function parseAppPackagePayload(payload: JsonValue): AppRecord {
   }
   return {
     appId: appRecord.appId,
+    compiledCss: typeof appRecord.compiledCss === "string" ? appRecord.compiledCss : undefined,
+    compiledCssSourceHash: typeof appRecord.compiledCssSourceHash === "string" ? appRecord.compiledCssSourceHash : undefined,
     createdAt: typeof appRecord.createdAt === "string" ? appRecord.createdAt : appRecord.updatedAt,
     description: appRecord.description,
     name: appRecord.name,

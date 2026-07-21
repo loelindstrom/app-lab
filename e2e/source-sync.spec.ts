@@ -193,7 +193,7 @@ async function configureStorage(page: Page, config: Record<string, string>) {
 
 async function createExampleApp(page: Page) {
   await page.getByRole("button", { name: "Create new app" }).click();
-  await expect(page.getByRole("button", { name: "Toggle source" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Toggle source" })).toBeVisible({ timeout: 30_000 });
 }
 
 async function saveSource(page: Page, sourceCode: string) {

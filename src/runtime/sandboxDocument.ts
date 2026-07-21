@@ -1,19 +1,46 @@
-const APP_CSP = [
-  "default-src 'none'",
-  "script-src 'unsafe-inline'",
-  "style-src 'unsafe-inline'",
-  "img-src data: blob:",
-  "font-src data:",
-  "connect-src 'none'",
-  "media-src data: blob:",
-  "object-src 'none'",
-  "frame-src 'none'",
-  "worker-src 'none'",
-  "form-action 'none'",
-  "base-uri 'none'",
-].join("; ");
+import alpineRuntime from "alpinejs/dist/cdn.js?raw";
 
-export function prepareSandboxDocument(sourceCode: string, capability: string): string {
+const ALPINE_AUTO_START = `  window.Alpine = src_default;
+  queueMicrotask(() => {
+    src_default.start();
+  });`;
+const ALPINE_RUNTIME = alpineRuntime.replace(ALPINE_AUTO_START, "  window.Alpine = src_default;");
+
+if (ALPINE_RUNTIME === alpineRuntime) {
+  throw new Error("Could not remove Alpine auto-start from sandbox runtime.");
+}
+
+export type SandboxRuntimeMode = "alpine" | "vanilla";
+
+export interface SandboxDocumentOptions {
+  runtimeMode?: SandboxRuntimeMode;
+}
+
+function appCspForRuntime(runtimeMode: SandboxRuntimeMode): string {
+  const scriptSrc = runtimeMode === "alpine" ? "script-src 'unsafe-inline' 'unsafe-eval'" : "script-src 'unsafe-inline'";
+  return [
+    "default-src 'none'",
+    scriptSrc,
+    "style-src 'unsafe-inline'",
+    "img-src data: blob:",
+    "font-src data:",
+    "connect-src 'none'",
+    "media-src data: blob:",
+    "object-src 'none'",
+    "frame-src 'none'",
+    "worker-src 'none'",
+    "form-action 'none'",
+    "base-uri 'none'",
+  ].join("; ");
+}
+
+export function prepareSandboxDocument(
+  sourceCode: string,
+  capability: string,
+  compiledCss?: string,
+  options: SandboxDocumentOptions = {},
+): string {
+  const runtimeMode = options.runtimeMode ?? "alpine";
   const document = new DOMParser().parseFromString(sourceCode, "text/html");
 
   for (const meta of document.querySelectorAll("meta[http-equiv]")) {
@@ -24,7 +51,11 @@ export function prepareSandboxDocument(sourceCode: string, capability: string): 
 
   const csp = document.createElement("meta");
   csp.setAttribute("http-equiv", "Content-Security-Policy");
-  csp.setAttribute("content", APP_CSP);
+  csp.setAttribute("content", appCspForRuntime(runtimeMode));
+
+  const compiledStyle = document.createElement("style");
+  compiledStyle.dataset.appLabRuntime = "compiled-css";
+  compiledStyle.textContent = compiledCss ?? "";
 
   const capabilityScript = document.createElement("script");
   capabilityScript.textContent = `Object.defineProperty(window, "__APP_LAB_CAPABILITY__", {
@@ -102,8 +133,21 @@ export function prepareSandboxDocument(sourceCode: string, capability: string): 
     return new Promise((resolve, reject) => {
       const requestId = createRequestId();
       pending.set(requestId, { type, resolve, reject });
-      window.parent.postMessage({ type, requestId, appLabCapability, payload: payload || {} }, "*");
+      try {
+        window.parent.postMessage({ type, requestId, appLabCapability, payload: payload || {} }, "*");
+      } catch (error) {
+        pending.delete(requestId);
+        reject(error);
+        notifyError(error);
+      }
     });
+  }
+
+  function toJsonValue(value) {
+    if (value === undefined) return null;
+    const json = JSON.stringify(value);
+    if (json === undefined) return null;
+    return JSON.parse(json);
   }
 
   window.addEventListener("message", (event) => {
@@ -161,7 +205,12 @@ export function prepareSandboxDocument(sourceCode: string, capability: string): 
         return request("GET_MY_DATA").then((data) => data == null && arguments.length ? fallback : data);
       },
       saveData: function (data) {
-        return request("SAVE_MY_DATA", { data });
+        try {
+          return request("SAVE_MY_DATA", { data: toJsonValue(data) });
+        } catch (error) {
+          notifyError(error);
+          return Promise.reject(error);
+        }
       },
       onDataChange: function (handler) {
         if (typeof handler !== "function") return function () {};
@@ -194,6 +243,15 @@ export function prepareSandboxDocument(sourceCode: string, capability: string): 
   });
 })();`;
 
+  const runtimeScripts: HTMLScriptElement[] = [];
+
+  if (runtimeMode === "alpine") {
+    const alpineScript = document.createElement("script");
+    alpineScript.dataset.appLabRuntime = "alpine";
+    alpineScript.textContent = ALPINE_RUNTIME;
+    runtimeScripts.push(alpineScript);
+  }
+
   const unloadScript = document.createElement("script");
   unloadScript.textContent = `(function () {
   const appLabCapability = window.__APP_LAB_CAPABILITY__;
@@ -204,6 +262,26 @@ export function prepareSandboxDocument(sourceCode: string, capability: string): 
   window.addEventListener("beforeunload", notifyHost);
 })();`;
 
-  document.head.prepend(csp, capabilityScript, appLabScript, unloadScript);
+  const alpineStartScript = document.createElement("script");
+  alpineStartScript.dataset.appLabRuntime = "alpine-start";
+  alpineStartScript.textContent = `queueMicrotask(() => {
+  if (window.Alpine && !window.__APP_LAB_ALPINE_STARTED__) {
+    Object.defineProperty(window, "__APP_LAB_ALPINE_STARTED__", {
+      value: true,
+      configurable: false,
+      enumerable: false,
+      writable: false
+    });
+    window.Alpine.start();
+  }
+});`;
+
+  const headScripts = compiledCss
+    ? [csp, compiledStyle, capabilityScript, appLabScript, ...runtimeScripts, unloadScript]
+    : [csp, capabilityScript, appLabScript, ...runtimeScripts, unloadScript];
+  document.head.prepend(...headScripts);
+  if (runtimeMode === "alpine") {
+    document.body.append(alpineStartScript);
+  }
   return `<!doctype html>\n${document.documentElement.outerHTML}`;
 }

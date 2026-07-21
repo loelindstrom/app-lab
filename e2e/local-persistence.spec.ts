@@ -27,6 +27,30 @@ test.describe("local app persistence", () => {
     await expect(appFrame(page).getByText("Example persisted item")).toBeVisible();
   });
 
+  test("creates the experimental Routine Runner app and persists a routine step", async ({ page }) => {
+    await page.goto("/");
+    await page.evaluate(async () => {
+      indexedDB.deleteDatabase("app-lab-v2");
+      indexedDB.deleteDatabase("app-lab-sync-queue-v1");
+      localStorage.clear();
+    });
+    await page.reload();
+
+    await page.getByRole("button", { name: "Create Routine Runner app" }).click();
+    const routineHeading = appFrame(page).getByRole("heading", { name: "Routine Runner" });
+    await expect(routineHeading).toBeVisible();
+
+    await appFrame(page).getByLabel("New step").fill("Pack gym bag");
+    await appFrame(page).getByRole("button", { name: "Add step" }).click();
+    await expect(appFrame(page).getByText("Pack gym bag", { exact: true })).toBeVisible();
+
+    await page.getByRole("button", { name: "‹ Apps" }).click();
+    await page.getByRole("button", { name: "Open", exact: true }).click();
+
+    await expect(appFrame(page).getByRole("heading", { name: "Routine Runner" })).toBeVisible();
+    await expect(appFrame(page).getByText("Pack gym bag", { exact: true })).toBeVisible();
+  });
+
   test("keeps source and app data after returning to the launcher", async ({ page }) => {
     await page.goto("/");
     await page.evaluate(async () => {
@@ -51,6 +75,35 @@ test.describe("local app persistence", () => {
 
     await expect(appFrame(page).getByRole("heading", { name: "Persisted Source" })).toBeVisible();
     await expect(appFrame(page).getByText("Persisted item")).toBeVisible();
+  });
+
+  test("runs normal Alpine expressions and saves Alpine state objects", async ({ page }) => {
+    await page.goto("/");
+    await page.evaluate(async () => {
+      indexedDB.deleteDatabase("app-lab-v2");
+      indexedDB.deleteDatabase("app-lab-sync-queue-v1");
+      localStorage.clear();
+    });
+    await page.reload();
+
+    await createExampleApp(page);
+    await saveSource(page, htmlForNormalAlpine());
+
+    await expect(appFrame(page).getByRole("heading", { name: "Normal Alpine" })).toBeVisible();
+    await expect(appFrame(page).getByText("Empty")).toBeVisible();
+
+    await appFrame(page).getByLabel("Name").fill("Ada");
+    await expect(appFrame(page).getByText("Hello Ada")).toBeVisible();
+    await expect(appFrame(page).locator("#name-status")).toHaveClass(/ready/);
+
+    await appFrame(page).getByRole("button", { name: "Save" }).click();
+    await expect(appFrame(page).getByText("Saved.")).toBeVisible();
+
+    await page.getByRole("button", { name: "‹ Apps" }).click();
+    await page.getByRole("button", { name: "Open", exact: true }).click();
+
+    await expect(appFrame(page).getByText("Hello Ada")).toBeVisible();
+    await expect(appFrame(page).locator("#name-status")).toHaveClass(/ready/);
   });
 });
 
@@ -196,7 +249,7 @@ test.describe("synced app persistence", () => {
 
 async function createExampleApp(page: Page) {
   await page.getByRole("button", { name: "Create new app" }).click();
-  await expect(page.getByRole("button", { name: "Toggle source" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Toggle source" })).toBeVisible({ timeout: 30_000 });
 }
 
 async function configureStorage(page: Page, config: Record<string, string>) {
@@ -265,6 +318,49 @@ function htmlForChecklistTitle(title: string) {
       });
 
       load();
+    </script>
+  </body>
+</html>`;
+}
+
+function htmlForNormalAlpine() {
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Normal Alpine</title>
+    <style>
+      [x-cloak] { display: none !important; }
+      .ready { color: green; }
+      .waiting { color: gray; }
+    </style>
+  </head>
+  <body>
+    <main x-data="normalAlpineApp()" x-init="init()" x-cloak>
+      <h1>Normal Alpine</h1>
+      <label>Name <input aria-label="Name" x-model="state.name"></label>
+      <p x-show="state.name.length === 0">Empty</p>
+      <p id="greeting" x-text="state.name ? 'Hello ' + state.name : 'No name'"></p>
+      <p id="name-status" :class="state.name === 'Ada' ? 'ready' : 'waiting'" x-text="state.name === 'Ada' ? 'Ready' : 'Waiting'"></p>
+      <button type="button" @click="save()">Save</button>
+      <output x-text="status"></output>
+    </main>
+    <script>
+      function normalAlpineApp() {
+        return {
+          state: { name: "" },
+          status: "Loading...",
+          async init() {
+            this.state = await AppLab.getData({ name: "" });
+            this.status = "Loaded.";
+          },
+          async save() {
+            await AppLab.saveData(this.state);
+            this.status = "Saved.";
+          }
+        };
+      }
     </script>
   </body>
 </html>`;

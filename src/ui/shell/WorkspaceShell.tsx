@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { AppLabCore, AppRecord, AppSummary, JsonValue } from "../../core/types";
+import { createExampleAppInput } from "../../core/exampleApp";
+import { createRoutineRunnerAppInput } from "../../core/routineRunnerApp";
+import type { AppLabCore, AppRecord, AppSummary, CreateAppInput, JsonValue } from "../../core/types";
 import { encodeAppInvite, readInviteFromHash } from "../../sync/invites";
 import type { RemoteDataChange, SandboxConsoleEntry } from "../../runtime/SandboxFrame";
 import { SandboxFrame } from "../../runtime/SandboxFrame";
+import { compileAppStyles } from "../../runtime/tailwindCompiler";
 import type {
   AppInvitePayload,
   AppSyncBadge,
@@ -220,9 +223,21 @@ export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, sync
     void pullLatestAppRooms(appId);
   }
 
-  async function createApp() {
-    const app = await core.createBlankApp();
+  async function createAppFromInput(input: CreateAppInput) {
+    let compiledStyles = {};
+    let compileWarning: string | null = null;
+    try {
+      compiledStyles = await compileAppStyles(input.sourceCode);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "Unknown Tailwind compile error.";
+      compileWarning = `${input.name} created without compiled Tailwind CSS: ${detail}`;
+    }
+    const app = await core.createApp({
+      ...input,
+      ...compiledStyles,
+    });
     await trySync("App created locally. Remote backup failed", () => syncActions.ensureAppBackedUp(app));
+    if (compileWarning) setSyncStatus(compileWarning);
     refreshWhenSettled(syncActions.flushRoomLifecycleQueue());
     await refreshApps();
     setActiveApp(app);
@@ -232,6 +247,14 @@ export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, sync
     setSyncStatusOpen(false);
     setAiAttentionKey((key) => key + 1);
     setAiAttentionDismissed(false);
+  }
+
+  async function createApp() {
+    await createAppFromInput(createExampleAppInput());
+  }
+
+  async function createRoutineRunnerApp() {
+    await createAppFromInput(createRoutineRunnerAppInput());
   }
 
   function openLauncher() {
@@ -392,7 +415,8 @@ export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, sync
             onClose={() => setActiveTool(null)}
             onSaveSource={async (sourceCode) => {
               const nextName = readHtmlTitle(sourceCode) || activeApp.name;
-              const updated = await core.updateApp({ appId: activeApp.appId, name: nextName, sourceCode });
+              const compiledStyles = await compileAppStyles(sourceCode);
+              const updated = await core.updateApp({ appId: activeApp.appId, name: nextName, sourceCode, ...compiledStyles });
               await trySync("Source saved locally. Remote source sync failed", () => syncActions.pushAppSource(updated));
               refreshWhenSettled(syncActions.flushSourceSyncQueue());
               setActiveApp(updated);
@@ -402,14 +426,24 @@ export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, sync
           />
         </>
       ) : mode === "launcher" ? (
-        <button
-          className="fixed bottom-5 right-5 z-20 grid h-14 min-h-14 w-14 place-items-center rounded-full border border-app-accent bg-app-accent text-3xl font-light leading-none text-white shadow-panel hover:bg-app-strong"
-          type="button"
-          aria-label="Create new app"
-          onClick={createApp}
-        >
-          +
-        </button>
+        <>
+          <button
+            className="fixed bottom-5 right-24 z-20 min-h-14 rounded-full border border-app-line bg-white px-4 text-sm font-extrabold text-app-ink shadow-panel hover:border-app-accent hover:text-app-accent"
+            type="button"
+            aria-label="Create Routine Runner app"
+            onClick={createRoutineRunnerApp}
+          >
+            Routine
+          </button>
+          <button
+            className="fixed bottom-5 right-5 z-20 grid h-14 min-h-14 w-14 place-items-center rounded-full border border-app-accent bg-app-accent text-3xl font-light leading-none text-white shadow-panel hover:bg-app-strong"
+            type="button"
+            aria-label="Create new app"
+            onClick={createApp}
+          >
+            +
+          </button>
+        </>
       ) : null}
 
       <SettingsDialog

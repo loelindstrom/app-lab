@@ -230,14 +230,23 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
 function createPromptWithCode(appName: string, sourceCode: string): string {
   return `You are helping me edit an App Lab sandbox app named "${appName}".
 
-The app must be a complete single-file HTML document. Use inline CSS and inline JavaScript only.
+The app must be a complete single-file HTML document. Use inline JavaScript, host-compiled Tailwind classes, and minimal inline CSS only when Tailwind cannot express a rule.
+App Lab injects the Alpine.js 3.14.9 runtime into the sandbox before app code runs, so Alpine directives and the global Alpine object are available without adding a script tag.
+App Lab can compile Tailwind utility classes into static CSS when the document includes <meta name="app-lab-tailwind" content="enabled">.
 
 Runtime rules:
 - Do not use external scripts, imports, CDNs, remote images, cookies, localStorage, sessionStorage, direct IndexedDB, navigation, window.prompt, alert, or confirm.
 - The app runs in a sandboxed iframe with scripts enabled and an opaque origin.
-- Use inline CSS and plain browser APIs only. Do not rely on package managers or network access.
+- Use Tailwind utility classes, Alpine.js, and plain browser APIs only. Do not rely on package managers or network access.
+- To use Tailwind, include <meta name="app-lab-tailwind" content="enabled"> in <head>. Do not include Tailwind with <script src>, import, CDN, or package-manager syntax.
+- Tailwind classes should appear literally in class attributes whenever possible, so App Lab can compile them on save. Avoid constructing class names dynamically in JavaScript.
+- You may include a small <style> block for rules like [x-cloak] or data-attribute selectors, but prefer Tailwind utilities for layout, color, spacing, and typography.
+- Do not include Alpine with <script src>, import, CDN, or package-manager syntax. Do not call Alpine.start(); App Lab starts Alpine after the body is parsed.
+- Alpine runs in normal mode, so x-model, x-show comparisons, ternary :class values, method calls, and simple inline expressions are supported.
+- For non-trivial apps, register components inside document.addEventListener("alpine:init", () => Alpine.data("componentName", () => ({ ... }))), then use x-data="componentName".
+- If using Alpine reactive state, do not save DOM nodes, functions, Events, Maps, Sets, Dates, class instances, or circular objects. Save plain JSON snapshots, for example with an explicit snapshot() method, because AppLab.saveData stores JSON-compatible data.
 - Use <dialog> for modal UI, but do not use native form submission. Use button type="button" and explicit click handlers.
-- Use textContent and DOM APIs for user-controlled text. Do not put user content into innerHTML.
+- Use x-text, textContent, and DOM APIs for user-controlled text. Do not put user content into x-html or innerHTML.
 - Use pointer events for drag/drop interactions.
 - Include a visible status/error area so runtime failures are shown to the user.
 - For saved data changes, use a schemaVersion and migrate older saved shapes defensively before saving the new shape.

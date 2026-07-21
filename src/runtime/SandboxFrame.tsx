@@ -42,10 +42,9 @@ export function SandboxFrame({ app, getAppData, onConsoleEntry, onUnhandledRemot
     const capability = crypto.randomUUID();
     return {
       capability,
-      html: prepareSandboxDocument(app.sourceCode, capability),
+      html: prepareSandboxDocument(app.sourceCode, capability, app.compiledCss),
     };
-  }, [app.appId, app.sourceCode, app.updatedAt, reloadKey, reloadNonce]);
-
+  }, [app.appId, app.compiledCss, app.sourceCode, app.updatedAt, reloadKey, reloadNonce]);
   useLayoutEffect(() => {
     activeLoadRef.current = {
       appId: app.appId,
@@ -206,6 +205,7 @@ export function SandboxFrame({ app, getAppData, onConsoleEntry, onUnhandledRemot
       className="block h-[calc(100dvh-44px-44px)] w-full border-0 bg-app-surface lg:h-[calc(100dvh-44px)]"
       title={`${app.name} app`}
       sandbox="allow-scripts"
+      data-app-lab-capability={sandboxDocument.capability}
       referrerPolicy="no-referrer"
       onLoad={handleFrameLoad}
       srcDoc={sandboxDocument.html}

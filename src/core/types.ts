@@ -16,6 +16,8 @@ export interface AppSummary {
 }
 
 export interface AppRecord extends AppSummary {
+  compiledCss?: string;
+  compiledCssSourceHash?: string;
   sourceCode: string;
   createdAt: string;
 }
@@ -26,6 +28,8 @@ export interface OpenRouterConfig {
 }
 
 export interface CreateAppInput {
+  compiledCss?: string;
+  compiledCssSourceHash?: string;
   name: string;
   description: string;
   sourceCode: string;
@@ -33,6 +37,8 @@ export interface CreateAppInput {
 
 export interface UpdateAppInput {
   appId: AppId;
+  compiledCss?: string;
+  compiledCssSourceHash?: string;
   name?: string;
   description?: string;
   sourceCode?: string;
