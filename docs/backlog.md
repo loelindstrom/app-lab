@@ -16,38 +16,31 @@ App Lab is a React/Vite browser app with:
 - active-app live source/data subscriptions
 - local-first queue records for sync retries
 
-## Highest-Value Next Work
 
-1. Sync diagnostics
+## MVP Must-Have
 
-   Add a small developer/user-facing view for queued sync work and last provider errors. This should make problems like room
-   conflicts, missing rooms, offline state, and retry state visible without opening browser devtools.
+1. Invite and provider access hardening
 
-2. Sync UX polish
+   The current Firebase prototype treats invite and recovery material as sensitive bearer access material. A decoded invite
+   includes enough Firebase connection metadata and room capabilities for a recipient to connect to the same RTDB-backed
+   workspace, and open prototype RTDB rules do not enforce App Lab's room-level intent on the provider side.
 
-   Tighten copy and actions around cloud status, owner deletion, joined app deletion, and workspace recovery. Keep relationship
-   labels separate from sync health.
+   Before wider sharing or MVP, redesign this so accepting an invite does not let another user use the owner's Firebase project
+   as generic sync storage. Decide whether that means stricter Firebase rules, an auth-mediated provider, per-user storage,
+   server-side mediation, constrained room paths, revocation/key rotation, or a different provider model.
 
-3. Firebase setup polish
+## Nice-To-Have After MVP
 
-   Keep settings task-oriented: paste Firebase web config, paste RTDB URL, show required rules, export recovery material, restore
-   another device.
-
-4. Provider hardening decision
-
-   Decide whether the prototype Firebase model is enough for the next public step, or whether room access must move to stronger
-   provider-side enforcement before wider sharing.
-
-5. BuilderAI loop
+1. BuilderAI loop
 
    Reintroduce the actual agent after the source/console workflow is stable. The first useful agent loop should be able to see
    app source, user request, and console errors, then propose or apply source edits.
 
-6. Source history
+2. Source history
 
    Add lightweight source snapshots only if manual experimentation shows real need. This should not block current sync work.
 
-7. Better app-data merge
+3. Better app-data merge
 
    Add ID-based merge only if shared/offline conflicts become common enough to justify the complexity. The current policy is
    latest-local-pending-data wins.
@@ -57,8 +50,6 @@ App Lab is a React/Vite browser app with:
 - CRDT collaboration
 - generated apps talking directly to Firebase
 - read-only sharing
-- revocation/key rotation
-- provider-side server functions
 - TanStack Query integration
 - source-code merge
 
