@@ -27,7 +27,7 @@ test.describe("local app persistence", () => {
     await expect(appFrame(page).getByText("Example persisted item")).toBeVisible();
   });
 
-  test("creates the experimental Routine Runner app and persists a routine step", async ({ page }) => {
+  test("creates the experimental Alpine example app and persists an item", async ({ page }) => {
     await page.goto("/");
     await page.evaluate(async () => {
       indexedDB.deleteDatabase("app-lab-v2");
@@ -36,19 +36,21 @@ test.describe("local app persistence", () => {
     });
     await page.reload();
 
-    await page.getByRole("button", { name: "Create Routine Runner app" }).click();
-    const routineHeading = appFrame(page).getByRole("heading", { name: "Routine Runner" });
-    await expect(routineHeading).toBeVisible();
+    await page.getByRole("button", { name: "Create Alpine example app" }).click();
+    const exampleHeading = appFrame(page).getByRole("heading", { name: "Example App" });
+    await expect(exampleHeading).toBeVisible();
 
-    await appFrame(page).getByLabel("New step").fill("Pack gym bag");
-    await appFrame(page).getByRole("button", { name: "Add step" }).click();
-    await expect(appFrame(page).getByText("Pack gym bag", { exact: true })).toBeVisible();
+    await appFrame(page).getByRole("button", { name: "New item" }).click();
+    await appFrame(page).getByLabel("Title").fill("Pack a small bag");
+    await appFrame(page).getByLabel("Description").fill("This description should persist.");
+    await appFrame(page).getByRole("button", { name: "Save" }).click();
+    await expect(appFrame(page).getByText("Pack a small bag", { exact: true })).toBeVisible();
 
     await page.getByRole("button", { name: "‹ Apps" }).click();
     await page.getByRole("button", { name: "Open", exact: true }).click();
 
-    await expect(appFrame(page).getByRole("heading", { name: "Routine Runner" })).toBeVisible();
-    await expect(appFrame(page).getByText("Pack gym bag", { exact: true })).toBeVisible();
+    await expect(appFrame(page).getByRole("heading", { name: "Example App" })).toBeVisible();
+    await expect(appFrame(page).getByText("Pack a small bag", { exact: true })).toBeVisible();
   });
 
   test("keeps source and app data after returning to the launcher", async ({ page }) => {

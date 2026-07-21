@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createExampleAppInput } from "../../core/exampleApp";
-import { createRoutineRunnerAppInput } from "../../core/routineRunnerApp";
+import { createAlpineExampleAppInput } from "../../core/alpineExampleApp";
 import type { AppLabCore, AppRecord, AppSummary, CreateAppInput, JsonValue } from "../../core/types";
 import { encodeAppInvite, readInviteFromHash } from "../../sync/invites";
 import type { RemoteDataChange, SandboxConsoleEntry } from "../../runtime/SandboxFrame";
@@ -253,8 +253,8 @@ export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, sync
     await createAppFromInput(createExampleAppInput());
   }
 
-  async function createRoutineRunnerApp() {
-    await createAppFromInput(createRoutineRunnerAppInput());
+  async function createAlpineExampleApp() {
+    await createAppFromInput(createAlpineExampleAppInput());
   }
 
   function openLauncher() {
@@ -430,10 +430,10 @@ export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, sync
           <button
             className="fixed bottom-5 right-24 z-20 min-h-14 rounded-full border border-app-line bg-white px-4 text-sm font-extrabold text-app-ink shadow-panel hover:border-app-accent hover:text-app-accent"
             type="button"
-            aria-label="Create Routine Runner app"
-            onClick={createRoutineRunnerApp}
+            aria-label="Create Alpine example app"
+            onClick={createAlpineExampleApp}
           >
-            Routine
+            Alpine
           </button>
           <button
             className="fixed bottom-5 right-5 z-20 grid h-14 min-h-14 w-14 place-items-center rounded-full border border-app-accent bg-app-accent text-3xl font-light leading-none text-white shadow-panel hover:bg-app-strong"
