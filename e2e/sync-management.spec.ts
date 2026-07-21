@@ -121,9 +121,10 @@ async function restoreWorkspace(page: Page, recoveryText: string) {
 async function deleteCurrentOwnerApp(page: Page, title: string) {
   page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "‹ Apps" }).click();
-  await page.getByRole("button", { name: `Edit ${title}` }).click();
-  await page.getByRole("dialog", { name: "Edit app" }).getByRole("button", { name: "Delete", exact: true }).click();
-  await expect(page.getByText(title)).not.toBeVisible({ timeout: 15_000 });
+  await page.getByRole("button", { name: `Open app actions for ${title}` }).click();
+  await page.getByRole("dialog", { name: "App actions" }).getByRole("button", { name: "Delete", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "App actions" })).toBeHidden({ timeout: 15_000 });
+  await expect(page.locator("article", { hasText: title })).toHaveCount(0);
 }
 
 function htmlForTitle(title: string) {

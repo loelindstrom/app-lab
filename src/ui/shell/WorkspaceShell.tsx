@@ -404,6 +404,7 @@ export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, sync
             mode={activeTool}
             onClearConsole={() => setConsoleEntries([])}
             onClose={() => setActiveTool(null)}
+            onLoadAppData={core.getAppData}
             onSaveSource={async (sourceCode) => {
               const compiledStyles = await compileAppStyles(sourceCode);
               const updated = await core.updateApp({ appId: activeApp.appId, sourceCode, ...compiledStyles });
@@ -453,6 +454,10 @@ export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, sync
         app={sharingApp}
         hasStorageProfile={Boolean(storageProfile)}
         onClose={() => setSharingApp(null)}
+        onOpenStorageSettings={() => {
+          setSharingApp(null);
+          setSettingsOpen(true);
+        }}
         onCreateInvite={async (appId) => {
           const invite = await syncActions.createInvite(appId);
           await refreshApps();
@@ -925,11 +930,13 @@ function ShareAppDialog({
   hasStorageProfile,
   onClose,
   onCreateInvite,
+  onOpenStorageSettings,
 }: {
   app: AppSummary | null;
   hasStorageProfile: boolean;
   onClose: () => void;
   onCreateInvite: (appId: string) => Promise<AppInvitePayload>;
+  onOpenStorageSettings: () => void;
 }) {
   const [inviteUrl, setInviteUrl] = useState("");
   const [status, setStatus] = useState("Ready");
@@ -973,23 +980,33 @@ function ShareAppDialog({
           </button>
         </div>
 
-        <p className="text-sm leading-relaxed text-app-muted">
-          Sharing exposes this app's room references in an invite link. In v1, collaborators with the link can forward it. Source
-          code is visible to collaborators because browser apps can be inspected.
-        </p>
-
         {!hasStorageProfile ? (
-          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-bold leading-relaxed text-amber-900">
-            Configure Storage and sync in Settings before creating share links.
+          <div className="grid gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm leading-relaxed text-amber-900">
+            <p className="font-bold">Cloud sync is required before this app can be shared.</p>
+            <button
+              className="min-h-9 justify-self-start rounded-md border border-amber-300 bg-white px-3 text-sm font-extrabold text-amber-900 hover:border-amber-500"
+              type="button"
+              onClick={onOpenStorageSettings}
+            >
+              Open settings
+            </button>
           </div>
-        ) : null}
+        ) : (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm leading-relaxed text-amber-900">
+            <p className="font-bold">Invite links are sensitive.</p>
+            <p>
+              Anyone with the link can access this app's source and data rooms while prototype Firebase rules are open. Treat the
+              link like an access key.
+            </p>
+          </div>
+        )}
 
         <div className="rounded-lg border border-app-line bg-slate-50 p-3">
           <p className="mb-2 text-xs font-extrabold uppercase text-app-muted">Invite link</p>
           <textarea
             className="min-h-24 w-full resize-y rounded-md border border-app-line bg-white p-3 font-mono text-xs leading-relaxed text-app-muted"
             readOnly
-            value={inviteUrl || "Create an invite to show the stable room link here."}
+            value={inviteUrl || "Create an invite to generate the access link."}
           />
         </div>
 

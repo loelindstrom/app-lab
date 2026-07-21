@@ -150,59 +150,72 @@ export function SettingsDialog({
 
                 {storageTab === "setup" ? (
                   <div className="grid gap-4">
-                    <div className="rounded-lg border border-app-line bg-white p-3">
-                      <p className="mb-1 text-xs font-extrabold uppercase text-app-muted">Current state</p>
-                      <p className="text-sm font-bold text-app-ink">{storageProfile ? storageProfile.displayName : "No storage profile configured"}</p>
-                      <p className="mt-1 text-sm leading-relaxed text-app-muted">
-                        Saving a profile creates stable room references for owned apps. The cloud adapter will use these references
-                        instead of creating new rooms every time an app is shared.
+                    <div
+                      className={`grid gap-3 rounded-lg border p-3 ${
+                        storageProfile ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-app-line bg-white text-app-ink"
+                      }`}
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="mb-1 text-xs font-extrabold uppercase opacity-70">Cloud sync</p>
+                          <p className="truncate text-base font-extrabold">{storageProfile ? storageProfile.displayName : "Not connected"}</p>
+                        </div>
+                        <span
+                          className={`rounded-full px-2 py-1 text-[11px] font-extrabold uppercase ${
+                            storageProfile ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-app-muted"
+                          }`}
+                        >
+                          {storageProfile ? "Connected" : "Local only"}
+                        </span>
+                      </div>
+                      {storageProfile ? (
+                        <p className="break-all font-mono text-xs leading-relaxed text-emerald-800">{storageProfile.databaseUrl}</p>
+                      ) : (
+                        <p className="text-sm leading-relaxed text-app-muted">
+                          Local apps stay in this browser. Connect Firebase Realtime Database to back up apps and create share
+                          links.
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="grid gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm leading-relaxed text-amber-900">
+                      <p className="font-bold">Prototype access model</p>
+                      <p>
+                        Firebase browser <code className="font-mono">apiKey</code> is not a private secret. Invite links are
+                        sensitive because they contain room access material while prototype database rules are open.
                       </p>
                     </div>
-                    <label className="grid gap-2 text-sm font-extrabold text-app-muted">
-                      Display name
-                      <input
-                        className="min-h-10 rounded-md border border-app-line bg-white px-3 text-base font-semibold text-app-ink outline-none focus:border-app-accent"
-                        value={displayName}
-                        onChange={(event) => setDisplayName(event.target.value)}
-                        placeholder="My Firebase project"
-                      />
-                    </label>
-                    <label className="grid gap-2 text-sm font-extrabold text-app-muted">
-                      Firebase web app config
-                      <textarea
-                        className="min-h-28 resize-y rounded-md border border-app-line bg-white px-3 py-2 font-mono text-xs text-app-ink outline-none focus:border-app-accent"
-                        value={firebaseConfigText}
-                        onChange={(event) => setFirebaseConfigText(event.target.value)}
-                        placeholder={'const firebaseConfig = {\n  apiKey: "...",\n  authDomain: "...",\n  projectId: "..."\n};'}
-                      />
-                    </label>
-                    <label className="grid gap-2 text-sm font-extrabold text-app-muted">
-                      Firebase Realtime Database URL
-                      <input
-                        className="min-h-10 rounded-md border border-app-line bg-white px-3 font-mono text-sm text-app-ink outline-none focus:border-app-accent"
-                        value={databaseUrl}
-                        onChange={(event) => setDatabaseUrl(event.target.value)}
-                        placeholder="https://your-project.region.firebasedatabase.app"
-                      />
-                    </label>
-                    <div className="rounded-lg border border-app-line bg-slate-50 p-3 text-sm leading-relaxed text-app-muted">
-                      Paste the Firebase web app config from Project settings, then paste the Realtime Database URL from the
-                      Realtime Database page. For this prototype, your Realtime Database rules must allow App Lab room reads and
-                      writes at the `appLabSyncRooms` path.
+
+                    <div className="grid gap-4 rounded-lg border border-app-line bg-white p-3">
+                      <label className="grid gap-2 text-sm font-extrabold text-app-muted">
+                        Display name
+                        <input
+                          className="min-h-10 rounded-md border border-app-line bg-white px-3 text-base font-semibold text-app-ink outline-none focus:border-app-accent"
+                          value={displayName}
+                          onChange={(event) => setDisplayName(event.target.value)}
+                          placeholder="My Firebase project"
+                        />
+                      </label>
+                      <label className="grid gap-2 text-sm font-extrabold text-app-muted">
+                        Firebase web app config
+                        <textarea
+                          className="min-h-28 resize-y rounded-md border border-app-line bg-white px-3 py-2 font-mono text-xs text-app-ink outline-none focus:border-app-accent"
+                          value={firebaseConfigText}
+                          onChange={(event) => setFirebaseConfigText(event.target.value)}
+                          placeholder={'const firebaseConfig = {\n  apiKey: "...",\n  authDomain: "...",\n  projectId: "..."\n};'}
+                        />
+                      </label>
+                      <label className="grid gap-2 text-sm font-extrabold text-app-muted">
+                        Firebase Realtime Database URL
+                        <input
+                          className="min-h-10 rounded-md border border-app-line bg-white px-3 font-mono text-sm text-app-ink outline-none focus:border-app-accent"
+                          value={databaseUrl}
+                          onChange={(event) => setDatabaseUrl(event.target.value)}
+                          placeholder="https://your-project.region.firebasedatabase.app"
+                        />
+                      </label>
                     </div>
-                    <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-                      <p className="mb-2 text-xs font-extrabold uppercase text-amber-900">Prototype Firebase rules</p>
-                      <pre className="overflow-auto rounded-md bg-white p-3 text-xs leading-relaxed text-amber-950">{`{
-  "rules": {
-    "appLabSyncRooms": {
-      "$roomId": {
-        ".read": true,
-        ".write": true
-      }
-    }
-  }
-}`}</pre>
-                    </div>
+
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <span className="text-xs font-bold text-app-muted">{status}</span>
                       <div className="flex gap-2">
@@ -224,30 +237,36 @@ export function SettingsDialog({
                   </div>
                 ) : storageTab === "restore" ? (
                   <div className="grid gap-4">
-                    <p className="text-sm leading-relaxed text-app-muted">
-                      Restore will be the one-step flow for a second device. Recovery material should be treated like a password:
-                      anyone with it can restore the full workspace, including private apps and shared room memberships.
-                    </p>
+                    <div className="rounded-lg border border-app-line bg-white p-3 text-sm leading-relaxed text-app-muted">
+                      Restore a workspace on this browser from recovery material exported on another device. Recovery material
+                      can restore private apps and shared room memberships, so treat it like a password.
+                    </div>
                     <textarea
                       className="min-h-28 resize-y rounded-md border border-app-line bg-white p-3 font-mono text-sm outline-none focus:border-app-accent"
                       placeholder="Paste workspace recovery material"
                       value={restoreText}
                       onChange={(event) => setRestoreText(event.target.value)}
                     />
-                    <button
-                      className="min-h-10 rounded-md border border-app-accent bg-app-accent px-4 font-extrabold text-white hover:bg-app-strong disabled:opacity-50"
-                      type="button"
-                      disabled={!restoreText.trim()}
-                      onClick={restoreRecovery}
-                    >
-                      Restore workspace metadata
-                    </button>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <span className="text-xs font-bold text-app-muted">{status}</span>
+                      <button
+                        className="min-h-10 rounded-md border border-app-accent bg-app-accent px-4 font-extrabold text-white hover:bg-app-strong disabled:opacity-50"
+                        type="button"
+                        disabled={!restoreText.trim()}
+                        onClick={restoreRecovery}
+                      >
+                        Restore workspace metadata
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   <div className="grid gap-4">
-                    <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm leading-relaxed text-amber-900">
-                      Recovery exports will support text, QR code, and file formats. Exports must warn that this material unlocks
-                      the full workspace.
+                    <div className="rounded-lg border border-app-line bg-white p-3">
+                      <p className="mb-2 text-xs font-extrabold uppercase text-app-muted">Workspace recovery</p>
+                      <p className="text-sm leading-relaxed text-app-muted">
+                        Export recovery text after important workspace changes. It contains enough information to find and decrypt
+                        the workspace manifest.
+                      </p>
                     </div>
                     <textarea
                       className="min-h-32 resize-y rounded-md border border-app-line bg-white p-3 font-mono text-xs outline-none focus:border-app-accent"
@@ -266,9 +285,20 @@ export function SettingsDialog({
                         Export recovery text
                       </button>
                     </div>
-                    <button className="min-h-10 rounded-md border border-app-line bg-slate-100 px-4 font-extrabold text-app-muted" type="button" disabled>
-                      QR and file export later
-                    </button>
+
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                      <p className="mb-2 text-xs font-extrabold uppercase text-amber-900">Prototype Firebase rules</p>
+                      <pre className="overflow-auto rounded-md bg-white p-3 text-xs leading-relaxed text-amber-950">{`{
+  "rules": {
+    "appLabSyncRooms": {
+      "$roomId": {
+        ".read": true,
+        ".write": true
+      }
+    }
+  }
+}`}</pre>
+                    </div>
                   </div>
                 )}
               </div>

@@ -209,6 +209,37 @@ describe("WorkspaceShell sync wake-ups", () => {
     expect(await screen.findByText("Saved launcher title")).toBeTruthy();
     expect(await screen.findByText("Saved launcher description")).toBeTruthy();
   });
+
+  it("opens storage settings from share when cloud sync is not configured", async () => {
+    const syncActions = createSyncActionsStub();
+    const core = createMemoryCore();
+    await core.createApp({
+      description: "Share test",
+      name: "Share fallback",
+      sourceCode: "<!doctype html><title>Shareable app</title>",
+    });
+
+    render(
+      <WorkspaceShell
+        core={core}
+        syncActionsOverride={syncActions}
+        syncQueueStore={createMemorySyncQueueStore()}
+        syncRegistry={createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore())}
+      />,
+    );
+
+    expect(await screen.findByText("Shareable app")).toBeTruthy();
+    fireEvent.click(await screen.findByRole("button", { name: "Open" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Share Shareable app" }));
+
+    const shareDialog = await screen.findByRole("dialog", { name: "Share app" });
+    expect(within(shareDialog).getByText("Cloud sync is required before this app can be shared.")).toBeTruthy();
+
+    fireEvent.click(within(shareDialog).getByRole("button", { name: "Open settings" }));
+
+    expect(screen.queryByRole("dialog", { name: "Share app" })).toBeNull();
+    expect(await screen.findByRole("dialog", { name: "Storage and sync" })).toBeTruthy();
+  });
 });
 
 function createSyncActionsStub(): WorkspaceSyncActions {

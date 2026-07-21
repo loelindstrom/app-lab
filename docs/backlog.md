@@ -10,7 +10,7 @@ App Lab is a React/Vite browser app with:
 - sandboxed iframe apps
 - local IndexedDB app/source/data persistence
 - source editing and console logs
-- prompt+code export for external LLM workflows
+- source/data file export and BuilderAI prompt+code helper for external LLM workflows
 - Firebase Realtime Database sync through encrypted rooms
 - invite import/share
 - active-app live source/data subscriptions

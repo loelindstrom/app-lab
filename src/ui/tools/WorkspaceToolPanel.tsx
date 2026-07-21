@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import type { AppRecord } from "../../core/types";
+import type { AppRecord, JsonValue } from "../../core/types";
 import type { SandboxConsoleEntry } from "../../runtime/SandboxFrame";
 
 export type ToolPanelMode = "builder" | "console" | "source";
+type SourceExportKind = "data" | "source";
 
 interface WorkspaceToolPanelProps {
   activeApp: AppRecord;
@@ -10,10 +11,11 @@ interface WorkspaceToolPanelProps {
   mode: ToolPanelMode | null;
   onClearConsole: () => void;
   onClose: () => void;
+  onLoadAppData: (appId: string) => Promise<JsonValue>;
   onSaveSource: (sourceCode: string) => Promise<void>;
 }
 
-export function WorkspaceToolPanel({ activeApp, consoleEntries, mode, onClearConsole, onClose, onSaveSource }: WorkspaceToolPanelProps) {
+export function WorkspaceToolPanel({ activeApp, consoleEntries, mode, onClearConsole, onClose, onLoadAppData, onSaveSource }: WorkspaceToolPanelProps) {
   const isOpen = mode !== null;
   const title = mode === "source" ? "Source" : mode === "builder" ? "BuilderAI" : mode === "console" ? "Console" : "App tools";
 
@@ -41,25 +43,44 @@ export function WorkspaceToolPanel({ activeApp, consoleEntries, mode, onClearCon
       </header>
 
       {mode === "source" ? (
-        <SourceView app={activeApp} onSaveSource={onSaveSource} />
+        <SourceView app={activeApp} onLoadAppData={onLoadAppData} onSaveSource={onSaveSource} />
       ) : mode === "console" ? (
         <ConsoleView entries={consoleEntries} onClear={onClearConsole} />
       ) : (
-        <BuilderView />
+        <BuilderView app={activeApp} />
       )}
     </aside>
   );
 }
 
-function SourceView({ app, onSaveSource }: { app: AppRecord; onSaveSource: (sourceCode: string) => Promise<void> }) {
+function SourceView({
+  app,
+  onLoadAppData,
+  onSaveSource,
+}: {
+  app: AppRecord;
+  onLoadAppData: (appId: string) => Promise<JsonValue>;
+  onSaveSource: (sourceCode: string) => Promise<void>;
+}) {
   const [sourceCode, setSourceCode] = useState(app.sourceCode);
   const [exportOpen, setExportOpen] = useState(false);
+  const [includeSourceExport, setIncludeSourceExport] = useState(true);
+  const [includeDataExport, setIncludeDataExport] = useState(false);
+  const [appDataText, setAppDataText] = useState("");
+  const [manualCopyText, setManualCopyText] = useState("");
+  const [manualCopyLabel, setManualCopyLabel] = useState("");
   const [status, setStatus] = useState("Ready");
-  const promptText = useMemo(() => createPromptWithCode(app.name, sourceCode), [app.name, sourceCode]);
+  const [exportStatus, setExportStatus] = useState("Ready");
 
   useEffect(() => {
     setSourceCode(app.sourceCode);
     setStatus("Ready");
+    setIncludeSourceExport(true);
+    setIncludeDataExport(false);
+    setAppDataText("");
+    setManualCopyText("");
+    setManualCopyLabel("");
+    setExportStatus("Ready");
   }, [app.appId, app.sourceCode]);
 
   async function saveSource() {
@@ -70,6 +91,67 @@ function SourceView({ app, onSaveSource }: { app: AppRecord; onSaveSource: (sour
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Could not save.");
     }
+  }
+
+  async function loadAppData(): Promise<string | null> {
+    setExportStatus("Loading data...");
+    try {
+      const data = await onLoadAppData(app.appId);
+      const dataText = JSON.stringify(data, null, 2);
+      setAppDataText(dataText);
+      setExportStatus("Data loaded.");
+      return dataText;
+    } catch (error) {
+      setExportStatus(error instanceof Error ? error.message : "Could not load app data.");
+      return null;
+    }
+  }
+
+  async function copyExportText(text: string, label: string) {
+    if (!text) {
+      setExportStatus(`No ${label} to copy.`);
+      return;
+    }
+
+    try {
+      await withTimeout(navigator.clipboard.writeText(text), 1500);
+      setManualCopyText("");
+      setManualCopyLabel("");
+      setExportStatus("Copied.");
+    } catch (_) {
+      setManualCopyText(text);
+      setManualCopyLabel(label);
+      setExportStatus("Select and copy manually.");
+    }
+  }
+
+  async function copyAppData() {
+    const dataText = appDataText || (await loadAppData());
+    if (dataText) await copyExportText(dataText, "app data");
+  }
+
+  async function toggleDataExport(checked: boolean) {
+    setIncludeDataExport(checked);
+    if (checked && !appDataText) await loadAppData();
+  }
+
+  async function downloadSelectedExports() {
+    if (!includeSourceExport && !includeDataExport) {
+      setExportStatus("Select at least one export.");
+      return;
+    }
+
+    const downloads: Array<{ contents: string; kind: SourceExportKind }> = [];
+    if (includeSourceExport) downloads.push({ contents: sourceCode, kind: "source" });
+
+    if (includeDataExport) {
+      const dataText = appDataText || (await loadAppData());
+      if (!dataText) return;
+      downloads.push({ contents: dataText, kind: "data" });
+    }
+
+    const downloadCount = downloads.filter((download) => downloadTextFile(download.contents, getExportFilename(app.name, download.kind), getExportMimeType(download.kind))).length;
+    setExportStatus(downloadCount === downloads.length ? "Download started." : "Download is unavailable.");
   }
 
   return (
@@ -86,14 +168,66 @@ function SourceView({ app, onSaveSource }: { app: AppRecord; onSaveSource: (sour
         />
       </div>
       {exportOpen ? (
-        <div className="border-t border-app-line bg-app-panel p-3">
-          <p className="mb-2 text-xs font-bold text-app-muted">Select and copy this prompt into another LLM.</p>
-          <textarea
-            className="h-44 w-full resize-y rounded-md border border-app-line bg-white p-3 font-mono text-xs leading-relaxed text-app-ink"
-            readOnly
-            value={promptText}
-            onFocus={(event) => event.target.select()}
-          />
+        <div className="grid gap-3 border-t border-app-line bg-app-panel p-3">
+          <fieldset className="grid gap-2">
+            <legend className="sr-only">Export files</legend>
+            <label className="flex min-h-10 items-center gap-3 rounded-md border border-app-line bg-white px-3 text-sm font-bold text-app-ink">
+              <input
+                checked={includeSourceExport}
+                className="h-4 w-4 accent-app-accent"
+                type="checkbox"
+                onChange={(event) => setIncludeSourceExport(event.target.checked)}
+              />
+              <span className="min-w-0">
+                <span className="block">Source code</span>
+                <span className="block truncate text-xs font-bold text-app-muted">{getExportFilename(app.name, "source")}</span>
+              </span>
+            </label>
+            <label className="flex min-h-10 items-center gap-3 rounded-md border border-app-line bg-white px-3 text-sm font-bold text-app-ink">
+              <input
+                checked={includeDataExport}
+                className="h-4 w-4 accent-app-accent"
+                type="checkbox"
+                onChange={(event) => void toggleDataExport(event.target.checked)}
+              />
+              <span className="min-w-0">
+                <span className="block">App data</span>
+                <span className="block truncate text-xs font-bold text-app-muted">{getExportFilename(app.name, "data")}</span>
+              </span>
+            </label>
+          </fieldset>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <button
+              className="min-h-8 rounded-md border border-app-accent bg-app-accent px-3 text-sm font-bold text-white hover:bg-app-strong"
+              type="button"
+              onClick={() => void downloadSelectedExports()}
+            >
+              Download selected
+            </button>
+            <div className="flex flex-wrap gap-2">
+              {includeDataExport ? (
+                <button className="min-h-8 rounded-md border border-app-line bg-white px-3 text-sm font-bold text-app-ink hover:border-app-accent" type="button" onClick={() => void loadAppData()}>
+                  Refresh data
+                </button>
+              ) : null}
+              <button className="min-h-8 rounded-md border border-app-line bg-white px-3 text-sm font-bold text-app-ink hover:border-app-accent" type="button" onClick={() => void copyExportText(sourceCode, "source code")}>
+                Copy source
+              </button>
+              <button className="min-h-8 rounded-md border border-app-line bg-white px-3 text-sm font-bold text-app-ink hover:border-app-accent" type="button" onClick={() => void copyAppData()}>
+                Copy data
+              </button>
+            </div>
+          </div>
+          {manualCopyText ? (
+            <textarea
+              aria-label={`${manualCopyLabel} export`}
+              className="h-32 w-full resize-y rounded-md border border-app-line bg-white p-3 font-mono text-xs leading-relaxed text-app-ink"
+              readOnly
+              value={manualCopyText}
+              onFocus={(event) => event.target.select()}
+            />
+          ) : null}
+          <div className="text-xs font-bold text-app-muted">{exportStatus}</div>
         </div>
       ) : null}
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-app-line bg-slate-50 px-3 py-2">
@@ -104,7 +238,7 @@ function SourceView({ app, onSaveSource }: { app: AppRecord; onSaveSource: (sour
             type="button"
             onClick={() => setExportOpen((isOpen) => !isOpen)}
           >
-            Copy prompt+code
+            Export
           </button>
           <button
             className="min-h-8 rounded-md border border-app-accent bg-app-accent px-3 text-sm font-bold text-white hover:bg-app-strong"
@@ -119,31 +253,119 @@ function SourceView({ app, onSaveSource }: { app: AppRecord; onSaveSource: (sour
   );
 }
 
-function BuilderView() {
+function getExportFilename(appName: string, kind: SourceExportKind): string {
+  const safeName = appName
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+  const baseName = safeName || "untitled-app";
+  return kind === "source" ? `${baseName}.html` : `${baseName}.data.json`;
+}
+
+function getExportMimeType(kind: SourceExportKind): string {
+  return kind === "source" ? "text/html;charset=utf-8" : "application/json;charset=utf-8";
+}
+
+function downloadTextFile(contents: string, filename: string, mimeType: string): boolean {
+  if (typeof window.URL.createObjectURL !== "function") return false;
+
+  const url = window.URL.createObjectURL(new Blob([contents], { type: mimeType }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => {
+    if (typeof window.URL.revokeObjectURL === "function") window.URL.revokeObjectURL(url);
+  }, 0);
+  return true;
+}
+
+function BuilderView({ app }: { app: AppRecord }) {
+  const [promptOpen, setPromptOpen] = useState(false);
+  const [status, setStatus] = useState("Ready");
+  const promptText = useMemo(() => createPromptWithCode(app.name, app.sourceCode), [app.name, app.sourceCode]);
+  const promptPanelId = "builder-prompt-code";
+
+  useEffect(() => {
+    setPromptOpen(false);
+    setStatus("Ready");
+  }, [app.appId]);
+
+  async function copyPromptText() {
+    try {
+      await withTimeout(navigator.clipboard.writeText(promptText), 1500);
+      setStatus("Copied.");
+    } catch (_) {
+      setPromptOpen(true);
+      setStatus("Select and copy manually.");
+    }
+  }
+
   return (
     <div className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto]">
-      <ol className="flex flex-col gap-3 overflow-auto p-3" aria-live="polite">
-        <li className="rounded-lg border border-app-line bg-app-accent/10 px-3 py-2 text-sm leading-relaxed text-app-muted">
-          BuilderAI is a placeholder while the app-building loop is shaped around source editing, logs, and the sandbox runtime.
-        </li>
-      </ol>
+      <div className="min-h-0 overflow-auto">
+        <ol className="flex flex-col gap-3 p-3" aria-live="polite">
+          <li className="rounded-lg border border-app-line bg-app-accent/10 px-3 py-2 text-sm leading-relaxed text-app-muted">
+            The AI bot is still being built, but use the button below to copy prompt + code and use it in another AI.
+          </li>
+        </ol>
+      </div>
 
-      <form className="grid grid-cols-[minmax(0,1fr)_40px] items-end gap-2 border-t border-app-line p-3">
-        <label className="sr-only" htmlFor="builder-message">
-          Message
-        </label>
-        <textarea
-          className="max-h-36 min-h-11 resize-y rounded-md border border-app-line px-3 py-2 text-app-ink"
-          id="builder-message"
-          rows={2}
-          placeholder="Ask BuilderAI to change this app"
-        />
+      <form className="grid gap-2 border-t border-app-line p-3">
+        <div className="grid grid-cols-[minmax(0,1fr)_40px] items-end gap-2">
+          <label className="sr-only" htmlFor="builder-message">
+            Message
+          </label>
+          <textarea
+            className="max-h-36 min-h-11 resize-y rounded-md border border-app-line px-3 py-2 text-app-ink"
+            id="builder-message"
+            rows={2}
+            placeholder="Ask BuilderAI to change this app"
+          />
+          <button
+            className="grid h-10 min-h-10 w-10 place-items-center rounded-full border border-app-accent bg-app-accent p-0 text-xl font-bold text-white hover:bg-app-strong"
+            type="button"
+            aria-label="Send message"
+          >
+            ↑
+          </button>
+        </div>
+        {promptOpen ? (
+          <div className="grid gap-2 rounded-md border border-app-line bg-app-panel p-2" id={promptPanelId}>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="text-xs font-bold text-app-muted">{status}</div>
+              <button
+                className="min-h-8 rounded-md border border-app-line bg-white px-3 text-sm font-bold text-app-ink hover:border-app-accent"
+                type="button"
+                onClick={copyPromptText}
+              >
+                Copy
+              </button>
+            </div>
+            <textarea
+              aria-label="Prompt and code"
+              className="h-40 w-full resize-y rounded-md border border-app-line bg-white p-3 font-mono text-xs leading-relaxed text-app-ink"
+              readOnly
+              value={promptText}
+              onFocus={(event) => event.target.select()}
+            />
+          </div>
+        ) : null}
         <button
-          className="grid h-10 min-h-10 w-10 place-items-center rounded-full border border-app-accent bg-app-accent p-0 text-xl font-bold text-white hover:bg-app-strong"
+          aria-controls={promptPanelId}
+          aria-expanded={promptOpen}
+          className="min-h-9 rounded-md border border-app-line bg-white px-3 text-sm font-bold text-app-ink hover:border-app-accent"
           type="button"
-          aria-label="Send message"
+          onClick={() => {
+            setPromptOpen((isOpen) => !isOpen);
+            setStatus("Ready");
+          }}
         >
-          ↑
+          {promptOpen ? "↓" : "↑"} Copy prompt + code
         </button>
       </form>
     </div>
