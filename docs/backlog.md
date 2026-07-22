@@ -11,24 +11,25 @@ App Lab is a React/Vite browser app with:
 - local IndexedDB app/source/data persistence
 - source editing and console logs
 - source/data file export and BuilderAI prompt+code helper for external LLM workflows
-- Firebase Realtime Database sync through encrypted rooms
+- Firebase Realtime Database sync through encrypted auth-v1 rooms
 - invite import/share
+- workspace sync material for restoring/syncing the whole workspace on another browser
 - active-app live source/data subscriptions
+- live workspace manifest sync for apps created on another synced browser
+- owner-deletion tombstones for shared apps
 - local-first queue records for sync retries
-
 
 ## MVP Must-Have
 
-1. Invite and provider access hardening
+No open must-have item is documented here right now. Add an item only when it is concrete enough to guide the next implementation
+slice.
 
-   The legacy Firebase prototype treats invite and recovery material as sensitive bearer access material. A decoded invite
-   includes enough Firebase connection metadata and room capabilities for a recipient to connect to the same RTDB-backed app, and
-   open prototype RTDB rules do not enforce App Lab's room-level intent on the provider side.
+Known limitations that are intentionally not blockers for the current MVP:
 
-   Initial `auth-v1` support now uses Anonymous Auth, generated RTDB rules, local owner setup material, and invite room-claim
-   tokens so accepting an invite should not let another user create arbitrary App Lab rooms in the owner's Firebase project.
-   Before wider sharing or MVP, validate the rules against a real Firebase project with a fresh setup and decide what level of
-   revocation/key rotation or provider migration is needed.
+- invite links are sensitive full-access bearer material for the shared app rooms
+- workspace sync material is sensitive whole-workspace bearer material and includes owner setup material
+- there is no revocation/key rotation UI
+- there is no read-only sharing
 
 ## Nice-To-Have After MVP
 
@@ -45,6 +46,11 @@ App Lab is a React/Vite browser app with:
 
    Add ID-based merge only if shared/offline conflicts become common enough to justify the complexity. The current policy is
    latest-local-pending-data wins.
+
+4. Import app data
+
+   Export exists for source and app data. Add app-data import only when manual backup/restore workflows show enough demand to
+   justify UI and safety checks.
 
 ## Explicit Non-Goals For Now
 
