@@ -1,9 +1,14 @@
 import { deleteApp, getApps, initializeApp, type FirebaseOptions } from "firebase/app";
-import { get, getDatabase, onValue, ref, remove, runTransaction, type Database } from "firebase/database";
+import { getAuth, signInAnonymously, type Auth } from "firebase/auth";
+import { get, getDatabase, onValue, ref, remove, runTransaction, set, type Database } from "firebase/database";
+import { DEFAULT_FIREBASE_ACCESS_MODEL, type FirebaseAccessModel } from "./firebaseAccessRules";
 import type { FirebaseWebAppConfig } from "./firebaseConfig";
-import type { CreateRoomInput, DeleteRoomInput, LoadRoomInput, RealtimeSyncProvider, RemoteRoomSnapshot, SaveRoomInput, SubscribeRoomInput } from "./types";
+import type { ClaimRoomAccessInput, CreateRoomInput, DeleteRoomInput, LoadRoomInput, RealtimeSyncProvider, RemoteRoomSnapshot, SaveRoomInput, SubscribeRoomInput } from "./types";
 
 const ROOM_COLLECTION = "appLabSyncRooms";
+const OWNER_COLLECTION = "appLabOwners";
+const ROOM_CLAIM_TOKEN_COLLECTION = "appLabRoomClaimTokens";
+const ROOM_MEMBER_COLLECTION = "appLabRoomMembers";
 const TEXT_ENCODER = new TextEncoder();
 
 export interface FirebaseRealtimeRoomRecord {
@@ -16,7 +21,8 @@ export interface FirebaseRealtimeRoomRecord {
 }
 
 export interface FirebaseRealtimeDriver {
-  createRoom(record: FirebaseRealtimeRoomRecord): Promise<boolean>;
+  claimRoomAccess?(input: ClaimRoomAccessInput): Promise<void>;
+  createRoom(record: FirebaseRealtimeRoomRecord, access?: { claimToken?: string }): Promise<boolean>;
   getRoom(roomId: string): Promise<FirebaseRealtimeRoomRecord | null>;
   saveRoom(input: {
     expectedVersion: number;
@@ -42,7 +48,7 @@ export function createFirebaseRealtimeSyncProvider(input: { driver: FirebaseReal
       writeTokenHash: await hashToken(room.writeToken),
     };
 
-    const created = await input.driver.createRoom(record);
+    const created = await input.driver.createRoom(record, { claimToken: room.writeToken });
     if (!created) throw new Error(`Room already exists: ${room.roomId}`);
     return toSnapshot(record);
   }
@@ -129,6 +135,7 @@ export function createFirebaseRealtimeSyncProvider(input: { driver: FirebaseReal
   }
 
   return {
+    claimRoomAccess: input.driver.claimRoomAccess,
     createRoom,
     deleteRoom,
     loadRoom,
@@ -138,18 +145,69 @@ export function createFirebaseRealtimeSyncProvider(input: { driver: FirebaseReal
   };
 }
 
-export function createFirebaseSdkRealtimeDriver(config: FirebaseWebAppConfig): FirebaseRealtimeDriver {
-  const appName = `app-lab-sync-${hashString(config.databaseURL)}`;
+export function createFirebaseSdkRealtimeDriver(
+  config: FirebaseWebAppConfig,
+  options: { accessModel?: FirebaseAccessModel; ownerSetupSecret?: string } = {},
+): FirebaseRealtimeDriver {
+  const accessModel = options.accessModel ?? DEFAULT_FIREBASE_ACCESS_MODEL;
+  const appName = `app-lab-sync-${hashString(`${accessModel}:${config.databaseURL}`)}`;
   const existingApp = getApps().find((app) => app.name === appName);
   const app = existingApp ?? initializeApp(config as FirebaseOptions, appName);
   const database = getDatabase(app, config.databaseURL);
+  const auth = getAuth(app);
 
-  return createFirebaseRealtimeDriverFromDatabase(database);
+  return createFirebaseRealtimeDriverFromDatabase(database, {
+    accessModel,
+    auth,
+    ownerSetupSecret: options.ownerSetupSecret,
+  });
 }
 
-export function createFirebaseRealtimeDriverFromDatabase(database: Database): FirebaseRealtimeDriver {
+export function createFirebaseRealtimeDriverFromDatabase(
+  database: Database,
+  options: { accessModel?: FirebaseAccessModel; auth?: Auth; ownerSetupSecret?: string } = {},
+): FirebaseRealtimeDriver {
+  const auth = options.auth;
+  let ownerAccessPromise: Promise<string> | null = null;
+
+  async function ensureSignedIn(): Promise<string> {
+    if (!auth) throw new Error("Firebase Auth is required for auth-v1 RTDB access.");
+    const user = auth.currentUser ?? (await signInAnonymously(auth)).user;
+    return user.uid;
+  }
+
+  async function ensureOwnerAccess(): Promise<string> {
+    const uid = await ensureSignedIn();
+    if (!options.ownerSetupSecret) return uid;
+    ownerAccessPromise ??= set(ownerRef(database, uid), {
+      owner: true,
+      setupSecret: options.ownerSetupSecret,
+    }).then(
+      () => uid,
+      (error) => {
+        ownerAccessPromise = null;
+        throw error;
+      },
+    );
+    return ownerAccessPromise;
+  }
+
+  async function prepareReadWriteAccess() {
+    await ensureOwnerAccess();
+  }
+
   return {
-    async createRoom(record) {
+    async claimRoomAccess(input) {
+      const uid = await ensureSignedIn();
+      await set(roomMemberRef(database, input.roomId, uid), {
+        claimToken: input.claimToken,
+        member: true,
+      });
+    },
+    async createRoom(record, access) {
+      await ensureOwnerAccess();
+      if (!access?.claimToken) throw new Error("Room claim token is required for auth-v1 RTDB access.");
+      await set(roomClaimTokenRef(database, record.roomId), access.claimToken);
       const result = await runTransaction(roomRef(database, record.roomId), (current) => {
         if (current !== null) return;
         return record;
@@ -157,10 +215,12 @@ export function createFirebaseRealtimeDriverFromDatabase(database: Database): Fi
       return result.committed;
     },
     async getRoom(roomId) {
+      await prepareReadWriteAccess();
       const snapshot = await get(roomRef(database, roomId));
       return parseRoomRecord(snapshot.val(), roomId);
     },
     async saveRoom(input) {
+      await prepareReadWriteAccess();
       let currentRecord: FirebaseRealtimeRoomRecord | null = null;
       const result = await runTransaction(roomRef(database, input.roomId), (current) => {
         const parsed = parseRoomRecord(current, input.roomId);
@@ -176,6 +236,7 @@ export function createFirebaseRealtimeDriverFromDatabase(database: Database): Fi
       };
     },
     async deleteRoom(input) {
+      await prepareReadWriteAccess();
       const reference = roomRef(database, input.roomId);
       const snapshot = await get(reference);
       const currentRecord = parseRoomRecord(snapshot.val(), input.roomId);
@@ -186,14 +247,28 @@ export function createFirebaseRealtimeDriverFromDatabase(database: Database): Fi
       return { currentRecord: null, ok: true };
     },
     subscribeConnection(onChange) {
+      void prepareReadWriteAccess().catch(() => {});
       return onValue(ref(database, ".info/connected"), (snapshot) => {
         onChange(snapshot.val() === true);
       });
     },
     subscribeRoom(roomId, onChange) {
-      return onValue(roomRef(database, roomId), (snapshot) => {
-        onChange(parseRoomRecord(snapshot.val(), roomId));
-      });
+      let cancelled = false;
+      let unsubscribe: (() => void) | null = null;
+      void prepareReadWriteAccess()
+        .then(() => {
+          if (cancelled) return;
+          unsubscribe = onValue(roomRef(database, roomId), (snapshot) => {
+            onChange(parseRoomRecord(snapshot.val(), roomId));
+          });
+        })
+        .catch((error) => {
+          console.warn("Could not start Firebase room subscription.", error);
+        });
+      return () => {
+        cancelled = true;
+        unsubscribe?.();
+      };
     },
   };
 }
@@ -275,6 +350,18 @@ function toSnapshot(room: FirebaseRealtimeRoomRecord): RemoteRoomSnapshot {
 
 function roomRef(database: Database, roomId: string) {
   return ref(database, `${ROOM_COLLECTION}/${roomId}`);
+}
+
+function ownerRef(database: Database, uid: string) {
+  return ref(database, `${OWNER_COLLECTION}/${uid}`);
+}
+
+function roomClaimTokenRef(database: Database, roomId: string) {
+  return ref(database, `${ROOM_CLAIM_TOKEN_COLLECTION}/${roomId}`);
+}
+
+function roomMemberRef(database: Database, roomId: string, uid: string) {
+  return ref(database, `${ROOM_MEMBER_COLLECTION}/${roomId}/${uid}`);
 }
 
 function parseRoomRecord(value: unknown, roomId: string): FirebaseRealtimeRoomRecord | null {

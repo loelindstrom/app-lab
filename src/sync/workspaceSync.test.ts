@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { createRoomCapability } from "./crypto";
+import { configureTestStorageProfile } from "./testStorageProfile";
 import { createMemoryWorkspaceSyncStore, createWorkspaceSyncRegistry } from "./workspaceSync";
 
 describe("workspace sync registry", () => {
   it("configures a storage profile and creates stable owned app room references", async () => {
     const registry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
-    await registry.configureStorageProfile({
+    await configureTestStorageProfile(registry, {
       databaseUrl: "https://example.firebaseio.com/",
       displayName: "My Firebase",
     });
@@ -23,7 +24,7 @@ describe("workspace sync registry", () => {
 
   it("marks owned apps as shared without recreating rooms", async () => {
     const registry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
-    await registry.configureStorageProfile({ databaseUrl: "https://example.firebaseio.com" });
+    await configureTestStorageProfile(registry);
     const owned = await registry.ensureOwnedAppRooms("app-1");
 
     const firstInvite = await registry.createInvite("app-1");
@@ -38,15 +39,68 @@ describe("workspace sync registry", () => {
     });
   });
 
+  it("stores auth-v1 owner setup material without putting it into app invites", async () => {
+    const registry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
+    await registry.configureStorageProfile({
+      accessModel: "auth-v1",
+      databaseUrl: "https://example.firebaseio.com",
+      firebaseConfigText: JSON.stringify({
+        apiKey: "test-api-key",
+        appId: "app-id",
+        authDomain: "example.firebaseapp.com",
+        databaseURL: "https://example.firebaseio.com",
+        measurementId: "G-TEST",
+        messagingSenderId: "123",
+        projectId: "example",
+        storageBucket: "example.appspot.com",
+      }),
+      ownerSetupSecret: "app_lab_owner_test_secret",
+    });
+    await registry.ensureOwnedAppRooms("app-1");
+
+    const profile = await registry.getStorageProfile();
+    const invite = await registry.createInvite("app-1");
+
+    expect(profile).toMatchObject({
+      accessModel: "auth-v1",
+      ownerSetupSecret: "app_lab_owner_test_secret",
+    });
+    expect(invite.provider.accessModel).toBe("auth-v1");
+    expect(invite.provider).not.toHaveProperty("ownerSetupSecret");
+    expect(invite.provider).not.toHaveProperty("profileId");
+    expect(invite.provider.firebaseConfig).toEqual({
+      apiKey: "test-api-key",
+      authDomain: "example.firebaseapp.com",
+      databaseURL: "https://example.firebaseio.com",
+    });
+  });
+
+  it("requires Firebase web app config before saving auth-v1 storage", async () => {
+    const registry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
+
+    await expect(
+      registry.configureStorageProfile({
+        accessModel: "auth-v1",
+        databaseUrl: "https://example.firebaseio.com",
+      }),
+    ).rejects.toThrow(/apiKey/);
+  });
+
   it("keeps joined apps attached to the original provider even if local storage is configured", async () => {
     const registry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
-    await registry.configureStorageProfile({ databaseUrl: "https://my-project.firebaseio.com" });
+    await configureTestStorageProfile(registry, { databaseUrl: "https://my-project.firebaseio.com" });
 
     const sourceRoom = createRoomCapability();
     const dataRoom = createRoomCapability();
     const originalProvider = {
       provider: "firebase-rtdb" as const,
+      accessModel: "auth-v1" as const,
       databaseUrl: "https://friend-project.firebaseio.com",
+      firebaseConfig: {
+        apiKey: "friend-api-key",
+        authDomain: "friend-project.firebaseapp.com",
+        databaseURL: "https://friend-project.firebaseio.com",
+      },
     };
     await registry.markJoinedApp({
       appId: "joined-app",
@@ -75,7 +129,7 @@ describe("workspace sync registry", () => {
 
   it("removes local sync metadata and remembers a local tombstone", async () => {
     const registry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
-    await registry.configureStorageProfile({ databaseUrl: "https://example.firebaseio.com" });
+    await configureTestStorageProfile(registry);
     await registry.ensureOwnedAppRooms("app-1");
 
     await registry.removeLocalAppSync("app-1");

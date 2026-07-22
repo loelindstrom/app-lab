@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { decryptRoomSnapshot } from "./crypto";
 import { createMemorySyncProvider } from "./memorySyncProvider";
 import { deleteRemoteAppRooms, ensureRemoteAppRooms, isRemoteAppDeletedError, loadRemoteAppRooms, saveRemoteAppData, saveRemoteAppSource } from "./appRooms";
+import { configureTestStorageProfile } from "./testStorageProfile";
 import { createMemoryWorkspaceSyncStore, createWorkspaceSyncRegistry } from "./workspaceSync";
 import type { AppRecord } from "../core/types";
 
@@ -9,7 +10,7 @@ describe("app room sync", () => {
   it("creates source and data rooms for an owned app", async () => {
     const provider = createMemorySyncProvider();
     const registry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
-    await registry.configureStorageProfile({ databaseUrl: "https://example.firebaseio.com" });
+    await configureTestStorageProfile(registry);
     const syncRecord = await registry.ensureOwnedAppRooms("app-1");
     const app = exampleApp();
 
@@ -33,7 +34,7 @@ describe("app room sync", () => {
   it("does not fail if rooms were already created", async () => {
     const provider = createMemorySyncProvider();
     const registry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
-    await registry.configureStorageProfile({ databaseUrl: "https://example.firebaseio.com" });
+    await configureTestStorageProfile(registry);
     const syncRecord = await registry.ensureOwnedAppRooms("app-1");
     const app = exampleApp();
 
@@ -44,7 +45,7 @@ describe("app room sync", () => {
   it("loads source and data rooms back into app records", async () => {
     const provider = createMemorySyncProvider();
     const registry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
-    await registry.configureStorageProfile({ databaseUrl: "https://example.firebaseio.com" });
+    await configureTestStorageProfile(registry);
     const syncRecord = await registry.ensureOwnedAppRooms("app-1");
     const app = exampleApp();
     await ensureRemoteAppRooms({ app, appData: { count: 7 }, provider, syncRecord });
@@ -66,7 +67,7 @@ describe("app room sync", () => {
   it("pushes source and data updates with remembered room versions", async () => {
     const provider = createMemorySyncProvider();
     const registry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
-    await registry.configureStorageProfile({ databaseUrl: "https://example.firebaseio.com" });
+    await configureTestStorageProfile(registry);
     let syncRecord = await registry.ensureOwnedAppRooms("app-1");
     const app = exampleApp();
     await ensureRemoteAppRooms({ app, appData: { count: 1 }, provider, syncRecord });
@@ -101,7 +102,7 @@ describe("app room sync", () => {
   it("overwrites an existing remote source room when local version is unknown", async () => {
     const provider = createMemorySyncProvider();
     const registry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
-    await registry.configureStorageProfile({ databaseUrl: "https://example.firebaseio.com" });
+    await configureTestStorageProfile(registry);
     const syncRecord = await registry.ensureOwnedAppRooms("app-1");
     const app = exampleApp();
     await ensureRemoteAppRooms({ app, appData: null, provider, syncRecord });
@@ -124,7 +125,7 @@ describe("app room sync", () => {
   it("recreates missing owned rooms even when a local version was remembered", async () => {
     const provider = createMemorySyncProvider();
     const registry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
-    await registry.configureStorageProfile({ databaseUrl: "https://example.firebaseio.com" });
+    await configureTestStorageProfile(registry);
     const syncRecord = await registry.ensureOwnedAppRooms("app-1");
     await ensureRemoteAppRooms({ app: exampleApp(), appData: { count: 1 }, provider, syncRecord });
     const loaded = await loadRemoteAppRooms({ provider, syncRecord });
@@ -153,7 +154,7 @@ describe("app room sync", () => {
   it("marks source as deleted and removes data when deleting a synced app", async () => {
     const provider = createMemorySyncProvider();
     const registry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
-    await registry.configureStorageProfile({ databaseUrl: "https://example.firebaseio.com" });
+    await configureTestStorageProfile(registry);
     const syncRecord = await registry.ensureOwnedAppRooms("app-1");
     const app = exampleApp();
     await ensureRemoteAppRooms({ app, appData: { count: 1 }, provider, syncRecord });

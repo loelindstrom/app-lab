@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createMemorySyncProvider } from "./memorySyncProvider";
 import { createMemorySyncQueueStore, enqueueSaveWorkspaceManifest } from "./syncQueue";
+import { configureTestStorageProfile } from "./testStorageProfile";
 import { createMemoryWorkspaceSyncStore, createWorkspaceSyncRegistry } from "./workspaceSync";
 import { createWorkspaceRecoveryMaterial, loadWorkspaceManifest } from "./workspaceManifest";
 import { processWorkspaceManifestQueue } from "./workspaceManifestWorker";
@@ -10,7 +11,7 @@ describe("workspace manifest worker", () => {
     const provider = createMemorySyncProvider();
     const queueStore = createMemorySyncQueueStore();
     const syncRegistry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
-    await syncRegistry.configureStorageProfile({ databaseUrl: "https://example.firebaseio.com" });
+    await configureTestStorageProfile(syncRegistry);
     await syncRegistry.ensureOwnedAppRooms("app-1");
     const state = await syncRegistry.getState();
     await enqueueSaveWorkspaceManifest(queueStore, state.workspaceId);
@@ -35,7 +36,7 @@ describe("workspace manifest worker", () => {
   it("keeps the queue item pending when the provider is unavailable", async () => {
     const queueStore = createMemorySyncQueueStore();
     const syncRegistry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
-    await syncRegistry.configureStorageProfile({ databaseUrl: "https://example.firebaseio.com" });
+    await configureTestStorageProfile(syncRegistry);
     const state = await syncRegistry.getState();
     await enqueueSaveWorkspaceManifest(queueStore, state.workspaceId);
 

@@ -238,7 +238,7 @@ function SourceView({
             type="button"
             onClick={() => setExportOpen((isOpen) => !isOpen)}
           >
-            Export
+            Export {exportOpen ? "↓" : "↑"}
           </button>
           <button
             className="min-h-8 rounded-md border border-app-accent bg-app-accent px-3 text-sm font-bold text-white hover:bg-app-strong"
@@ -365,7 +365,7 @@ function BuilderView({ app }: { app: AppRecord }) {
             setStatus("Ready");
           }}
         >
-          {promptOpen ? "↓" : "↑"} Copy prompt + code
+          Copy prompt + code {promptOpen ? "↓" : "↑"}
         </button>
       </form>
     </div>

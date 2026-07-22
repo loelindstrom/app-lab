@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
+import { readFirebaseE2eProfile, type FirebaseE2eProfile } from "./firebaseProfile";
 
-const firebaseConfig = readFirebaseSmokeConfig();
+const firebaseProfile = readFirebaseE2eProfile();
 
 test.describe("local app persistence", () => {
   test("keeps the built-in example app data after returning to the launcher", async ({ page }) => {
@@ -81,10 +82,10 @@ test.describe("local app persistence", () => {
 });
 
 test.describe("synced app persistence", () => {
-  test.skip(!firebaseConfig, "APP_LAB_FIREBASE_SMOKE_CONFIG is required for Firebase-backed E2E tests.");
+  test.skip(!firebaseProfile, "Auth-capable Firebase E2E profile is required for Firebase-backed E2E tests.");
 
   test("keeps built-in example data after returning to the launcher with storage configured", async ({ page }) => {
-    if (!firebaseConfig) throw new Error("APP_LAB_FIREBASE_SMOKE_CONFIG is required.");
+    if (!firebaseProfile) throw new Error("Auth-capable Firebase E2E profile is required.");
 
     await page.goto("/");
     await page.evaluate(async () => {
@@ -93,7 +94,7 @@ test.describe("synced app persistence", () => {
       localStorage.clear();
     });
     await page.reload();
-    await configureStorage(page, firebaseConfig);
+    await configureStorage(page, firebaseProfile.config, firebaseProfile);
 
     await createExampleApp(page);
     await expect(appFrame(page).getByRole("heading", { name: "Example App" })).toBeVisible();
@@ -111,7 +112,7 @@ test.describe("synced app persistence", () => {
   });
 
   test("keeps source edits after returning to the launcher with storage configured", async ({ page }) => {
-    if (!firebaseConfig) throw new Error("APP_LAB_FIREBASE_SMOKE_CONFIG is required.");
+    if (!firebaseProfile) throw new Error("Auth-capable Firebase E2E profile is required.");
 
     await page.goto("/");
     await page.evaluate(async () => {
@@ -120,7 +121,7 @@ test.describe("synced app persistence", () => {
       localStorage.clear();
     });
     await page.reload();
-    await configureStorage(page, firebaseConfig);
+    await configureStorage(page, firebaseProfile.config, firebaseProfile);
 
     await createExampleApp(page);
     await saveSource(page, htmlForChecklistTitle("Synced Source Persisted"));
@@ -133,7 +134,7 @@ test.describe("synced app persistence", () => {
   });
 
   test("keeps offline app data edits across repeated launcher re-entry with storage configured", async ({ page, context }) => {
-    if (!firebaseConfig) throw new Error("APP_LAB_FIREBASE_SMOKE_CONFIG is required.");
+    if (!firebaseProfile) throw new Error("Auth-capable Firebase E2E profile is required.");
 
     await page.goto("/");
     await page.evaluate(async () => {
@@ -142,7 +143,7 @@ test.describe("synced app persistence", () => {
       localStorage.clear();
     });
     await page.reload();
-    await configureStorage(page, firebaseConfig);
+    await configureStorage(page, firebaseProfile.config, firebaseProfile);
 
     await createExampleApp(page);
     await expect(appFrame(page).getByRole("heading", { name: "Example App" })).toBeVisible();
@@ -176,7 +177,7 @@ test.describe("synced app persistence", () => {
   });
 
   test("keeps offline source edits across repeated launcher re-entry with storage configured", async ({ page, context }) => {
-    if (!firebaseConfig) throw new Error("APP_LAB_FIREBASE_SMOKE_CONFIG is required.");
+    if (!firebaseProfile) throw new Error("Auth-capable Firebase E2E profile is required.");
 
     await page.goto("/");
     await page.evaluate(async () => {
@@ -185,7 +186,7 @@ test.describe("synced app persistence", () => {
       localStorage.clear();
     });
     await page.reload();
-    await configureStorage(page, firebaseConfig);
+    await configureStorage(page, firebaseProfile.config, firebaseProfile);
 
     await createExampleApp(page);
     await expect(appFrame(page).getByRole("heading", { name: "Example App" })).toBeVisible();
@@ -230,14 +231,36 @@ async function addExampleItem(page: Page, title: string, description = "") {
   await expect(frame.getByText(title, { exact: true })).toBeVisible();
 }
 
-async function configureStorage(page: Page, config: Record<string, string>) {
-  await page.getByRole("button", { name: "Open settings" }).click();
-  await page.getByLabel("Display name").fill("E2E Firebase");
-  await page.getByLabel("Firebase web app config").fill(JSON.stringify(config, null, 2));
-  await page.getByLabel("Firebase Realtime Database URL").fill(config.databaseURL);
-  await page.getByRole("button", { name: "Save storage profile" }).click();
-  await expect(page.getByRole("button", { name: "Remove profile" })).toBeVisible();
-  await page.getByRole("button", { name: "Close" }).click();
+async function configureStorage(page: Page, config: Record<string, string>, profile: FirebaseE2eProfile) {
+  await page.evaluate(({ firebaseConfig, profile }) => {
+    const now = new Date().toISOString();
+    const databaseUrl = String(firebaseConfig.databaseURL ?? "").replace(/\/+$/, "");
+    const raw = localStorage.getItem("app-lab-workspace-sync-v1");
+    const existing = raw ? JSON.parse(raw) : {};
+    localStorage.setItem(
+      "app-lab-workspace-sync-v1",
+      JSON.stringify({
+        schemaVersion: 1,
+        workspaceId: typeof existing.workspaceId === "string" ? existing.workspaceId : `workspace_${crypto.randomUUID()}`,
+        manifestRoom: existing.manifestRoom,
+        apps: existing.apps && typeof existing.apps === "object" ? existing.apps : {},
+        deletedApps: existing.deletedApps && typeof existing.deletedApps === "object" ? existing.deletedApps : {},
+        storageProfile: {
+          accessModel: profile.accessModel,
+          profileId: `profile_${crypto.randomUUID()}`,
+          provider: "firebase-rtdb",
+          displayName: "E2E Firebase",
+          databaseUrl,
+          firebaseConfig: { ...firebaseConfig, databaseURL: databaseUrl },
+          ownerSetupSecret: profile.ownerSetupSecret,
+          createdAt: now,
+          updatedAt: now,
+        },
+        updatedAt: now,
+      }),
+    );
+  }, { firebaseConfig: config, profile });
+  await page.reload();
 }
 
 async function saveSource(page: Page, sourceCode: string) {
@@ -346,10 +369,4 @@ function htmlForNormalAlpine() {
 
 function appFrame(page: Page) {
   return page.frameLocator('iframe[title$=" app"]');
-}
-
-function readFirebaseSmokeConfig(): Record<string, string> | null {
-  const raw = process.env.APP_LAB_FIREBASE_SMOKE_CONFIG;
-  if (!raw) return null;
-  return JSON.parse(raw) as Record<string, string>;
 }

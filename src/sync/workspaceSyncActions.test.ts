@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { createMemoryCore } from "../core/memoryCore";
 import { isRemoteAppDeletedError, loadRemoteAppRooms, saveRemoteAppData, saveRemoteAppSource } from "./appRooms";
+import { roomWriteToken } from "./crypto";
 import { createMemorySyncProvider } from "./memorySyncProvider";
 import { createMemorySyncQueueStore, enqueueSaveAppData, enqueueSaveSource } from "./syncQueue";
+import { configureTestStorageProfile } from "./testStorageProfile";
+import type { ClaimRoomAccessInput, RealtimeSyncProvider } from "./types";
 import { createWorkspaceSyncActions } from "./workspaceSyncActions";
 import { createMemoryWorkspaceSyncStore, createWorkspaceSyncRegistry } from "./workspaceSync";
 import { createWorkspaceRecoveryMaterial, loadWorkspaceManifest } from "./workspaceManifest";
@@ -12,7 +15,7 @@ describe("workspace sync actions", () => {
     const provider = createMemorySyncProvider();
     const ownerCore = createMemoryCore();
     const ownerRegistry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
-    await ownerRegistry.configureStorageProfile({ databaseUrl: "https://example.firebaseio.com" });
+    await configureTestStorageProfile(ownerRegistry);
     const ownerActions = createWorkspaceSyncActions({
       core: ownerCore,
       createProviderFromReference: () => provider,
@@ -67,11 +70,74 @@ describe("workspace sync actions", () => {
     unsubscribe();
   });
 
+  it("claims invite rooms before loading a shared app", async () => {
+    const provider = createMemorySyncProvider();
+    const ownerCore = createMemoryCore();
+    const ownerRegistry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
+    await configureTestStorageProfile(ownerRegistry);
+    const ownerActions = createWorkspaceSyncActions({
+      core: ownerCore,
+      createProviderFromReference: () => provider,
+      createProviderFromStorageProfile: () => provider,
+      queueStore: createMemorySyncQueueStore(),
+      syncRegistry: ownerRegistry,
+    });
+
+    const app = await ownerCore.createApp({
+      description: "Claim test",
+      name: "Claim test",
+      sourceCode: "<!doctype html><title>Claim test</title>",
+    });
+    await ownerCore.saveAppData(app.appId, { count: 1 });
+    await ownerActions.ensureAppBackedUp(app);
+    const invite = await ownerActions.createInvite(app.appId);
+
+    const operations: string[] = [];
+    const claims: ClaimRoomAccessInput[] = [];
+    const claimingProvider: RealtimeSyncProvider = {
+      ...provider,
+      async claimRoomAccess(input) {
+        operations.push(`claim:${input.roomId}`);
+        claims.push(input);
+      },
+      async loadRoom(input) {
+        operations.push(`load:${input.roomId}`);
+        return provider.loadRoom(input);
+      },
+    };
+    const joinedActions = createWorkspaceSyncActions({
+      core: createMemoryCore(),
+      createProviderFromReference: () => claimingProvider,
+      createProviderFromStorageProfile: () => claimingProvider,
+      queueStore: createMemorySyncQueueStore(),
+      syncRegistry: createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore()),
+    });
+
+    await joinedActions.importInvite(invite);
+
+    expect(claims).toEqual([
+      {
+        claimToken: roomWriteToken(invite.sourceRoom),
+        roomId: invite.sourceRoom.roomId,
+      },
+      {
+        claimToken: roomWriteToken(invite.dataRoom),
+        roomId: invite.dataRoom.roomId,
+      },
+    ]);
+    expect(operations.slice(0, 4)).toEqual([
+      `claim:${invite.sourceRoom.roomId}`,
+      `claim:${invite.dataRoom.roomId}`,
+      `load:${invite.sourceRoom.roomId}`,
+      `load:${invite.dataRoom.roomId}`,
+    ]);
+  });
+
   it("queues source saves and shares the latest queued source", async () => {
     const provider = createMemorySyncProvider();
     const ownerCore = createMemoryCore();
     const ownerRegistry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
-    await ownerRegistry.configureStorageProfile({ databaseUrl: "https://example.firebaseio.com" });
+    await configureTestStorageProfile(ownerRegistry);
     const ownerActions = createWorkspaceSyncActions({
       core: ownerCore,
       createProviderFromReference: () => provider,
@@ -123,7 +189,7 @@ describe("workspace sync actions", () => {
     const provider = createMemorySyncProvider();
     const ownerCore = createMemoryCore();
     const ownerRegistry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
-    await ownerRegistry.configureStorageProfile({ databaseUrl: "https://example.firebaseio.com" });
+    await configureTestStorageProfile(ownerRegistry);
     const ownerActions = createWorkspaceSyncActions({
       core: ownerCore,
       createProviderFromReference: () => provider,
@@ -169,7 +235,7 @@ describe("workspace sync actions", () => {
     const provider = createMemorySyncProvider();
     const ownerCore = createMemoryCore();
     const ownerRegistry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
-    await ownerRegistry.configureStorageProfile({ databaseUrl: "https://example.firebaseio.com" });
+    await configureTestStorageProfile(ownerRegistry);
     const ownerActions = createWorkspaceSyncActions({
       core: ownerCore,
       createProviderFromReference: () => provider,
@@ -214,7 +280,7 @@ describe("workspace sync actions", () => {
     const provider = createMemorySyncProvider();
     const ownerCore = createMemoryCore();
     const ownerRegistry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
-    await ownerRegistry.configureStorageProfile({ databaseUrl: "https://example.firebaseio.com" });
+    await configureTestStorageProfile(ownerRegistry);
     const ownerActions = createWorkspaceSyncActions({
       core: ownerCore,
       createProviderFromReference: () => provider,
@@ -245,7 +311,7 @@ describe("workspace sync actions", () => {
     const provider = createMemorySyncProvider();
     const ownerCore = createMemoryCore();
     const ownerRegistry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
-    await ownerRegistry.configureStorageProfile({ databaseUrl: "https://example.firebaseio.com" });
+    await configureTestStorageProfile(ownerRegistry);
     const ownerActions = createWorkspaceSyncActions({
       core: ownerCore,
       createProviderFromReference: () => provider,
@@ -285,12 +351,158 @@ describe("workspace sync actions", () => {
     await expect(restoredCore.getAppData(app.appId)).resolves.toEqual({ count: 4 });
   });
 
+  it("hydrates apps created after workspace recovery in both synced workspaces", async () => {
+    const provider = createMemorySyncProvider();
+    const ownerCore = createMemoryCore();
+    const ownerRegistry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
+    await configureTestStorageProfile(ownerRegistry);
+    const ownerActions = createWorkspaceSyncActions({
+      core: ownerCore,
+      createProviderFromReference: () => provider,
+      createProviderFromStorageProfile: () => provider,
+      queueStore: createMemorySyncQueueStore(),
+      syncRegistry: ownerRegistry,
+    });
+
+    const firstApp = await ownerCore.createApp({
+      description: "First workspace app",
+      name: "First workspace app",
+      sourceCode: "<!doctype html><title>First workspace app</title>",
+    });
+    await ownerCore.saveAppData(firstApp.appId, { source: "initial" });
+    await ownerActions.ensureAppBackedUp(firstApp);
+    await ownerActions.flushWorkspaceManifestQueue();
+    const recoveryText = await ownerActions.exportWorkspaceRecovery();
+    await ownerActions.flushWorkspaceManifestQueue();
+
+    const restoredCore = createMemoryCore();
+    const restoredRegistry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
+    const restoredActions = createWorkspaceSyncActions({
+      core: restoredCore,
+      createProviderFromReference: () => provider,
+      createProviderFromStorageProfile: () => provider,
+      queueStore: createMemorySyncQueueStore(),
+      syncRegistry: restoredRegistry,
+    });
+
+    await restoredActions.restoreWorkspaceRecovery(recoveryText);
+    await restoredActions.flushWorkspaceManifestQueue();
+
+    const ownerCreated = await ownerCore.createApp({
+      description: "Created on owner",
+      name: "Created on owner",
+      sourceCode: "<!doctype html><title>Created on owner</title>",
+    });
+    await ownerCore.saveAppData(ownerCreated.appId, { source: "owner" });
+    await ownerActions.ensureAppBackedUp(ownerCreated);
+    await ownerActions.flushWorkspaceManifestQueue();
+
+    await expect(restoredActions.pullLatestWorkspaceManifest()).resolves.toMatchObject({
+      appIdsChanged: [ownerCreated.appId],
+    });
+    await expect(restoredCore.getApp(ownerCreated.appId)).resolves.toMatchObject({
+      appId: ownerCreated.appId,
+      name: "Created on owner",
+    });
+    await expect(restoredCore.getAppData(ownerCreated.appId)).resolves.toEqual({ source: "owner" });
+
+    const restoredCreated = await restoredCore.createApp({
+      description: "Created on restored",
+      name: "Created on restored",
+      sourceCode: "<!doctype html><title>Created on restored</title>",
+    });
+    await restoredCore.saveAppData(restoredCreated.appId, { source: "restored" });
+    await restoredActions.ensureAppBackedUp(restoredCreated);
+    await restoredActions.flushWorkspaceManifestQueue();
+
+    await expect(ownerActions.pullLatestWorkspaceManifest()).resolves.toMatchObject({
+      appIdsChanged: [restoredCreated.appId],
+    });
+    await expect(ownerCore.getApp(restoredCreated.appId)).resolves.toMatchObject({
+      appId: restoredCreated.appId,
+      name: "Created on restored",
+    });
+    await expect(ownerCore.getAppData(restoredCreated.appId)).resolves.toEqual({ source: "restored" });
+  });
+
+  it("keeps joined app tombstones when remote deletion reaches another synced recipient device", async () => {
+    const provider = createMemorySyncProvider();
+    const ownerCore = createMemoryCore();
+    const ownerRegistry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
+    await configureTestStorageProfile(ownerRegistry);
+    const ownerActions = createWorkspaceSyncActions({
+      core: ownerCore,
+      createProviderFromReference: () => provider,
+      createProviderFromStorageProfile: () => provider,
+      queueStore: createMemorySyncQueueStore(),
+      syncRegistry: ownerRegistry,
+    });
+
+    const app = await ownerCore.createApp({
+      description: "Shared tombstone test",
+      name: "Shared tombstone test",
+      sourceCode: "<!doctype html><title>Shared tombstone test</title>",
+    });
+    await ownerCore.saveAppData(app.appId, { count: 1 });
+    await ownerActions.ensureAppBackedUp(app);
+    await ownerActions.flushWorkspaceManifestQueue();
+    const invite = await ownerActions.createInvite(app.appId);
+
+    const recipientCore = createMemoryCore();
+    const recipientRegistry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
+    await configureTestStorageProfile(recipientRegistry);
+    const recipientActions = createWorkspaceSyncActions({
+      core: recipientCore,
+      createProviderFromReference: () => provider,
+      createProviderFromStorageProfile: () => provider,
+      queueStore: createMemorySyncQueueStore(),
+      syncRegistry: recipientRegistry,
+    });
+    await recipientActions.importInvite(invite);
+    await recipientActions.flushWorkspaceManifestQueue();
+    const recipientRecoveryText = await recipientActions.exportWorkspaceRecovery();
+    await recipientActions.flushWorkspaceManifestQueue();
+
+    const secondRecipientCore = createMemoryCore();
+    const secondRecipientRegistry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
+    const secondRecipientActions = createWorkspaceSyncActions({
+      core: secondRecipientCore,
+      createProviderFromReference: () => provider,
+      createProviderFromStorageProfile: () => provider,
+      queueStore: createMemorySyncQueueStore(),
+      syncRegistry: secondRecipientRegistry,
+    });
+    await secondRecipientActions.restoreWorkspaceRecovery(recipientRecoveryText);
+    await secondRecipientActions.flushWorkspaceManifestQueue();
+
+    await ownerActions.deleteSyncedAppRooms(app.appId);
+    await ownerActions.flushOwnedAppDeletionQueue();
+    await expect(recipientActions.pullLatestAppRooms(app.appId)).resolves.toMatchObject({
+      deletedAt: expect.any(String),
+    });
+    await recipientActions.flushWorkspaceManifestQueue();
+
+    await expect(secondRecipientActions.pullLatestWorkspaceManifest()).resolves.toMatchObject({
+      appIdsChanged: [app.appId],
+      appIdsDeleted: [],
+    });
+
+    await expect(secondRecipientCore.getApp(app.appId)).resolves.toMatchObject({
+      appId: app.appId,
+      name: "Shared tombstone test",
+    });
+    await expect(secondRecipientRegistry.getAppSyncBadge(app.appId)).resolves.toMatchObject({
+      kind: "needs-attention",
+      label: "Deleted by owner",
+    });
+  });
+
   it("does not pull remote source/data over pending local work", async () => {
     const provider = createMemorySyncProvider();
     const core = createMemoryCore();
     const queueStore = createMemorySyncQueueStore();
     const registry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
-    await registry.configureStorageProfile({ databaseUrl: "https://example.firebaseio.com" });
+    await configureTestStorageProfile(registry);
     const actions = createWorkspaceSyncActions({
       core,
       createProviderFromReference: () => provider,

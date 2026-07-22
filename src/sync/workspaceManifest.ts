@@ -1,5 +1,6 @@
 import type { JsonValue } from "../core/types";
 import { decryptRoomSnapshot, encryptRoomPayload, rememberSnapshotVersion, roomReadToken, roomWriteToken } from "./crypto";
+import { DEFAULT_FIREBASE_ACCESS_MODEL } from "./firebaseAccessRules";
 import type { FirebaseWebAppConfig } from "./firebaseConfig";
 import type { RealtimeSyncProvider, RoomCapability } from "./types";
 import type { RemoteProviderReference, StorageProfile, WorkspaceSyncState } from "./workspaceSync";
@@ -12,6 +13,7 @@ export interface WorkspaceRecoveryMaterial {
   manifestRoom: RoomCapability;
   provider: RemoteProviderReference & {
     firebaseConfig: FirebaseWebAppConfig;
+    ownerSetupSecret?: string;
   };
   schemaVersion: typeof WORKSPACE_RECOVERY_SCHEMA_VERSION;
   workspaceState?: JsonValue;
@@ -27,8 +29,10 @@ export function createWorkspaceRecoveryMaterial(state: WorkspaceSyncState): Work
     kind: "app-lab-workspace-recovery",
     manifestRoom: state.manifestRoom,
     provider: {
+      accessModel: state.storageProfile.accessModel,
       databaseUrl: state.storageProfile.databaseUrl,
       firebaseConfig: state.storageProfile.firebaseConfig,
+      ownerSetupSecret: state.storageProfile.ownerSetupSecret,
       profileId: state.storageProfile.profileId,
       provider: state.storageProfile.provider,
     },
@@ -97,15 +101,47 @@ export async function loadWorkspaceManifest(input: {
   );
 }
 
+export async function loadLatestWorkspaceManifest(input: {
+  provider: RealtimeSyncProvider;
+  state: WorkspaceSyncState;
+}): Promise<WorkspaceSyncState> {
+  const capability = requireManifestCapability(input.state);
+  const snapshot = await input.provider.loadRoom({
+    readToken: roomReadToken(capability),
+    roomId: capability.roomId,
+  });
+  return readWorkspaceManifestSnapshot({ snapshot, state: input.state });
+}
+
+export async function readWorkspaceManifestSnapshot(input: {
+  snapshot: Awaited<ReturnType<RealtimeSyncProvider["loadRoom"]>>;
+  state: WorkspaceSyncState;
+}): Promise<WorkspaceSyncState> {
+  const capability = requireManifestCapability(input.state);
+  const payload = await decryptRoomSnapshot({
+    capability,
+    roomType: "workspace-manifest",
+    snapshot: input.snapshot,
+  });
+  const state = parseWorkspaceManifestPayload(payload);
+  return {
+    ...state,
+    manifestRoom: rememberSnapshotVersion(capability, input.snapshot),
+    storageProfile: state.storageProfile ?? input.state.storageProfile,
+  };
+}
+
 function withRecoveryProviderMetadata(state: WorkspaceSyncState, recoveryMaterial: WorkspaceRecoveryMaterial): WorkspaceSyncState {
   return {
     ...state,
     manifestRoom: state.manifestRoom ?? recoveryMaterial.manifestRoom,
     storageProfile: {
+      accessModel: recoveryMaterial.provider.accessModel ?? state.storageProfile?.accessModel ?? DEFAULT_FIREBASE_ACCESS_MODEL,
       createdAt: state.storageProfile?.createdAt ?? recoveryMaterial.createdAt,
       databaseUrl: recoveryMaterial.provider.databaseUrl,
       displayName: state.storageProfile?.displayName ?? "Firebase Realtime Database",
       firebaseConfig: recoveryMaterial.provider.firebaseConfig,
+      ownerSetupSecret: recoveryMaterial.provider.ownerSetupSecret ?? state.storageProfile?.ownerSetupSecret,
       profileId: recoveryMaterial.provider.profileId ?? state.storageProfile?.profileId ?? `profile_${crypto.randomUUID()}`,
       provider: recoveryMaterial.provider.provider,
       updatedAt: new Date().toISOString(),

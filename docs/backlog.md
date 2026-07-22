@@ -21,13 +21,14 @@ App Lab is a React/Vite browser app with:
 
 1. Invite and provider access hardening
 
-   The current Firebase prototype treats invite and recovery material as sensitive bearer access material. A decoded invite
-   includes enough Firebase connection metadata and room capabilities for a recipient to connect to the same RTDB-backed
-   workspace, and open prototype RTDB rules do not enforce App Lab's room-level intent on the provider side.
+   The legacy Firebase prototype treats invite and recovery material as sensitive bearer access material. A decoded invite
+   includes enough Firebase connection metadata and room capabilities for a recipient to connect to the same RTDB-backed app, and
+   open prototype RTDB rules do not enforce App Lab's room-level intent on the provider side.
 
-   Before wider sharing or MVP, redesign this so accepting an invite does not let another user use the owner's Firebase project
-   as generic sync storage. Decide whether that means stricter Firebase rules, an auth-mediated provider, per-user storage,
-   server-side mediation, constrained room paths, revocation/key rotation, or a different provider model.
+   Initial `auth-v1` support now uses Anonymous Auth, generated RTDB rules, local owner setup material, and invite room-claim
+   tokens so accepting an invite should not let another user create arbitrary App Lab rooms in the owner's Firebase project.
+   Before wider sharing or MVP, validate the rules against a real Firebase project with a fresh setup and decide what level of
+   revocation/key rotation or provider migration is needed.
 
 ## Nice-To-Have After MVP
 

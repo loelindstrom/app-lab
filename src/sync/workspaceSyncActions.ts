@@ -1,7 +1,7 @@
 import type { AppLabCore, AppRecord, JsonValue } from "../core/types";
 import { isRemoteAppDeletedError, loadRemoteAppRooms, loadRemoteAppSource, saveRemoteAppData, saveRemoteAppSource } from "./appRooms";
 import { processAppDataSyncQueue } from "./appDataSyncWorker";
-import { decryptRoomSnapshot, rememberSnapshotVersion, roomReadToken } from "./crypto";
+import { decryptRoomSnapshot, rememberSnapshotVersion, roomReadToken, roomWriteToken } from "./crypto";
 import { createFirebaseRealtimeSyncProvider, createFirebaseSdkRealtimeDriver } from "./firebaseRealtimeProvider";
 import { processOwnedAppDeletionQueue } from "./ownedAppDeletionWorker";
 import { processRoomLifecycleQueue } from "./roomLifecycleWorker";
@@ -22,13 +22,15 @@ import {
   createWorkspaceRecoveryMaterial,
   decodeWorkspaceRecoveryMaterial,
   encodeWorkspaceRecoveryMaterial,
+  loadLatestWorkspaceManifest,
   loadWorkspaceManifest,
+  readWorkspaceManifestSnapshot,
 } from "./workspaceManifest";
 import { processWorkspaceManifestQueue } from "./workspaceManifestWorker";
 
 interface WorkspaceSyncActionsInput {
   core: AppLabCore;
-  createProviderFromReference?: (provider: RemoteProviderReference) => RealtimeSyncProvider;
+  createProviderFromReference?: (provider: RemoteProviderReference & { ownerSetupSecret?: string }) => RealtimeSyncProvider;
   createProviderFromStorageProfile?: (profile: StorageProfile) => RealtimeSyncProvider;
   queueStore: SyncQueueStore;
   syncRegistry: WorkspaceSyncRegistry;
@@ -50,6 +52,11 @@ export interface RemoteAppDeletedChange {
 export interface PullLatestResult {
   app?: AppRecord;
   deletedAt?: string;
+}
+
+export interface WorkspaceManifestChange {
+  appIdsChanged: string[];
+  appIdsDeleted: string[];
 }
 
 export type WorkspaceSyncActions = ReturnType<typeof createWorkspaceSyncActions>;
@@ -94,6 +101,7 @@ export function createWorkspaceSyncActions(input: WorkspaceSyncActionsInput) {
 
   async function importInvite(invite: AppInvitePayload): Promise<void> {
     const provider = createProviderFromReference(invite.provider);
+    await claimInviteRooms(provider, invite);
     const loaded = await loadRemoteAppRooms({
       provider,
       syncRecord: {
@@ -157,8 +165,9 @@ export function createWorkspaceSyncActions(input: WorkspaceSyncActionsInput) {
     if (!profile) return;
     await syncRegistry.ensureOwnedAppRooms(app.appId);
     await enqueueEnsureAppRooms(queueStore, app.appId);
+    await flushRoomLifecycleQueue();
     await enqueueCurrentWorkspaceManifest();
-    void flushRoomLifecycleQueue();
+    void flushWorkspaceManifestQueue();
   }
 
   async function backUpLocalApps(): Promise<void> {
@@ -239,6 +248,42 @@ export function createWorkspaceSyncActions(input: WorkspaceSyncActionsInput) {
     await syncRegistry.replaceState(restoredState);
     await enqueueCurrentWorkspaceManifest();
     void flushWorkspaceManifestQueue();
+  }
+
+  async function pullLatestWorkspaceManifest(): Promise<WorkspaceManifestChange> {
+    const state = await syncRegistry.getState();
+    if (!state.storageProfile || !state.manifestRoom) return emptyWorkspaceManifestChange();
+    const remoteState = await loadLatestWorkspaceManifest({
+      provider: createProviderFromStorageProfile(state.storageProfile),
+      state,
+    });
+    return applyRemoteWorkspaceManifest(remoteState);
+  }
+
+  async function subscribeWorkspaceManifest(onChange: (change: WorkspaceManifestChange) => void): Promise<() => void> {
+    const state = await syncRegistry.getState();
+    if (!state.storageProfile || !state.manifestRoom) return () => {};
+    const provider = createProviderFromStorageProfile(state.storageProfile);
+    return provider.subscribeRoom({
+      readToken: roomReadToken(state.manifestRoom),
+      roomId: state.manifestRoom.roomId,
+      onChange: (snapshot) => {
+        void (async () => {
+          try {
+            const latestState = await syncRegistry.getState();
+            if (!latestState.storageProfile || !latestState.manifestRoom) return;
+            if (snapshot.roomId !== latestState.manifestRoom.roomId) return;
+            if (snapshot.version <= latestState.manifestRoom.lastSeenVersion) return;
+            const remoteState = await readWorkspaceManifestSnapshot({ snapshot, state: latestState });
+            const change = await applyRemoteWorkspaceManifest(remoteState);
+            if (change.appIdsChanged.length || change.appIdsDeleted.length) onChange(change);
+          } catch (error) {
+            if (isRoomNotFoundError(error)) return;
+            console.warn("Could not process remote workspace manifest update.", error);
+          }
+        })();
+      },
+    });
   }
 
   async function subscribeAppData(
@@ -362,11 +407,93 @@ export function createWorkspaceSyncActions(input: WorkspaceSyncActionsInput) {
     return createProviderFromStorageProfile(profile);
   }
 
-  async function hydrateWorkspaceAppsFromRooms(state: Awaited<ReturnType<WorkspaceSyncRegistry["getState"]>>): Promise<void> {
+  async function applyRemoteWorkspaceManifest(remoteState: Awaited<ReturnType<WorkspaceSyncRegistry["getState"]>>): Promise<WorkspaceManifestChange> {
+    const localState = await syncRegistry.getState();
+    if (!localState.storageProfile || !localState.manifestRoom || !remoteState.manifestRoom) return emptyWorkspaceManifestChange();
+    if (remoteState.workspaceId !== localState.workspaceId) {
+      throw new Error("Remote workspace manifest belongs to a different workspace.");
+    }
+    if (remoteState.manifestRoom.lastSeenVersion <= localState.manifestRoom.lastSeenVersion) {
+      return emptyWorkspaceManifestChange();
+    }
+
+    const appIdsChanged = new Set<string>();
+    const appIdsDeleted = new Set<string>();
+    const appIdsToHydrate = new Set<string>();
+    let stateChanged = false;
+    const nextState = {
+      ...localState,
+      apps: { ...localState.apps },
+      deletedApps: { ...localState.deletedApps },
+      manifestRoom: remoteState.manifestRoom,
+      storageProfile: remoteState.storageProfile ?? localState.storageProfile,
+      updatedAt: remoteState.updatedAt,
+    };
+
+    for (const [appId, tombstone] of Object.entries(remoteState.deletedApps)) {
+      if (await hasPendingLocalAppWork(appId)) continue;
+      const localRecord = nextState.apps[appId];
+      if (localRecord?.kind === "joined") {
+        if (localRecord.remoteDeletedAt !== tombstone.deletedAt) {
+          nextState.apps[appId] = {
+            ...localRecord,
+            remoteDeletedAt: tombstone.deletedAt,
+          };
+          appIdsChanged.add(appId);
+          stateChanged = true;
+        }
+        continue;
+      }
+
+      const existingTombstone = nextState.deletedApps[appId];
+      if (!existingTombstone || tombstone.deletedAt > existingTombstone.deletedAt) {
+        nextState.deletedApps[appId] = tombstone;
+        stateChanged = true;
+      }
+      if (localRecord) {
+        delete nextState.apps[appId];
+        appIdsDeleted.add(appId);
+        stateChanged = true;
+      }
+    }
+
+    for (const [appId, remoteRecord] of Object.entries(remoteState.apps)) {
+      if (await hasPendingLocalAppWork(appId)) continue;
+      const localRecord = nextState.apps[appId];
+      const localApp = await core.getApp(appId);
+      if (localRecord && localApp && !isRemoteAppSyncRecordNewer(remoteRecord, localRecord)) continue;
+
+      nextState.apps[appId] = remoteRecord;
+      delete nextState.deletedApps[appId];
+      appIdsChanged.add(appId);
+      if (!isRemoteDeletedJoinedApp(remoteRecord)) appIdsToHydrate.add(appId);
+      stateChanged = true;
+    }
+
+    if (!stateChanged) {
+      await syncRegistry.rememberWorkspaceManifestVersion(remoteState.manifestRoom.lastSeenVersion);
+      return emptyWorkspaceManifestChange();
+    }
+
+    await hydrateWorkspaceAppsFromRooms(nextState, appIdsToHydrate);
+    await syncRegistry.replaceState(nextState);
+    await Promise.all([...appIdsDeleted].map((appId) => core.deleteApp(appId)));
+
+    return {
+      appIdsChanged: [...appIdsChanged],
+      appIdsDeleted: [...appIdsDeleted],
+    };
+  }
+
+  async function hydrateWorkspaceAppsFromRooms(
+    state: Awaited<ReturnType<WorkspaceSyncRegistry["getState"]>>,
+    appIds?: ReadonlySet<string>,
+  ): Promise<void> {
     if (!state.storageProfile) return;
-    const provider = createProviderFromStorageProfile(state.storageProfile);
     for (const record of Object.values(state.apps)) {
+      if (appIds && !appIds.has(record.appId)) continue;
       if (record.kind === "joined" && record.sourceProvider.databaseUrl !== state.storageProfile.databaseUrl) continue;
+      const provider = createProviderFromStorageProfile(state.storageProfile);
       const loaded = await loadRemoteAppRooms({ provider, syncRecord: record });
       await core.upsertApp(loaded.app);
       await core.saveAppData(loaded.app.appId, loaded.appData);
@@ -554,6 +681,7 @@ export function createWorkspaceSyncActions(input: WorkspaceSyncActionsInput) {
     importInvite,
     noteLocalAppDataEdit,
     pullLatestAppRooms,
+    pullLatestWorkspaceManifest,
     pushAppData,
     pushAppSource,
     queueWorkspaceManifestSave,
@@ -561,16 +689,60 @@ export function createWorkspaceSyncActions(input: WorkspaceSyncActionsInput) {
     subscribeAppData,
     subscribeAppSource,
     subscribeStorageConnection,
+    subscribeWorkspaceManifest,
   };
 }
 
-function createFirebaseProviderFromStorageProfile(profile: StorageProfile): RealtimeSyncProvider {
-  return createFirebaseRealtimeSyncProvider({ driver: createFirebaseSdkRealtimeDriver(profile.firebaseConfig) });
+function emptyWorkspaceManifestChange(): WorkspaceManifestChange {
+  return {
+    appIdsChanged: [],
+    appIdsDeleted: [],
+  };
 }
 
-function createFirebaseProviderFromReference(provider: RemoteProviderReference): RealtimeSyncProvider {
+function isRemoteAppSyncRecordNewer(remoteRecord: AppSyncRecord, localRecord: AppSyncRecord): boolean {
+  if (remoteRecord.kind !== localRecord.kind) return true;
+  if (isRemoteDeletedJoinedApp(remoteRecord) && remoteRecord.remoteDeletedAt !== (localRecord.kind === "joined" ? localRecord.remoteDeletedAt : undefined)) return true;
+  if (remoteRecord.sourceRoom.roomId !== localRecord.sourceRoom.roomId || remoteRecord.dataRoom.roomId !== localRecord.dataRoom.roomId) return true;
+  return (
+    remoteRecord.sourceRoom.lastSeenVersion > localRecord.sourceRoom.lastSeenVersion ||
+    remoteRecord.dataRoom.lastSeenVersion > localRecord.dataRoom.lastSeenVersion
+  );
+}
+
+function isRemoteDeletedJoinedApp(record: AppSyncRecord): record is Extract<AppSyncRecord, { kind: "joined" }> & { remoteDeletedAt: string } {
+  return record.kind === "joined" && typeof record.remoteDeletedAt === "string";
+}
+
+function createFirebaseProviderFromStorageProfile(profile: StorageProfile): RealtimeSyncProvider {
+  return createFirebaseRealtimeSyncProvider({
+    driver: createFirebaseSdkRealtimeDriver(profile.firebaseConfig, {
+      accessModel: profile.accessModel,
+      ownerSetupSecret: profile.ownerSetupSecret,
+    }),
+  });
+}
+
+function createFirebaseProviderFromReference(provider: RemoteProviderReference & { ownerSetupSecret?: string }): RealtimeSyncProvider {
   if (!provider.firebaseConfig) throw new Error("Invite is missing Firebase config.");
-  return createFirebaseRealtimeSyncProvider({ driver: createFirebaseSdkRealtimeDriver(provider.firebaseConfig) });
+  return createFirebaseRealtimeSyncProvider({
+    driver: createFirebaseSdkRealtimeDriver(provider.firebaseConfig, {
+      accessModel: provider.accessModel,
+      ownerSetupSecret: provider.ownerSetupSecret,
+    }),
+  });
+}
+
+async function claimInviteRooms(provider: RealtimeSyncProvider, invite: AppInvitePayload): Promise<void> {
+  if (!provider.claimRoomAccess) return;
+  await provider.claimRoomAccess({
+    claimToken: roomWriteToken(invite.sourceRoom),
+    roomId: invite.sourceRoom.roomId,
+  });
+  await provider.claimRoomAccess({
+    claimToken: roomWriteToken(invite.dataRoom),
+    roomId: invite.dataRoom.roomId,
+  });
 }
 
 function isRoomNotFoundError(error: unknown): boolean {

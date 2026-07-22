@@ -1,5 +1,6 @@
 import type { AppId } from "../core/types";
 import { createRoomCapability } from "./crypto";
+import { createFirebaseOwnerSetupSecret, DEFAULT_FIREBASE_ACCESS_MODEL, type FirebaseAccessModel } from "./firebaseAccessRules";
 import { normalizeFirebaseDatabaseUrl, parseFirebaseWebAppConfig, type FirebaseWebAppConfig } from "./firebaseConfig";
 import type { RoomCapability } from "./types";
 
@@ -9,23 +10,28 @@ const LOCAL_STORAGE_KEY = "app-lab-workspace-sync-v1";
 export type StorageProviderKind = "firebase-rtdb";
 
 export interface StorageProfile {
+  accessModel: FirebaseAccessModel;
   profileId: string;
   provider: StorageProviderKind;
   displayName: string;
   databaseUrl: string;
   firebaseConfig: FirebaseWebAppConfig;
+  ownerSetupSecret?: string;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface ConfigureStorageProfileInput {
+  accessModel?: FirebaseAccessModel;
   displayName?: string;
   firebaseConfigText?: string;
+  ownerSetupSecret?: string;
   provider?: StorageProviderKind;
   databaseUrl: string;
 }
 
 export interface RemoteProviderReference {
+  accessModel?: FirebaseAccessModel;
   provider: StorageProviderKind;
   profileId?: string;
   databaseUrl: string;
@@ -164,12 +170,16 @@ export function createWorkspaceSyncRegistry(store: WorkspaceSyncStore): Workspac
     let savedProfile: StorageProfile | null = null;
     await saveMutated((state, now) => {
       const existing = state.storageProfile;
+      const accessModel = input.accessModel ?? existing?.accessModel ?? DEFAULT_FIREBASE_ACCESS_MODEL;
+      requireAuthFirebaseConfig(firebaseConfig);
       savedProfile = {
+        accessModel,
         profileId: existing?.profileId ?? `profile_${crypto.randomUUID()}`,
         provider: input.provider ?? "firebase-rtdb",
         displayName: input.displayName?.trim() || existing?.displayName || "Firebase Realtime Database",
         databaseUrl: normalizedDatabaseUrl,
         firebaseConfig,
+        ownerSetupSecret: input.ownerSetupSecret?.trim() || existing?.ownerSetupSecret || createFirebaseOwnerSetupSecret(),
         createdAt: existing?.createdAt ?? now,
         updatedAt: now,
       };
@@ -457,6 +467,12 @@ function requireStorageProfile(state: WorkspaceSyncState): StorageProfile {
   return state.storageProfile;
 }
 
+function requireAuthFirebaseConfig(firebaseConfig: FirebaseWebAppConfig): void {
+  if (!firebaseConfig.apiKey) {
+    throw new Error("Authenticated Firebase access requires the Firebase web app config with apiKey.");
+  }
+}
+
 function requireMatchingStorageProfile(state: WorkspaceSyncState, storageProfileId: string): StorageProfile {
   const profile = requireStorageProfile(state);
   if (profile.profileId !== storageProfileId) {
@@ -475,15 +491,24 @@ function toInvitePayload(
     schemaVersion: 1,
     kind: "app-lab-invite",
     provider: {
+      accessModel: provider.accessModel ?? DEFAULT_FIREBASE_ACCESS_MODEL,
       provider: provider.provider,
-      profileId: "profileId" in provider ? provider.profileId : undefined,
       databaseUrl: provider.databaseUrl,
-      firebaseConfig: "firebaseConfig" in provider ? provider.firebaseConfig : undefined,
+      firebaseConfig: toInviteFirebaseConfig(provider),
     },
     sourceRoom,
     dataRoom,
     createdAt,
   };
+}
+
+function toInviteFirebaseConfig(provider: StorageProfile | RemoteProviderReference): FirebaseWebAppConfig | undefined {
+  if (!("firebaseConfig" in provider) || !provider.firebaseConfig) return undefined;
+  const databaseURL = normalizeFirebaseDatabaseUrl(provider.firebaseConfig.databaseURL || provider.databaseUrl);
+  const config: FirebaseWebAppConfig = { databaseURL };
+  if (provider.firebaseConfig.apiKey) config.apiKey = provider.firebaseConfig.apiKey;
+  if (provider.firebaseConfig.authDomain) config.authDomain = provider.firebaseConfig.authDomain;
+  return config;
 }
 
 function parseWorkspaceSyncState(raw: string): WorkspaceSyncState | null {
@@ -525,7 +550,9 @@ function normalizeStoredStorageProfile(value: unknown): StorageProfile | null {
   }
 
   const databaseURL = normalizeFirebaseDatabaseUrl(profile.databaseUrl);
+  const accessModel = profile.accessModel === "auth-v1" ? "auth-v1" : DEFAULT_FIREBASE_ACCESS_MODEL;
   return {
+    accessModel,
     profileId: profile.profileId,
     provider: profile.provider,
     displayName: profile.displayName,
@@ -533,6 +560,7 @@ function normalizeStoredStorageProfile(value: unknown): StorageProfile | null {
     firebaseConfig: profile.firebaseConfig?.databaseURL
       ? { ...profile.firebaseConfig, databaseURL: normalizeFirebaseDatabaseUrl(profile.firebaseConfig.databaseURL) }
       : { databaseURL },
+    ownerSetupSecret: typeof profile.ownerSetupSecret === "string" ? profile.ownerSetupSecret : undefined,
     createdAt: profile.createdAt,
     updatedAt: profile.updatedAt,
   };

@@ -51,6 +51,11 @@ export interface SubscribeRoomInput {
   onChange: (snapshot: RemoteRoomSnapshot) => void;
 }
 
+export interface ClaimRoomAccessInput {
+  claimToken: string;
+  roomId: string;
+}
+
 export interface SyncProvider {
   createRoom(input: CreateRoomInput): Promise<RemoteRoomSnapshot>;
   deleteRoom(input: DeleteRoomInput): Promise<void>;
@@ -59,6 +64,7 @@ export interface SyncProvider {
 }
 
 export interface RealtimeSyncProvider extends SyncProvider {
+  claimRoomAccess?(input: ClaimRoomAccessInput): Promise<void>;
   subscribeConnection?(onChange: (connected: boolean) => void): () => void;
   subscribeRoom(input: SubscribeRoomInput): () => void;
 }

@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createMemoryCore } from "../../core/memoryCore";
 import { createMemorySyncQueueStore, enqueueSaveSource } from "../../sync/syncQueue";
+import { configureTestStorageProfile } from "../../sync/testStorageProfile";
 import { createMemoryWorkspaceSyncStore, createWorkspaceSyncRegistry } from "../../sync/workspaceSync";
 import type { WorkspaceSyncActions } from "../../sync/workspaceSyncActions";
 import { WorkspaceShell } from "./WorkspaceShell";
@@ -62,7 +63,7 @@ describe("WorkspaceShell sync wake-ups", () => {
     const app = await core.createBlankApp();
     const queueStore = createMemorySyncQueueStore();
     const syncRegistry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
-    await syncRegistry.configureStorageProfile({ databaseUrl: "https://example.firebaseio.com" });
+    await configureTestStorageProfile(syncRegistry);
     await syncRegistry.ensureOwnedAppRooms(app.appId);
     await enqueueSaveSource(queueStore, app);
 
@@ -85,7 +86,7 @@ describe("WorkspaceShell sync wake-ups", () => {
     const app = await core.createBlankApp();
     const queueStore = createMemorySyncQueueStore();
     const syncRegistry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
-    await syncRegistry.configureStorageProfile({ databaseUrl: "https://example.firebaseio.com" });
+    await configureTestStorageProfile(syncRegistry);
     await syncRegistry.ensureOwnedAppRooms(app.appId);
     await enqueueSaveSource(queueStore, app);
 
@@ -113,7 +114,7 @@ describe("WorkspaceShell sync wake-ups", () => {
     const app = await core.createBlankApp();
     const queueStore = createMemorySyncQueueStore();
     const syncRegistry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
-    await syncRegistry.configureStorageProfile({ databaseUrl: "https://example.firebaseio.com" });
+    await configureTestStorageProfile(syncRegistry);
     await syncRegistry.ensureOwnedAppRooms(app.appId);
     await enqueueSaveSource(queueStore, app);
 
@@ -240,6 +241,129 @@ describe("WorkspaceShell sync wake-ups", () => {
     expect(screen.queryByRole("dialog", { name: "Share app" })).toBeNull();
     expect(await screen.findByRole("dialog", { name: "Storage and sync" })).toBeTruthy();
   });
+
+  it("defaults new storage setup to authenticated room claims", async () => {
+    const syncActions = createSyncActionsStub();
+
+    render(
+      <WorkspaceShell
+        core={createMemoryCore()}
+        syncActionsOverride={syncActions}
+        syncQueueStore={createMemorySyncQueueStore()}
+        syncRegistry={createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore())}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open settings" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Set Security/ }));
+
+    expect(screen.queryByText("Prototype open rules")).toBeNull();
+    expect(screen.getByText(/authenticated room claims/i)).toBeTruthy();
+    expect(screen.getByText(/Enable Anonymous Auth/)).toBeTruthy();
+
+    fireEvent.click(await screen.findByRole("button", { name: /Connect App Lab/ }));
+    fireEvent.change(screen.getByLabelText("Firebase Realtime Database URL"), {
+      target: { value: "https://example.firebaseio.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save storage profile" }));
+
+    expect(await screen.findByText(/apiKey/)).toBeTruthy();
+  });
+
+  it("closes settings from the full-page back button", async () => {
+    const syncActions = createSyncActionsStub();
+
+    render(
+      <WorkspaceShell
+        core={createMemoryCore()}
+        syncActionsOverride={syncActions}
+        syncQueueStore={createMemorySyncQueueStore()}
+        syncRegistry={createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore())}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open settings" }));
+    expect(await screen.findByRole("dialog", { name: "Storage and sync" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /Back/ }));
+
+    expect(screen.queryByRole("dialog", { name: "Storage and sync" })).toBeNull();
+  });
+
+  it("combines workspace export and restore into sync device settings", async () => {
+    const syncActions = createSyncActionsStub();
+
+    render(
+      <WorkspaceShell
+        core={createMemoryCore()}
+        syncActionsOverride={syncActions}
+        syncQueueStore={createMemorySyncQueueStore()}
+        syncRegistry={createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore())}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open settings" }));
+
+    expect(screen.getByRole("button", { name: "Sync device" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Restore device" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Advanced" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Sync device" }));
+
+    expect(screen.getByText(/moving the whole workspace/i)).toBeTruthy();
+    expect(screen.getAllByText("Generate sync material").length).toBeGreaterThan(0);
+    expect(screen.getByText("Paste sync material")).toBeTruthy();
+  });
+
+  it("blocks syncing device material when this browser already has a storage profile", async () => {
+    const syncActions = createSyncActionsStub();
+    const syncRegistry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
+    await configureTestStorageProfile(syncRegistry);
+
+    render(
+      <WorkspaceShell
+        core={createMemoryCore()}
+        syncActionsOverride={syncActions}
+        syncQueueStore={createMemorySyncQueueStore()}
+        syncRegistry={syncRegistry}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open settings" }));
+    fireEvent.click(screen.getByRole("button", { name: "Sync device" }));
+    fireEvent.change(screen.getByPlaceholderText("Paste workspace sync material"), {
+      target: { value: "applab-recovery:test" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Sync this device" }));
+
+    expect(await screen.findByText(/already has a storage profile/i)).toBeTruthy();
+    expect(syncActions.restoreWorkspaceRecovery).not.toHaveBeenCalled();
+  });
+
+  it("lets storage guide sections all close and marks completed steps", async () => {
+    const syncActions = createSyncActionsStub();
+
+    render(
+      <WorkspaceShell
+        core={createMemoryCore()}
+        syncActionsOverride={syncActions}
+        syncQueueStore={createMemorySyncQueueStore()}
+        syncRegistry={createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore())}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open settings" }));
+
+    expect(await screen.findByText("Create or sign in to Firebase")).toBeTruthy();
+    fireEvent.click(await screen.findByRole("button", { name: /Create Firebase/ }));
+    expect(screen.queryByText("Create or sign in to Firebase")).toBeNull();
+
+    fireEvent.click(await screen.findByRole("button", { name: /Set Security/ }));
+    expect(await screen.findByText("2a")).toBeTruthy();
+    fireEvent.click(screen.getByLabelText(/Enable Anonymous Auth/));
+
+    expect(screen.getByText("Enable Anonymous Auth").className).toContain("line-through");
+  });
 });
 
 function createSyncActionsStub(): WorkspaceSyncActions {
@@ -257,6 +381,7 @@ function createSyncActionsStub(): WorkspaceSyncActions {
     importInvite: vi.fn().mockResolvedValue(undefined),
     noteLocalAppDataEdit: vi.fn(),
     pullLatestAppRooms: vi.fn().mockResolvedValue({}),
+    pullLatestWorkspaceManifest: vi.fn().mockResolvedValue({ appIdsChanged: [], appIdsDeleted: [] }),
     pushAppData: vi.fn().mockResolvedValue(undefined),
     pushAppSource: vi.fn().mockResolvedValue(undefined),
     queueWorkspaceManifestSave: vi.fn().mockResolvedValue(undefined),
@@ -264,5 +389,6 @@ function createSyncActionsStub(): WorkspaceSyncActions {
     subscribeAppData: vi.fn().mockResolvedValue(() => {}),
     subscribeAppSource: vi.fn().mockResolvedValue(() => {}),
     subscribeStorageConnection: vi.fn().mockResolvedValue(() => {}),
+    subscribeWorkspaceManifest: vi.fn().mockResolvedValue(() => {}),
   };
 }

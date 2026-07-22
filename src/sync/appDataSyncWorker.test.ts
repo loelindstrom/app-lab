@@ -4,6 +4,7 @@ import { ensureRemoteAppRooms, loadRemoteAppRooms, saveRemoteAppData } from "./a
 import { createMemorySyncProvider } from "./memorySyncProvider";
 import { processAppDataSyncQueue } from "./appDataSyncWorker";
 import { createMemorySyncQueueStore, enqueueSaveAppData } from "./syncQueue";
+import { configureTestStorageProfile } from "./testStorageProfile";
 import { createMemoryWorkspaceSyncStore, createWorkspaceSyncRegistry } from "./workspaceSync";
 
 describe("app data sync worker", () => {
@@ -12,7 +13,7 @@ describe("app data sync worker", () => {
     const provider = createMemorySyncProvider();
     const queueStore = createMemorySyncQueueStore();
     const syncRegistry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
-    await syncRegistry.configureStorageProfile({ databaseUrl: "https://example.firebaseio.com" });
+    await configureTestStorageProfile(syncRegistry);
 
     const app = await core.createBlankApp();
     const syncRecord = await syncRegistry.ensureOwnedAppRooms(app.appId);
@@ -44,7 +45,7 @@ describe("app data sync worker", () => {
     const core = createMemoryCore();
     const queueStore = createMemorySyncQueueStore();
     const syncRegistry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
-    await syncRegistry.configureStorageProfile({ databaseUrl: "https://example.firebaseio.com" });
+    await configureTestStorageProfile(syncRegistry);
 
     const app = await core.createBlankApp();
     const syncRecord = await syncRegistry.ensureOwnedAppRooms(app.appId);
@@ -77,7 +78,7 @@ describe("app data sync worker", () => {
     const provider = createMemorySyncProvider();
     const queueStore = createMemorySyncQueueStore();
     const syncRegistry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
-    await syncRegistry.configureStorageProfile({ databaseUrl: "https://example.firebaseio.com" });
+    await configureTestStorageProfile(syncRegistry);
 
     const app = await core.createBlankApp();
     const syncRecord = await syncRegistry.ensureOwnedAppRooms(app.appId);

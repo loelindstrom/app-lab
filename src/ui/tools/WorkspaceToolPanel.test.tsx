@@ -43,7 +43,7 @@ describe("WorkspaceToolPanel", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Export" }));
+    fireEvent.click(screen.getByRole("button", { name: "Export ↑" }));
     expect(screen.queryByRole("tab", { name: "Prompt" })).toBeNull();
     expect(screen.getByRole("checkbox", { name: /Source code/ })).toBeTruthy();
     expect(screen.getByRole("checkbox", { name: /App data/ })).toBeTruthy();
@@ -72,11 +72,11 @@ describe("WorkspaceToolPanel", () => {
     );
 
     expect(screen.getByText("The AI bot is still being built, but use the button below to copy prompt + code and use it in another AI.")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Export" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Export/ })).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "↑ Copy prompt + code" }));
+    fireEvent.click(screen.getByRole("button", { name: "Copy prompt + code ↑" }));
 
-    expect(screen.getByRole("button", { name: "↓ Copy prompt + code" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Copy prompt + code ↓" })).toBeTruthy();
     expect(getTextarea("Prompt and code").value).toContain('You are helping me edit an App Lab sandbox app named "Exportable App".');
     expect(getTextarea("Prompt and code").value).toContain(app.sourceCode);
   });

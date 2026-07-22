@@ -1,12 +1,13 @@
 import { expect, test, type Page } from "@playwright/test";
+import { readFirebaseE2eProfile, type FirebaseE2eProfile } from "./firebaseProfile";
 
-const firebaseConfig = readFirebaseSmokeConfig();
+const firebaseProfile = readFirebaseE2eProfile();
 
 test.describe("source sync", () => {
-  test.skip(!firebaseConfig, "APP_LAB_FIREBASE_SMOKE_CONFIG is required for Firebase-backed E2E tests.");
+  test.skip(!firebaseProfile, "Auth-capable Firebase E2E profile is required for Firebase-backed E2E tests.");
 
   test("queued offline source save syncs to another browser when the owner comes back online", async ({ browser }) => {
-    if (!firebaseConfig) throw new Error("APP_LAB_FIREBASE_SMOKE_CONFIG is required.");
+    if (!firebaseProfile) throw new Error("Auth-capable Firebase E2E profile is required.");
 
     const ownerContext = await browser.newContext();
     const joinedContext = await browser.newContext();
@@ -16,7 +17,7 @@ test.describe("source sync", () => {
     const offlineTitle = `E2E offline ${Date.now()}`;
 
     await owner.goto("/");
-    await configureStorage(owner, firebaseConfig);
+    await configureStorage(owner, firebaseProfile.config, firebaseProfile);
     await createExampleApp(owner);
     await saveSource(owner, htmlForTitle(initialTitle));
     const inviteUrl = await createInvite(owner);
@@ -44,7 +45,7 @@ test.describe("source sync", () => {
   });
 
   test("open shared app receives repeated live source updates without reloading", async ({ browser }) => {
-    if (!firebaseConfig) throw new Error("APP_LAB_FIREBASE_SMOKE_CONFIG is required.");
+    if (!firebaseProfile) throw new Error("Auth-capable Firebase E2E profile is required.");
 
     const ownerContext = await browser.newContext();
     const joinedContext = await browser.newContext();
@@ -53,7 +54,7 @@ test.describe("source sync", () => {
     const initialTitle = `E2E source initial ${Date.now()}`;
 
     await owner.goto("/");
-    await configureStorage(owner, firebaseConfig);
+    await configureStorage(owner, firebaseProfile.config, firebaseProfile);
     await createExampleApp(owner);
     await saveSource(owner, htmlForTitle(initialTitle));
     const inviteUrl = await createInvite(owner);
@@ -74,7 +75,7 @@ test.describe("source sync", () => {
   });
 
   test("queued offline app data save syncs to another browser when the owner comes back online", async ({ browser }) => {
-    if (!firebaseConfig) throw new Error("APP_LAB_FIREBASE_SMOKE_CONFIG is required.");
+    if (!firebaseProfile) throw new Error("Auth-capable Firebase E2E profile is required.");
 
     const ownerContext = await browser.newContext();
     const joinedContext = await browser.newContext();
@@ -82,7 +83,7 @@ test.describe("source sync", () => {
     const joined = await joinedContext.newPage();
 
     await owner.goto("/");
-    await configureStorage(owner, firebaseConfig);
+    await configureStorage(owner, firebaseProfile.config, firebaseProfile);
     await createExampleApp(owner);
     const inviteUrl = await createInvite(owner);
 
@@ -113,7 +114,7 @@ test.describe("source sync", () => {
   });
 
   test("open shared app receives repeated live app data updates without reloading", async ({ browser }) => {
-    if (!firebaseConfig) throw new Error("APP_LAB_FIREBASE_SMOKE_CONFIG is required.");
+    if (!firebaseProfile) throw new Error("Auth-capable Firebase E2E profile is required.");
 
     const ownerContext = await browser.newContext();
     const joinedContext = await browser.newContext();
@@ -121,7 +122,7 @@ test.describe("source sync", () => {
     const joined = await joinedContext.newPage();
 
     await owner.goto("/");
-    await configureStorage(owner, firebaseConfig);
+    await configureStorage(owner, firebaseProfile.config, firebaseProfile);
     await createExampleApp(owner);
     const inviteUrl = await createInvite(owner);
 
@@ -142,13 +143,13 @@ test.describe("source sync", () => {
   });
 
   test("multiple offline app data edits keep updating locally before sync resumes", async ({ browser }) => {
-    if (!firebaseConfig) throw new Error("APP_LAB_FIREBASE_SMOKE_CONFIG is required.");
+    if (!firebaseProfile) throw new Error("Auth-capable Firebase E2E profile is required.");
 
     const ownerContext = await browser.newContext();
     const owner = await ownerContext.newPage();
 
     await owner.goto("/");
-    await configureStorage(owner, firebaseConfig);
+    await configureStorage(owner, firebaseProfile.config, firebaseProfile);
     await createExampleApp(owner);
 
     for (const item of ["One", "Two", "Three"]) {
@@ -176,14 +177,36 @@ test.describe("source sync", () => {
   });
 });
 
-async function configureStorage(page: Page, config: Record<string, string>) {
-  await page.getByRole("button", { name: "Open settings" }).click();
-  await page.getByLabel("Display name").fill("E2E Firebase");
-  await page.getByLabel("Firebase web app config").fill(JSON.stringify(config, null, 2));
-  await page.getByLabel("Firebase Realtime Database URL").fill(config.databaseURL);
-  await page.getByRole("button", { name: "Save storage profile" }).click();
-  await expect(page.getByRole("button", { name: "Remove profile" })).toBeVisible();
-  await page.getByRole("button", { name: "Close" }).click();
+async function configureStorage(page: Page, config: Record<string, string>, profile: FirebaseE2eProfile) {
+  await page.evaluate(({ firebaseConfig, profile }) => {
+    const now = new Date().toISOString();
+    const databaseUrl = String(firebaseConfig.databaseURL ?? "").replace(/\/+$/, "");
+    const raw = localStorage.getItem("app-lab-workspace-sync-v1");
+    const existing = raw ? JSON.parse(raw) : {};
+    localStorage.setItem(
+      "app-lab-workspace-sync-v1",
+      JSON.stringify({
+        schemaVersion: 1,
+        workspaceId: typeof existing.workspaceId === "string" ? existing.workspaceId : `workspace_${crypto.randomUUID()}`,
+        manifestRoom: existing.manifestRoom,
+        apps: existing.apps && typeof existing.apps === "object" ? existing.apps : {},
+        deletedApps: existing.deletedApps && typeof existing.deletedApps === "object" ? existing.deletedApps : {},
+        storageProfile: {
+          accessModel: profile.accessModel,
+          profileId: `profile_${crypto.randomUUID()}`,
+          provider: "firebase-rtdb",
+          displayName: "E2E Firebase",
+          databaseUrl,
+          firebaseConfig: { ...firebaseConfig, databaseURL: databaseUrl },
+          ownerSetupSecret: profile.ownerSetupSecret,
+          createdAt: now,
+          updatedAt: now,
+        },
+        updatedAt: now,
+      }),
+    );
+  }, { firebaseConfig: config, profile });
+  await page.reload();
 }
 
 async function createExampleApp(page: Page) {
@@ -243,10 +266,4 @@ function htmlForTitle(title: string) {
 
 function appFrame(page: Page) {
   return page.frameLocator('iframe[title$=" app"]');
-}
-
-function readFirebaseSmokeConfig(): Record<string, string> | null {
-  const value = process.env.APP_LAB_FIREBASE_SMOKE_CONFIG;
-  if (!value) return null;
-  return JSON.parse(value) as Record<string, string>;
 }

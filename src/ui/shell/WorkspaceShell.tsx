@@ -40,6 +40,7 @@ export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, sync
   const [syncBadges, setSyncBadges] = useState<Record<string, AppSyncBadge>>({});
   const [syncHealth, setSyncHealth] = useState<Record<string, AppSyncHealth>>({});
   const [storageProfile, setStorageProfile] = useState<StorageProfile | null>(null);
+  const [workspaceManifestRoomId, setWorkspaceManifestRoomId] = useState<string | null>(null);
   const [activeApp, setActiveApp] = useState<AppRecord | null>(null);
   const [mode, setMode] = useState<WorkspaceMode>("launcher");
   const [activeTool, setActiveTool] = useState<ToolPanelMode | null>(null);
@@ -69,6 +70,7 @@ export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, sync
   useEffect(() => {
     let cancelled = false;
     let unsubscribeConnection: (() => void) | null = null;
+    let unsubscribeWorkspaceManifest: (() => void) | null = null;
 
     async function wakePendingSync(online = isSyncReachable()) {
       try {
@@ -81,6 +83,7 @@ export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, sync
         await syncActions.flushAppDataSyncQueue();
         await syncActions.flushOwnedAppDeletionQueue();
         await syncActions.flushWorkspaceManifestQueue();
+        await syncActions.pullLatestWorkspaceManifest();
         if (!cancelled) await refreshApps(true);
       } catch (error) {
         const detail = error instanceof Error ? error.message : "Unknown sync error.";
@@ -115,6 +118,9 @@ export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, sync
         if (connected) void wakePendingSync(isSyncReachable());
         else void refreshApps(false);
       });
+      unsubscribeWorkspaceManifest = await syncActions.subscribeWorkspaceManifest(() => {
+        if (!cancelled) void refreshApps(isSyncReachable());
+      });
     }
 
     providerOnlineRef.current = null;
@@ -125,11 +131,12 @@ export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, sync
     return () => {
       cancelled = true;
       unsubscribeConnection?.();
+      unsubscribeWorkspaceManifest?.();
       window.removeEventListener("online", markOnline);
       window.removeEventListener("offline", markOffline);
       document.removeEventListener("visibilitychange", wakeIfVisible);
     };
-  }, [storageProfile?.profileId, storageProfile?.databaseUrl, syncActions, syncQueueStore, syncRegistry]);
+  }, [storageProfile?.profileId, storageProfile?.databaseUrl, syncActions, syncQueueStore, syncRegistry, workspaceManifestRoomId]);
 
   useEffect(() => {
     function readHashInvite() {
@@ -206,7 +213,9 @@ export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, sync
     setApps(nextApps);
     setSyncBadges(nextBadges);
     setSyncHealth(buildAppSyncHealthMap({ apps: nextApps, badges: nextBadges, isOnline: online, queueItems }));
-    setStorageProfile(await syncRegistry.getStorageProfile());
+    const syncState = await syncRegistry.getState();
+    setStorageProfile(syncState.storageProfile);
+    setWorkspaceManifestRoomId(syncState.manifestRoom?.roomId ?? null);
   }
 
   async function openApp(appId: string) {
@@ -314,13 +323,13 @@ export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, sync
           ) : null}
           {mode === "app" && activeApp ? (
             <button
-              className="grid h-9 min-h-9 w-9 place-items-center rounded-md border border-transparent bg-transparent text-lg text-app-muted hover:bg-app-accent/10 hover:text-app-accent"
+              className="grid h-9 min-h-9 w-9 place-items-center rounded-md border border-transparent bg-transparent text-app-muted hover:bg-app-accent/10 hover:text-app-accent"
               type="button"
               aria-label={`Share ${activeApp.name}`}
               title="Share"
               onClick={() => setSharingApp(activeApp)}
             >
-              ↗
+              <ShareIcon className="h-5 w-5" />
             </button>
           ) : null}
           <button
@@ -452,7 +461,6 @@ export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, sync
       />
       <ShareAppDialog
         app={sharingApp}
-        hasStorageProfile={Boolean(storageProfile)}
         onClose={() => setSharingApp(null)}
         onOpenStorageSettings={() => {
           setSharingApp(null);
@@ -463,6 +471,7 @@ export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, sync
           await refreshApps();
           return invite;
         }}
+        storageProfile={storageProfile}
       />
       <InviteImportDialog
         invite={pendingInvite}
@@ -694,11 +703,12 @@ function LauncherCard({
         <span className="truncate text-xs font-bold text-app-muted">{formatDate(app.updatedAt)}</span>
         <div className="flex gap-2">
           <button
-            className="min-h-8 rounded-md border border-app-line bg-white px-3 text-sm font-bold text-app-ink hover:border-app-accent disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex min-h-8 items-center gap-1.5 rounded-md border border-app-line bg-white px-3 text-sm font-bold text-app-ink hover:border-app-accent disabled:cursor-not-allowed disabled:opacity-50"
             type="button"
             disabled={isRemoteDeleted}
             onClick={onShare}
           >
+            <ShareIcon className="h-4 w-4" />
             Share
           </button>
           <button
@@ -712,6 +722,17 @@ function LauncherCard({
         </div>
       </div>
     </article>
+  );
+}
+
+function ShareIcon({ className }: { className: string }) {
+  return (
+    <svg className={className} aria-hidden="true" viewBox="0 0 24 24" fill="none">
+      <path d="M8.1 10.7 15.6 6.6M8.1 13.3l7.5 4.1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <circle cx="6" cy="12" r="2.4" fill="currentColor" />
+      <circle cx="18" cy="5.5" r="2.4" fill="currentColor" />
+      <circle cx="18" cy="18.5" r="2.4" fill="currentColor" />
+    </svg>
   );
 }
 
@@ -927,19 +948,20 @@ function formatQueueKind(kind: PendingSyncItem["kind"]): string {
 
 function ShareAppDialog({
   app,
-  hasStorageProfile,
   onClose,
   onCreateInvite,
   onOpenStorageSettings,
+  storageProfile,
 }: {
   app: AppSummary | null;
-  hasStorageProfile: boolean;
   onClose: () => void;
   onCreateInvite: (appId: string) => Promise<AppInvitePayload>;
   onOpenStorageSettings: () => void;
+  storageProfile: StorageProfile | null;
 }) {
   const [inviteUrl, setInviteUrl] = useState("");
   const [status, setStatus] = useState("Ready");
+  const hasStorageProfile = Boolean(storageProfile);
 
   useEffect(() => {
     setInviteUrl("");
@@ -995,8 +1017,7 @@ function ShareAppDialog({
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm leading-relaxed text-amber-900">
             <p className="font-bold">Invite links are sensitive.</p>
             <p>
-              Anyone with the link can access this app's source and data rooms while prototype Firebase rules are open. Treat the
-              link like an access key.
+              Anyone with the link can access and edit this app's source and data rooms. It does not include the owner setup material for creating new rooms.
             </p>
           </div>
         )}

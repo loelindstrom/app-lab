@@ -4,6 +4,7 @@ import { loadRemoteAppRooms } from "./appRooms";
 import { createMemorySyncProvider } from "./memorySyncProvider";
 import { processRoomLifecycleQueue } from "./roomLifecycleWorker";
 import { createMemorySyncQueueStore, enqueueEnsureAppRooms, ensureAppRoomsQueueId } from "./syncQueue";
+import { configureTestStorageProfile } from "./testStorageProfile";
 import { createMemoryWorkspaceSyncStore, createWorkspaceSyncRegistry } from "./workspaceSync";
 
 describe("room lifecycle worker", () => {
@@ -12,7 +13,7 @@ describe("room lifecycle worker", () => {
     const provider = createMemorySyncProvider();
     const queueStore = createMemorySyncQueueStore();
     const syncRegistry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
-    await syncRegistry.configureStorageProfile({ databaseUrl: "https://example.firebaseio.com" });
+    await configureTestStorageProfile(syncRegistry);
 
     const app = await core.createApp({
       description: "Example",
@@ -43,7 +44,7 @@ describe("room lifecycle worker", () => {
     const core = createMemoryCore();
     const queueStore = createMemorySyncQueueStore();
     const syncRegistry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
-    await syncRegistry.configureStorageProfile({ databaseUrl: "https://example.firebaseio.com" });
+    await configureTestStorageProfile(syncRegistry);
 
     const app = await core.createBlankApp();
     await syncRegistry.ensureOwnedAppRooms(app.appId);
@@ -70,7 +71,7 @@ describe("room lifecycle worker", () => {
     const provider = createMemorySyncProvider();
     const queueStore = createMemorySyncQueueStore();
     const syncRegistry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
-    await syncRegistry.configureStorageProfile({ databaseUrl: "https://example.firebaseio.com" });
+    await configureTestStorageProfile(syncRegistry);
 
     const app = await core.createBlankApp();
     await syncRegistry.ensureOwnedAppRooms(app.appId);

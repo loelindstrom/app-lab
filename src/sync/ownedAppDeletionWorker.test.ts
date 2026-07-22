@@ -4,6 +4,7 @@ import { isRemoteAppDeletedError, loadRemoteAppRooms } from "./appRooms";
 import { createMemorySyncProvider } from "./memorySyncProvider";
 import { processRoomLifecycleQueue } from "./roomLifecycleWorker";
 import { createMemorySyncQueueStore, enqueueDeleteOwnedApp, enqueueEnsureAppRooms } from "./syncQueue";
+import { configureTestStorageProfile } from "./testStorageProfile";
 import { createMemoryWorkspaceSyncStore, createWorkspaceSyncRegistry } from "./workspaceSync";
 import { processOwnedAppDeletionQueue } from "./ownedAppDeletionWorker";
 
@@ -13,7 +14,7 @@ describe("owned app deletion worker", () => {
     const core = createMemoryCore();
     const queueStore = createMemorySyncQueueStore();
     const syncRegistry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
-    await syncRegistry.configureStorageProfile({ databaseUrl: "https://example.firebaseio.com" });
+    await configureTestStorageProfile(syncRegistry);
     const app = await core.createApp({
       description: "Delete worker test",
       name: "Delete worker test",
@@ -51,7 +52,7 @@ describe("owned app deletion worker", () => {
     const core = createMemoryCore();
     const queueStore = createMemorySyncQueueStore();
     const syncRegistry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
-    await syncRegistry.configureStorageProfile({ databaseUrl: "https://example.firebaseio.com" });
+    await configureTestStorageProfile(syncRegistry);
     const app = await core.createApp({
       description: "Offline delete",
       name: "Offline delete",

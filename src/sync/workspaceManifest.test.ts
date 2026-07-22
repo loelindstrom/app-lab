@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createMemorySyncProvider } from "./memorySyncProvider";
+import { configureTestStorageProfile } from "./testStorageProfile";
 import { createMemoryWorkspaceSyncStore, createWorkspaceSyncRegistry } from "./workspaceSync";
 import {
   createWorkspaceRecoveryMaterial,
@@ -13,10 +14,7 @@ describe("workspace manifest sync", () => {
   it("backs up and restores workspace sync metadata", async () => {
     const provider = createMemorySyncProvider();
     const registry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
-    await registry.configureStorageProfile({
-      databaseUrl: "https://example.firebaseio.com",
-      firebaseConfigText: JSON.stringify({ apiKey: "key", databaseURL: "https://example.firebaseio.com" }),
-    });
+    await configureTestStorageProfile(registry);
     await registry.ensureWorkspaceManifestRoom();
     await registry.ensureOwnedAppRooms("app-1");
 
@@ -40,10 +38,7 @@ describe("workspace manifest sync", () => {
   it("updates an existing manifest room using the remembered version", async () => {
     const provider = createMemorySyncProvider();
     const registry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
-    await registry.configureStorageProfile({
-      databaseUrl: "https://example.firebaseio.com",
-      firebaseConfigText: JSON.stringify({ databaseURL: "https://example.firebaseio.com" }),
-    });
+    await configureTestStorageProfile(registry);
     await registry.ensureWorkspaceManifestRoom();
 
     const first = await saveWorkspaceManifest({ provider, state: await registry.getState() });
@@ -62,10 +57,7 @@ describe("workspace manifest sync", () => {
   it("recreates a missing manifest room when the local state remembers a version", async () => {
     const provider = createMemorySyncProvider();
     const registry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
-    await registry.configureStorageProfile({
-      databaseUrl: "https://example.firebaseio.com",
-      firebaseConfigText: JSON.stringify({ databaseURL: "https://example.firebaseio.com" }),
-    });
+    await configureTestStorageProfile(registry);
     await registry.ensureWorkspaceManifestRoom();
     await registry.rememberWorkspaceManifestVersion(1);
     await registry.ensureOwnedAppRooms("app-1");
