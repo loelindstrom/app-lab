@@ -1,8 +1,8 @@
 {
-  "version": "v0.2.0",
-  "ref": "e35590e",
-  "commit": "e35590e339b992160941cad313fac89300f61264",
-  "shortCommit": "e35590e339b9",
-  "deployedAt": "2026-07-22T21:42:18Z",
+  "version": "v0.3.0",
+  "ref": "HEAD",
+  "commit": "55238f76c40e68f330b1294650d23eec2943180d",
+  "shortCommit": "55238f76c40e",
+  "deployedAt": "2026-07-22T21:42:49Z",
   "base": "/app-lab/"
 }
