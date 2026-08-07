@@ -21,8 +21,9 @@ App Lab is a React/Vite browser app with:
 
 ## MVP Must-Have
 
-No open must-have item is documented here right now. Add an item only when it is concrete enough to guide the next implementation
-slice.
+1. BuilderAI loop
+
+   Reintroduce native AI editing for the active app. The working feature brief is [AI integration](./ai-integration.md).
 
 Known limitations that are intentionally not blockers for the current MVP:
 
@@ -33,21 +34,16 @@ Known limitations that are intentionally not blockers for the current MVP:
 
 ## Nice-To-Have After MVP
 
-1. BuilderAI loop
-
-   Reintroduce the actual agent after the source/console workflow is stable. The first useful agent loop should be able to see
-   app source, user request, and console errors, then propose or apply source edits.
-
-2. Source history
+1. Source history
 
    Add lightweight source snapshots only if manual experimentation shows real need. This should not block current sync work.
 
-3. Better app-data merge
+2. Better app-data merge
 
    Add ID-based merge only if shared/offline conflicts become common enough to justify the complexity. The current policy is
    latest-local-pending-data wins.
 
-4. Import app data
+3. Import app data
 
    Export exists for source and app data. Add app-data import only when manual backup/restore workflows show enough demand to
    justify UI and safety checks.
