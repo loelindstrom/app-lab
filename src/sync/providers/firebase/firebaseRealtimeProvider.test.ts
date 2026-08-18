@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createRoomCapability, encryptRoomPayload } from "./crypto";
+import { createRoomCapability, encryptRoomPayload } from "../../rooms/crypto";
 import { createFirebaseRealtimeSyncProvider, createMemoryFirebaseRealtimeDriver } from "./firebaseRealtimeProvider";
 
 describe("firebase realtime sync provider", () => {

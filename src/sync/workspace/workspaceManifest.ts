@@ -1,8 +1,8 @@
-import type { JsonValue } from "../core";
-import { decryptRoomSnapshot, encryptRoomPayload, rememberSnapshotVersion, roomReadToken, roomWriteToken } from "./crypto";
-import { DEFAULT_FIREBASE_ACCESS_MODEL } from "./firebaseAccessRules";
-import type { FirebaseWebAppConfig } from "./firebaseConfig";
-import type { RealtimeSyncProvider, RemoteRoomSnapshot, RoomCapability } from "./types";
+import type { JsonValue } from "../../core";
+import { DEFAULT_FIREBASE_ACCESS_MODEL } from "../providers/firebase/firebaseAccessRules";
+import type { FirebaseWebAppConfig } from "../providers/firebase/firebaseConfig";
+import { decryptRoomSnapshot, encryptRoomPayload, rememberSnapshotVersion, roomReadToken, roomWriteToken } from "../rooms/crypto";
+import type { RealtimeSyncProvider, RemoteRoomSnapshot, RoomCapability } from "../rooms/types";
 import type { AppSyncRecord, JoinedAppSyncRecord, OwnedAppSyncRecord, PrivateCopySyncRecord, RemoteProviderReference, StorageProfile, TombstoneRecord, WorkspaceSyncState } from "./workspaceSync";
 
 const WORKSPACE_RECOVERY_SCHEMA_VERSION = 1;

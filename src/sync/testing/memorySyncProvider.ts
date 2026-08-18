@@ -1,4 +1,4 @@
-import type { CreateRoomInput, DeleteRoomInput, LoadRoomInput, RemoteRoomSnapshot, SaveRoomInput, SubscribeRoomInput, RealtimeSyncProvider } from "./types";
+import type { CreateRoomInput, DeleteRoomInput, LoadRoomInput, RemoteRoomSnapshot, SaveRoomInput, SubscribeRoomInput, RealtimeSyncProvider } from "../rooms/types";
 
 interface MemoryRoom {
   roomId: string;

@@ -1,5 +1,5 @@
-import { saveRemoteAppData } from "./appRooms";
-import { roomReadToken } from "./crypto";
+import { saveRemoteAppData } from "../rooms/appRooms";
+import { roomReadToken } from "../rooms/crypto";
 import {
   isQueueItemStaleSyncing,
   markQueueItemFailed,
@@ -8,8 +8,8 @@ import {
   type SaveAppDataQueueItem,
   type SyncQueueStore,
 } from "./syncQueue";
-import type { RealtimeSyncProvider, RoomCapability } from "./types";
-import type { AppSyncRecord, WorkspaceSyncRegistry } from "./workspaceSync";
+import type { RealtimeSyncProvider, RoomCapability } from "../rooms/types";
+import type { AppSyncRecord, WorkspaceSyncRegistry } from "../workspace/workspaceSync";
 
 export interface AppDataSyncWorkerInput {
   createProviderForSyncRecord: (record: AppSyncRecord | null) => Promise<RealtimeSyncProvider | null>;

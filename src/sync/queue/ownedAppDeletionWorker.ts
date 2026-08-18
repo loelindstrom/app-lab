@@ -1,5 +1,5 @@
-import { deleteRemoteAppRooms } from "./appRooms";
-import { roomReadToken } from "./crypto";
+import { deleteRemoteAppRooms } from "../rooms/appRooms";
+import { roomReadToken } from "../rooms/crypto";
 import {
   isQueueItemStaleSyncing,
   markQueueItemFailed,
@@ -7,8 +7,8 @@ import {
   type DeleteOwnedAppQueueItem,
   type SyncQueueStore,
 } from "./syncQueue";
-import type { RealtimeSyncProvider, RoomCapability } from "./types";
-import type { StorageProfile, WorkspaceSyncRegistry } from "./workspaceSync";
+import type { RealtimeSyncProvider, RoomCapability } from "../rooms/types";
+import type { StorageProfile, WorkspaceSyncRegistry } from "../workspace/workspaceSync";
 
 export interface OwnedAppDeletionWorkerInput {
   createProviderFromStorageProfile: (profile: StorageProfile) => RealtimeSyncProvider;

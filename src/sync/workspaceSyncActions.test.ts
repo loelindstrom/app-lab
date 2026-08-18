@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { createMemoryCore } from "../core/memoryCore";
-import { isRemoteAppDeletedError, loadRemoteAppRooms, saveRemoteAppData, saveRemoteAppSource } from "./appRooms";
-import { roomWriteToken } from "./crypto";
-import { createMemorySyncProvider } from "./memorySyncProvider";
-import { createMemorySyncQueueStore, enqueueSaveAppData, enqueueSaveSource, markQueueItemSyncing } from "./syncQueue";
-import { configureTestStorageProfile } from "./testStorageProfile";
-import type { ClaimRoomAccessInput, RealtimeSyncProvider } from "./types";
+import { createMemorySyncQueueStore, enqueueSaveAppData, enqueueSaveSource, markQueueItemSyncing } from "./queue/syncQueue";
+import { isRemoteAppDeletedError, loadRemoteAppRooms, saveRemoteAppData, saveRemoteAppSource } from "./rooms/appRooms";
+import { roomWriteToken } from "./rooms/crypto";
+import type { ClaimRoomAccessInput, RealtimeSyncProvider } from "./rooms/types";
+import { createMemorySyncProvider } from "./testing/memorySyncProvider";
+import { configureTestStorageProfile } from "./testing/testStorageProfile";
 import { createWorkspaceSyncActions } from "./workspaceSyncActions";
-import { createMemoryWorkspaceSyncStore, createWorkspaceSyncRegistry } from "./workspaceSync";
-import { createWorkspaceRecoveryMaterial, loadWorkspaceManifest } from "./workspaceManifest";
+import { createWorkspaceRecoveryMaterial, loadWorkspaceManifest } from "./workspace/workspaceManifest";
+import { createMemoryWorkspaceSyncStore, createWorkspaceSyncRegistry } from "./workspace/workspaceSync";
 
 describe("workspace sync actions", () => {
   it("exposes sync state without leaking persisted queue records", async () => {

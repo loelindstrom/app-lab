@@ -1,6 +1,6 @@
-import type { RealtimeSyncProvider } from "./types";
-import type { StorageProfile, WorkspaceSyncRegistry, WorkspaceSyncState } from "./workspaceSync";
-import { saveWorkspaceManifest } from "./workspaceManifest";
+import type { RealtimeSyncProvider } from "../rooms/types";
+import { saveWorkspaceManifest } from "../workspace/workspaceManifest";
+import type { StorageProfile, WorkspaceSyncRegistry, WorkspaceSyncState } from "../workspace/workspaceSync";
 import {
   isQueueItemStaleSyncing,
   markQueueItemFailed,

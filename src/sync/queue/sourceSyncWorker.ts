@@ -1,5 +1,5 @@
-import type { AppLabCore } from "../core";
-import { saveRemoteAppSource } from "./appRooms";
+import type { AppLabCore } from "../../core";
+import { saveRemoteAppSource } from "../rooms/appRooms";
 import {
   isQueueItemStaleSyncing,
   markQueueItemFailed,
@@ -8,8 +8,8 @@ import {
   type SaveSourceQueueItem,
   type SyncQueueStore,
 } from "./syncQueue";
-import type { RealtimeSyncProvider } from "./types";
-import type { AppSyncRecord, WorkspaceSyncRegistry } from "./workspaceSync";
+import type { RealtimeSyncProvider } from "../rooms/types";
+import type { AppSyncRecord, WorkspaceSyncRegistry } from "../workspace/workspaceSync";
 
 export interface SourceSyncWorkerInput {
   core: AppLabCore;

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { deleteApp, initializeApp, type FirebaseApp } from "firebase/app";
 import { getAuth, type Auth } from "firebase/auth";
 import { getDatabase, ref, remove, type Database } from "firebase/database";
-import { createRoomCapability, encryptRoomPayload, roomWriteToken } from "./crypto";
+import { createRoomCapability, encryptRoomPayload, roomWriteToken } from "../../rooms/crypto";
 import {
   createFirebaseRealtimeDriverFromDatabase,
   createFirebaseRealtimeSyncProvider,

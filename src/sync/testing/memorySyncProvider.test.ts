@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createRoomCapability, encryptRoomPayload } from "./crypto";
+import { createRoomCapability, encryptRoomPayload } from "../rooms/crypto";
 import { createMemorySyncProvider } from "./memorySyncProvider";
 
 describe("memory sync provider", () => {

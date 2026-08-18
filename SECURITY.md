@@ -1,7 +1,10 @@
 # Security
 
-App Lab is a local-first browser workspace for small sandboxed HTML apps. The host shell owns persistence, sync, tools, and
-security boundaries; generated apps own their HTML UI and app-owned JSON data.
+App Lab must execute HTML source produced by AI tools or shared by other people. Running that source as trusted host code would
+give it the same browser access as the workspace that stores other apps, local data, and optional service configuration.
+
+The security boundary exists to let a generated app control its own UI and JSON data without trusting it with the surrounding
+App Lab host. The host owns persistence, sync, tools, and access to optional services; generated apps run separately.
 
 ## Threat Model
 
@@ -9,26 +12,28 @@ App Lab aims to protect:
 
 - the host shell from generated app source
 - other apps in the same workspace
-- Firebase config, room capabilities, workspace sync material, and sync queue metadata
+- storage-provider configuration (e.g. Firebase), room capabilities, workspace sync material, and sync queue metadata
 - local workspace metadata that generated apps do not need
 
 App Lab does not make arbitrary generated or shared app source trustworthy. Generated app code can read its own app-owned JSON
 data through `AppLab.getData`, and malicious app source can display misleading UI or disclose its own app data if the user runs it.
 Only run or import apps from sources you trust.
 
-Generated apps run in sandboxed iframes with scripts enabled and without `allow-same-origin`. They use the host-provided
-`window.AppLab` API for JSON persistence and live data updates. Generated apps should not receive Firebase credentials, room ids,
-room decrypt secrets, invite material, workspace sync material, or OpenRouter configuration.
+The runtime controls answer the host-isolation problem: generated apps run in sandboxed iframes with scripts enabled and without
+`allow-same-origin`. The narrow `window.AppLab` API answers the app-data need by allowing JSON persistence and live updates without
+exposing general host access. Generated apps should not receive storage-provider credentials, room ids, room decrypt secrets,
+invite material, workspace sync material, or LLM-provider configuration.
 
 ## Optional Sync
 
-Sync is optional and currently uses a Firebase Realtime Database configured by the user. App source, app data, and workspace
-manifest payloads are encrypted in the browser before being written to Firebase.
+Sync introduces remote storage without making that provider the source of truth. Client-side encryption addresses payload
+confidentiality: app source, app data, and workspace-manifest payloads are encrypted before leaving the browser. Firebase Realtime
+Database is the current provider implementation.
 
-Firebase `auth-v1` rules enforce owner/member access to room records. App Lab's TypeScript client/provider code performs the
-write-token hash checks and optimistic version checks for normal App Lab clients. A room member using a modified or custom Firebase
-client can still write syntactically valid room records for rooms they can access. App invites are therefore full-access bearer
-material for the shared app rooms, not read-only links.
+Provider rules address who may access the encrypted records: Firebase `auth-v1` rules enforce owner/member access to rooms.
+App Lab's token-hash and optimistic-version checks address normal client correctness, but cannot make an authorized member's
+modified Firebase client read-only. App invites are therefore full-access bearer material for the shared app rooms, not read-only
+links.
 
 Previewing an app invite is not a local import: it does not save the app source or data into the workspace. Under `auth-v1`, preview
 does still claim Firebase membership for the invite's source room so App Lab can load and decrypt the app metadata before the user

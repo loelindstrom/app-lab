@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { createMemorySyncProvider } from "./memorySyncProvider";
-import { configureTestStorageProfile } from "./testStorageProfile";
+import { createMemorySyncProvider } from "../testing/memorySyncProvider";
+import { configureTestStorageProfile } from "../testing/testStorageProfile";
 import { createMemoryWorkspaceSyncStore, createWorkspaceSyncRegistry } from "./workspaceSync";
 import {
   createWorkspaceRecoveryMaterial,

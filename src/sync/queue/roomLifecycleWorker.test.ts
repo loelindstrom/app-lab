@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { createMemoryCore } from "../core/memoryCore";
-import { loadRemoteAppRooms } from "./appRooms";
-import { createMemorySyncProvider } from "./memorySyncProvider";
+import { createMemoryCore } from "../../core/memoryCore";
+import { loadRemoteAppRooms } from "../rooms/appRooms";
+import { createMemorySyncProvider } from "../testing/memorySyncProvider";
 import { processRoomLifecycleQueue } from "./roomLifecycleWorker";
 import { createMemorySyncQueueStore, enqueueEnsureAppRooms, ensureAppRoomsQueueId } from "./syncQueue";
-import { configureTestStorageProfile } from "./testStorageProfile";
-import { createMemoryWorkspaceSyncStore, createWorkspaceSyncRegistry } from "./workspaceSync";
+import { configureTestStorageProfile } from "../testing/testStorageProfile";
+import { createMemoryWorkspaceSyncStore, createWorkspaceSyncRegistry } from "../workspace/workspaceSync";
 
 describe("room lifecycle worker", () => {
   it("creates remote rooms for queued owned apps and removes completed work", async () => {

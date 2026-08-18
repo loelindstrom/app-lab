@@ -1,14 +1,23 @@
 # Deployment
 
-App Lab is a pure client-side Vite React app. The GitHub Pages deployment publishes static build output to a separate `gh-pages` branch while keeping generated files out of `main`.
+App Lab is a pure client-side Vite React app that needs only static hosting. This guide explains how committed source becomes a
+repeatable release without mixing generated output into normal development work.
 
-The default Pages URL is:
+## Why This Strategy
+
+App Lab needs only static hosting, but a deployment still needs to identify exactly which committed version is live. It should
+also support rollbacks without mixing generated files into `main` or disturbing uncommitted work in a shared checkout.
+
+The deployment therefore builds a chosen Git ref in a temporary directory and publishes only the result to a separate Pages
+branch. The source commit remains the release identity, while the working tree remains development space.
+
+## How It Works
+
+The current implementation publishes static build output to a separate `gh-pages` branch. GitHub Pages serves it at:
 
 ```text
 https://loelindstrom.github.io/app-lab/
 ```
-
-## Strategy
 
 - `main` contains source, docs, tests, and deployment tooling.
 - `dist/` is ignored on `main`.
@@ -17,7 +26,8 @@ https://loelindstrom.github.io/app-lab/
 - Vite builds with `/app-lab/` as the base path so asset URLs work from the project Pages URL.
 - Each deployment writes `deploy.json` into the Pages output with the source ref, commit, version tag when present, deploy time, and base path.
 
-This keeps deployment branch files separate from normal source work, avoids committing built assets to `main`, and makes deployments independent of uncommitted local edits.
+Each part answers a requirement from the strategy above: the resolved Git ref and `deploy.json` identify the live source, the
+temporary build and `gh-pages` worktree isolate generated output, and accepting an earlier ref provides the rollback path.
 
 ## First-Time GitHub Setup
 

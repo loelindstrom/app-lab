@@ -1,6 +1,6 @@
-import type { AppInvitePayload } from "./workspaceSync";
-import type { FirebaseWebAppConfig } from "./firebaseConfig";
-import type { RoomCapability } from "./types";
+import type { FirebaseWebAppConfig } from "../providers/firebase/firebaseConfig";
+import type { RoomCapability } from "../rooms/types";
+import type { AppInvitePayload } from "../workspace/workspaceSync";
 
 const INVITE_HASH_PREFIX = "applab-invite=";
 

@@ -50,8 +50,10 @@ version only needs to show that this loop works reliably enough to be useful.
 
 ## Intended Module Boundary
 
-`src/ai` should own OpenRouter communication, the bounded agent loop, AI configuration, and per-app chat behavior. It should expose
-its production API through `src/ai/index.ts`, following the same boundary convention as core, runtime, sync, and UI.
+The boundary turns the principles above into code: BuilderAI may propose and request changes, while the host remains responsible
+for app source, persistence, sync, and sandbox reloads. `src/ai` should own OpenRouter communication, the bounded agent loop, AI
+configuration, and per-app chat behavior. It should expose its production API through `src/ai/index.ts`, following the same
+boundary convention as core, runtime, sync, and UI.
 
 The UI/application composition should supply implementations of the agent tools. In particular,
 `replace_current_app_source` should call the same source-save operation used by the manual Source tool; it should not write
@@ -61,6 +63,9 @@ that AI edits update local state, remote rooms, sync status, and the active sand
 The source-save operation can initially remain a focused function owned by the workspace shell and be passed to both the manual
 Source tool and BuilderAI. If it later needs callers outside that composition boundary, move it behind a small application-level
 contract rather than duplicating the orchestration.
+
+This preserves both user expectations and the local-first model: an AI edit is a normal source edit with a different initiator,
+so apply, undo, sync status, remote updates, and sandbox reload all follow the same path.
 
 ## Must Have For MVP
 
@@ -263,6 +268,8 @@ contract rather than duplicating the orchestration.
 - Read-only sharing enforcement.
 
 ## First Implementation Slice
+
+The order below proves the native local editing loop first, then extends its conversation state through the existing sync model:
 
 1. Extract the current manual source-save sequence into one reusable host operation with focused tests.
 2. Add a local AI config store and wire it into Settings with a basic OpenRouter setup path.

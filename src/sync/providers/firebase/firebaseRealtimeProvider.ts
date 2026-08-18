@@ -3,7 +3,7 @@ import { getAuth, signInAnonymously, type Auth } from "firebase/auth";
 import { get, getDatabase, onValue, ref, remove, runTransaction, set, type Database } from "firebase/database";
 import { DEFAULT_FIREBASE_ACCESS_MODEL, type FirebaseAccessModel } from "./firebaseAccessRules";
 import type { FirebaseWebAppConfig } from "./firebaseConfig";
-import type { ClaimRoomAccessInput, CreateRoomInput, DeleteRoomInput, LoadRoomInput, RealtimeSyncProvider, RemoteRoomSnapshot, SaveRoomInput, SubscribeRoomInput } from "./types";
+import type { ClaimRoomAccessInput, CreateRoomInput, DeleteRoomInput, LoadRoomInput, RealtimeSyncProvider, RemoteRoomSnapshot, SaveRoomInput, SubscribeRoomInput } from "../../rooms/types";
 
 const ROOM_COLLECTION = "appLabSyncRooms";
 const OWNER_COLLECTION = "appLabOwners";

@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { createMemoryCore } from "../core/memoryCore";
-import { ensureRemoteAppRooms } from "./appRooms";
-import { decryptRoomSnapshot } from "./crypto";
-import { createMemorySyncProvider } from "./memorySyncProvider";
+import { createMemoryCore } from "../../core/memoryCore";
+import { ensureRemoteAppRooms } from "../rooms/appRooms";
+import { decryptRoomSnapshot } from "../rooms/crypto";
+import { createMemorySyncProvider } from "../testing/memorySyncProvider";
 import { processSourceSyncQueue } from "./sourceSyncWorker";
 import { createMemorySyncQueueStore, enqueueSaveSource } from "./syncQueue";
-import { configureTestStorageProfile } from "./testStorageProfile";
-import type { RealtimeSyncProvider, SaveRoomInput } from "./types";
-import { createMemoryWorkspaceSyncStore, createWorkspaceSyncRegistry } from "./workspaceSync";
+import { configureTestStorageProfile } from "../testing/testStorageProfile";
+import type { RealtimeSyncProvider, SaveRoomInput } from "../rooms/types";
+import { createMemoryWorkspaceSyncStore, createWorkspaceSyncRegistry } from "../workspace/workspaceSync";
 
 describe("source sync worker", () => {
   it("saves queued source remotely, remembers the source room version, and removes completed work", async () => {

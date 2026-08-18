@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { createMemorySyncProvider } from "./memorySyncProvider";
+import { createMemorySyncProvider } from "../testing/memorySyncProvider";
 import { createMemorySyncQueueStore, enqueueSaveWorkspaceManifest } from "./syncQueue";
-import { configureTestStorageProfile } from "./testStorageProfile";
-import { createMemoryWorkspaceSyncStore, createWorkspaceSyncRegistry } from "./workspaceSync";
-import { createWorkspaceRecoveryMaterial, loadWorkspaceManifest } from "./workspaceManifest";
+import { configureTestStorageProfile } from "../testing/testStorageProfile";
+import { createMemoryWorkspaceSyncStore, createWorkspaceSyncRegistry } from "../workspace/workspaceSync";
+import { createWorkspaceRecoveryMaterial, loadWorkspaceManifest } from "../workspace/workspaceManifest";
 import { processWorkspaceManifestQueue } from "./workspaceManifestWorker";
 
 describe("workspace manifest worker", () => {

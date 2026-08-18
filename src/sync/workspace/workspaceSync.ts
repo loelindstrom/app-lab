@@ -1,8 +1,8 @@
-import type { AppId } from "../core";
-import { createRoomCapability } from "./crypto";
-import { createFirebaseOwnerSetupSecret, DEFAULT_FIREBASE_ACCESS_MODEL, type FirebaseAccessModel } from "./firebaseAccessRules";
-import { normalizeFirebaseDatabaseUrl, parseFirebaseWebAppConfig, type FirebaseWebAppConfig } from "./firebaseConfig";
-import type { RoomCapability } from "./types";
+import type { AppId } from "../../core";
+import { createFirebaseOwnerSetupSecret, DEFAULT_FIREBASE_ACCESS_MODEL, type FirebaseAccessModel } from "../providers/firebase/firebaseAccessRules";
+import { normalizeFirebaseDatabaseUrl, parseFirebaseWebAppConfig, type FirebaseWebAppConfig } from "../providers/firebase/firebaseConfig";
+import { createRoomCapability } from "../rooms/crypto";
+import type { RoomCapability } from "../rooms/types";
 
 const WORKSPACE_SYNC_SCHEMA_VERSION = 1;
 const LOCAL_STORAGE_KEY = "app-lab-workspace-sync-v1";

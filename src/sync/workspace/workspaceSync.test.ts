@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { createRoomCapability } from "./crypto";
-import { configureTestStorageProfile } from "./testStorageProfile";
+import { createRoomCapability } from "../rooms/crypto";
+import { configureTestStorageProfile } from "../testing/testStorageProfile";
 import { createMemoryWorkspaceSyncStore, createWorkspaceSyncRegistry } from "./workspaceSync";
 
 describe("workspace sync registry", () => {

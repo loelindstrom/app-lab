@@ -1,4 +1,4 @@
-import type { StorageProfile, WorkspaceSyncRegistry } from "./workspaceSync";
+import type { StorageProfile, WorkspaceSyncRegistry } from "../workspace/workspaceSync";
 
 const TEST_FIREBASE_DATABASE_URL = "https://example.firebaseio.com";
 const TEST_FIREBASE_API_KEY = "test-api-key";
@@ -22,4 +22,3 @@ export function configureTestStorageProfile(
     ownerSetupSecret: input.ownerSetupSecret ?? TEST_OWNER_SETUP_SECRET,
   });
 }
-

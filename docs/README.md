@@ -1,7 +1,31 @@
 # Developer Guide
 
-This is the technical map of App Lab. It starts with the vocabulary and top-level modules, then points to deeper documents only
-where the design needs more explanation than the code can provide.
+This is the technical map of App Lab. It starts with shared vocabulary and architecture goals, maps those goals to top-level
+modules, then points to deeper documents only where the design needs more explanation than the code can provide.
+
+## Contents
+
+- [Developer Guide](#developer-guide)
+  - [Contents](#contents)
+  - [Glossary](#glossary)
+    - [In The Workspace](#in-the-workspace)
+    - [Product Areas](#product-areas)
+    - [When Sync Is Enabled](#when-sync-is-enabled)
+  - [Architecture Goals](#architecture-goals)
+  - [Architecture Map](#architecture-map)
+  - [Modules](#modules)
+    - [1. `src/ui`](#1-srcui)
+    - [2. `src/runtime`](#2-srcruntime)
+    - [3. `src/core`](#3-srccore)
+    - [4. `src/sync`](#4-srcsync)
+    - [5. `src/ai`](#5-srcai)
+  - [Coordination Model](#coordination-model)
+  - [Engineering Guide](#engineering-guide)
+    - [Local Setup](#local-setup)
+    - [Verification](#verification)
+    - [Module Boundaries](#module-boundaries)
+    - [Compatibility](#compatibility)
+    - [Security And Deployment](#security-and-deployment)
 
 ## Glossary
 
@@ -23,16 +47,30 @@ where the design needs more explanation than the code can provide.
 
 ### When Sync Is Enabled
 
-- **Storage profile (`StorageProfile`):** The browser's connection to the user's storage provider (eg. Firebase).
+- **Storage profile (`StorageProfile`):** The browser's connection to the user's storage provider (e.g. Firebase).
 - **Sync room:** One encrypted remote unit containing a workspace manifest, app source, or app data.
 - **Owned app:** An app created in this workspace.
 - **Joined app:** An app imported from another person's invite.
 - **Workspace sync material (`WorkspaceRecoveryMaterial` in code):** Sensitive text that lets another browser restore and continue
   syncing the workspace.
 
+## Architecture Goals
+
+Three choices shape App Lab's architecture:
+
+1. **The local workspace must be useful on its own.** Persistence belongs to the browser; sync and AI services extend it only
+   when the user opts in.
+2. **Generated source must run without becoming trusted host code.** Apps need a narrow path to their own data while the rest of
+   the workspace and its configuration stay isolated.
+3. **Optional integrations must not spread through the application.** Provider-specific details stay behind sync and AI
+   contracts, and other modules interact with them only through those public boundaries.
+
+The product-area map below shows where those responsibilities live. The sections after it then zoom into each area and explain
+how work moves between them.
+
 ## Architecture Map
 
-App Lab is divided into different product areas. these are always in use:
+App Lab is divided into different product areas. These are always in use:
 
 1. **UI** is the menu and host around generated apps. It coordinates user actions across the other areas.
 2. **Runtime** is where generated app source runs and appears on screen. It only knows the values and callbacks supplied by UI.
@@ -41,8 +79,8 @@ App Lab is divided into different product areas. these are always in use:
 These areas are optional and in use if the user sets up integration to a storage provider (for sync) or a LLM provider (for AI):
 
 4. **Sync** extends App Lab's [local-first model](https://en.wikipedia.org/wiki/Local-first_software) with encrypted backup, app
-   sharing, and cross-device sync. E.g. via integration to Firebase Realtime Database external provider.
-5. **AI** lets App Lab's own agent update app source directly. Integration to LLM provider (e.g. OpenRouter) can connect the agent to the user's chosen LLM.
+   sharing, and cross-device sync through a storage provider (e.g. Firebase Realtime Database).
+5. **AI** lets App Lab's own agent update app source directly by connecting it to an LLM provider (e.g. OpenRouter).
 
 The diagram below has the above numbers written out. The arrows indicate how the different areas interact with each other.
 
@@ -65,11 +103,11 @@ flowchart TB
 
   subgraph integrations["Optional external services"]
     direction TB
-    subgraph aiBox["AI integration"]
-        openrouter["<b>OpenRouter</b>\nConnects App Lab to LLMs"]
+    subgraph aiBox["AI provider"]
+        openrouter["<b>LLM service</b>\nE.g. OpenRouter"]
     end
-    subgraph syncBox["Sync provider"]
-        firebase["<b>Firebase</b>\nStores encrypted rooms in RTDB"]
+    subgraph syncBox["Storage provider"]
+        firebase["<b>Remote storage</b>\nE.g. Firebase RTDB"]
     end
   end
 
@@ -92,6 +130,8 @@ flowchart TB
 
 **Owns:** React state, launcher and app views, tools, dialogs, and the ordering of local and optional remote actions.
 
+Keeping that coordination in UI lets runtime remain callback-driven and makes remote work an explicit extension of a local save.
+
 ### 2. `src/runtime`
 
 **Purpose:** Run generated source without giving it access to the host application.
@@ -99,11 +139,17 @@ flowchart TB
 **Owns:** Sandbox document construction, iframe capabilities, the `window.AppLab` bridge (which lets the sandboxed app communicate with the host via `postMessage` to save and subscribe to data changes), console forwarding, and host-compiled
 Tailwind support.
 
+The sandbox and narrow bridge are how generated code remains useful without becoming trusted host code.
+
+[Read the runtime design](./runtime.md)
+
 ### 3. `src/core`
 
 **Purpose:** Provide the local source of truth for apps and their JSON data.
 
 **Owns:** `AppLabCore`, app records, HTML metadata, IndexedDB persistence, and the in-memory test implementation.
+
+Keeping persistence here is what makes the workspace useful before sync or AI has been configured.
 
 ### 4. `src/sync`
 
@@ -111,6 +157,8 @@ Tailwind support.
 
 **Owns:** The public sync actions, local sync metadata, durable queues, encrypted rooms, provider adapters, invites, recovery, and
 conflict policy.
+
+Its facade and provider boundary add remote behavior without making core or UI depend on a particular storage provider.
 
 [Read the sync design](./sync.md)
 
@@ -120,11 +168,16 @@ conflict policy.
 
 **Owns:** AI configuration, per-app conversations, bounded model context, and the agent loop.
 
+Keeping the agent behind its own contract will make AI optional and keep model credentials away from generated apps.
+
 [Read the AI integration brief](./ai-integration.md)
 
-## Three Important Flows
+## Coordination Model
 
-Each flow keeps UI responsible for coordination while the modules retain their own rules:
+The architecture map explains what each product area owns. The flows below explain where a workflow is coordinated.
+
+`App.tsx` is the composition root: it creates one `AppLabCore`, uses it to create `WorkspaceSyncActions`, and passes both
+`AppLabCore` and `WorkspaceSyncActions` to UI. App Lab then uses explicit commands and callbacks rather than a global event bus:
 
 ```text
 Manual source edit (user clicks "Save" in source code view):
@@ -137,8 +190,14 @@ Generated app data (user clicks a button in app which changes app's data):
         runtime -> UI callback -> core -> sync
 ```
 
-Core is always the local source of truth. Sync writes remote changes through the same `AppLabCore` object that UI uses. UI updates
-React state after local commands and sync callbacks; IndexedDB is not treated as a general event bus.
+UI coordinates user-originated actions and updates React state. Sync coordinates provider-originated subscriptions, queue workers,
+and reconciliation; it writes accepted remote changes through the same `AppLabCore` object and then calls UI. Runtime only knows
+the app values and callbacks supplied to it.
+
+This flow preserves the architecture goals during actual use: edits reach the local source of truth first, generated code receives
+only narrow callbacks, and provider work enters through the sync contract. Core does not broadcast every IndexedDB write; keeping
+write origins explicit also avoids sync loops. As workflows grow, shared commands can be extracted from UI, but the module
+ownership and explicit flow should remain.
 
 ## Engineering Guide
 

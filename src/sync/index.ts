@@ -1,8 +1,8 @@
 import type { AppLabCore } from "../core";
-import { createAuthFirebaseRules, createFirebaseOwnerSetupSecret } from "./firebaseAccessRules";
-import { encodeAppInvite, readInviteFromHash } from "./invites";
-import { createIndexedDbSyncQueueStore } from "./syncQueue";
-import { createLocalStorageWorkspaceSyncStore, createWorkspaceSyncRegistry } from "./workspaceSync";
+import { createAuthFirebaseRules, createFirebaseOwnerSetupSecret } from "./providers/firebase/firebaseAccessRules";
+import { createIndexedDbSyncQueueStore } from "./queue/syncQueue";
+import { encodeAppInvite, readInviteFromHash } from "./sharing/invites";
+import { createLocalStorageWorkspaceSyncStore, createWorkspaceSyncRegistry } from "./workspace/workspaceSync";
 import { createWorkspaceSyncActions } from "./workspaceSyncActions";
 
 export { createAuthFirebaseRules, createFirebaseOwnerSetupSecret, encodeAppInvite, readInviteFromHash };
@@ -11,7 +11,7 @@ export type {
   AppSyncBadge,
   ConfigureStorageProfileInput,
   StorageProfile,
-} from "./workspaceSync";
+} from "./workspace/workspaceSync";
 export type {
   AppInvitePreview,
   PendingSyncOperation,

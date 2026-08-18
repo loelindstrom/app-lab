@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { createMemoryCore } from "../core/memoryCore";
-import { isRemoteAppDeletedError, loadRemoteAppRooms } from "./appRooms";
-import { createMemorySyncProvider } from "./memorySyncProvider";
+import { createMemoryCore } from "../../core/memoryCore";
+import { isRemoteAppDeletedError, loadRemoteAppRooms } from "../rooms/appRooms";
+import { createMemorySyncProvider } from "../testing/memorySyncProvider";
 import { processRoomLifecycleQueue } from "./roomLifecycleWorker";
 import { createMemorySyncQueueStore, enqueueDeleteOwnedApp, enqueueEnsureAppRooms } from "./syncQueue";
-import { configureTestStorageProfile } from "./testStorageProfile";
-import { createMemoryWorkspaceSyncStore, createWorkspaceSyncRegistry } from "./workspaceSync";
+import { configureTestStorageProfile } from "../testing/testStorageProfile";
+import { createMemoryWorkspaceSyncStore, createWorkspaceSyncRegistry } from "../workspace/workspaceSync";
 import { processOwnedAppDeletionQueue } from "./ownedAppDeletionWorker";
 
 describe("owned app deletion worker", () => {

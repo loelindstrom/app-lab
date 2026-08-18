@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { decryptRoomSnapshot } from "./crypto";
-import { createMemorySyncProvider } from "./memorySyncProvider";
+import { createMemorySyncProvider } from "../testing/memorySyncProvider";
 import { deleteRemoteAppRooms, ensureRemoteAppRooms, isRemoteAppDeletedError, loadRemoteAppRooms, saveRemoteAppData, saveRemoteAppSource } from "./appRooms";
-import { configureTestStorageProfile } from "./testStorageProfile";
-import { createMemoryWorkspaceSyncStore, createWorkspaceSyncRegistry } from "./workspaceSync";
-import type { AppRecord } from "../core/types";
+import { configureTestStorageProfile } from "../testing/testStorageProfile";
+import { createMemoryWorkspaceSyncStore, createWorkspaceSyncRegistry } from "../workspace/workspaceSync";
+import type { AppRecord } from "../../core/types";
 
 describe("app room sync", () => {
   it("creates source and data rooms for an owned app", async () => {

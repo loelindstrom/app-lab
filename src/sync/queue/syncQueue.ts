@@ -1,5 +1,5 @@
-import type { AppRecord, JsonValue } from "../core";
-import type { OwnedAppSyncRecord, PrivateCopySyncRecord } from "./workspaceSync";
+import type { AppRecord, JsonValue } from "../../core";
+import type { OwnedAppSyncRecord, PrivateCopySyncRecord } from "../workspace/workspaceSync";
 
 const QUEUE_DB_NAME = "app-lab-sync-queue-v1";
 const QUEUE_DB_VERSION = 1;

@@ -1,7 +1,7 @@
-import type { AppLabCore } from "../core";
-import { ensureRemoteAppRooms, loadRemoteAppRooms } from "./appRooms";
-import type { RealtimeSyncProvider } from "./types";
-import type { StorageProfile, WorkspaceSyncRegistry } from "./workspaceSync";
+import type { AppLabCore } from "../../core";
+import { ensureRemoteAppRooms, loadRemoteAppRooms } from "../rooms/appRooms";
+import type { RealtimeSyncProvider } from "../rooms/types";
+import type { StorageProfile, WorkspaceSyncRegistry } from "../workspace/workspaceSync";
 import { isQueueItemStaleSyncing, markQueueItemFailed, markQueueItemSyncing, type EnsureAppRoomsQueueItem, type SyncQueueStore } from "./syncQueue";
 
 export interface RoomLifecycleWorkerInput {

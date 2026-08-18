@@ -1,4 +1,4 @@
-import type { JsonValue } from "../core";
+import type { JsonValue } from "../../core";
 
 export type RoomType = "workspace-manifest" | "app-package" | "app-data";
 

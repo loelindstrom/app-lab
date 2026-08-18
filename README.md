@@ -43,7 +43,8 @@ Learn the local workflow first, then add Firebase only when you want backup, ano
 
 ### For Developers
 
-Start with the shared vocabulary and architecture map, then follow links into sync, AI, testing, compatibility, or deployment.
+Start with the shared vocabulary and architecture map, then follow links into runtime, sync, AI, testing, compatibility, or
+deployment.
 
 [Read the developer guide](./docs/README.md)
 

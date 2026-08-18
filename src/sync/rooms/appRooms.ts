@@ -1,6 +1,6 @@
-import type { AppRecord, JsonValue } from "../core";
+import type { AppRecord, JsonValue } from "../../core";
 import { decryptRoomSnapshot, encryptRoomPayload, rememberSnapshotVersion, roomReadToken, roomWriteToken } from "./crypto";
-import type { AppSyncRecord, OwnedAppSyncRecord, PrivateCopySyncRecord } from "./workspaceSync";
+import type { AppSyncRecord, OwnedAppSyncRecord, PrivateCopySyncRecord } from "../workspace/workspaceSync";
 import type { RealtimeSyncProvider, RoomCapability, RoomType } from "./types";
 
 export type AppPackageRoomPayload = ActiveAppPackageRoomPayload | DeletedAppPackageRoomPayload;

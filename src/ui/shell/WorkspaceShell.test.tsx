@@ -1,11 +1,11 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createMemoryCore } from "../../core/memoryCore";
-import { createRoomCapability } from "../../sync/crypto";
-import { encodeAppInvite } from "../../sync/invites";
-import { createMemorySyncQueueStore, enqueueSaveSource, resetSyncingQueueItems, type SyncQueueStore } from "../../sync/syncQueue";
-import { configureTestStorageProfile } from "../../sync/testStorageProfile";
-import { createMemoryWorkspaceSyncStore, createWorkspaceSyncRegistry, type WorkspaceSyncRegistry } from "../../sync/workspaceSync";
+import { createMemorySyncQueueStore, enqueueSaveSource, resetSyncingQueueItems, type SyncQueueStore } from "../../sync/queue/syncQueue";
+import { createRoomCapability } from "../../sync/rooms/crypto";
+import { encodeAppInvite } from "../../sync/sharing/invites";
+import { configureTestStorageProfile } from "../../sync/testing/testStorageProfile";
+import { createMemoryWorkspaceSyncStore, createWorkspaceSyncRegistry, type WorkspaceSyncRegistry } from "../../sync/workspace/workspaceSync";
 import type { WorkspaceSyncActions } from "../../sync";
 import { WorkspaceShell } from "./WorkspaceShell";
 

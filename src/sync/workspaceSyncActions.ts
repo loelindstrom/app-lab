@@ -1,11 +1,8 @@
 import type { AppLabCore, AppRecord, JsonValue } from "../core";
-import { isRemoteAppDeletedError, loadRemoteAppRooms, loadRemoteAppSource, saveRemoteAppData, saveRemoteAppSource } from "./appRooms";
-import { processAppDataSyncQueue } from "./appDataSyncWorker";
-import { decryptRoomSnapshot, rememberSnapshotVersion, roomReadToken, roomWriteToken } from "./crypto";
-import { createFirebaseRealtimeSyncProvider, createFirebaseSdkRealtimeDriver } from "./firebaseRealtimeProvider";
-import { processOwnedAppDeletionQueue } from "./ownedAppDeletionWorker";
-import { processRoomLifecycleQueue } from "./roomLifecycleWorker";
-import { processSourceSyncQueue } from "./sourceSyncWorker";
+import { processAppDataSyncQueue } from "./queue/appDataSyncWorker";
+import { processOwnedAppDeletionQueue } from "./queue/ownedAppDeletionWorker";
+import { processRoomLifecycleQueue } from "./queue/roomLifecycleWorker";
+import { processSourceSyncQueue } from "./queue/sourceSyncWorker";
 import {
   enqueueDeleteOwnedApp,
   enqueueEnsureAppRooms,
@@ -16,8 +13,12 @@ import {
   saveAppDataQueueId,
   saveSourceQueueId,
   type SyncQueueStore,
-} from "./syncQueue";
-import type { RealtimeSyncProvider } from "./types";
+} from "./queue/syncQueue";
+import { processWorkspaceManifestQueue } from "./queue/workspaceManifestWorker";
+import { createFirebaseRealtimeSyncProvider, createFirebaseSdkRealtimeDriver } from "./providers/firebase/firebaseRealtimeProvider";
+import { isRemoteAppDeletedError, loadRemoteAppRooms, loadRemoteAppSource, saveRemoteAppData, saveRemoteAppSource } from "./rooms/appRooms";
+import { decryptRoomSnapshot, rememberSnapshotVersion, roomReadToken, roomWriteToken } from "./rooms/crypto";
+import type { RealtimeSyncProvider } from "./rooms/types";
 import type {
   AppInvitePayload,
   AppSyncBadge,
@@ -26,7 +27,7 @@ import type {
   RemoteProviderReference,
   StorageProfile,
   WorkspaceSyncRegistry,
-} from "./workspaceSync";
+} from "./workspace/workspaceSync";
 import {
   createWorkspaceRecoveryMaterial,
   decodeWorkspaceRecoveryMaterial,
@@ -34,8 +35,7 @@ import {
   loadLatestWorkspaceManifest,
   loadWorkspaceManifest,
   readWorkspaceManifestSnapshot,
-} from "./workspaceManifest";
-import { processWorkspaceManifestQueue } from "./workspaceManifestWorker";
+} from "./workspace/workspaceManifest";
 
 interface WorkspaceSyncActionsInput {
   core: AppLabCore;

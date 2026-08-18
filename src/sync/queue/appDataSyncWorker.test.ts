@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { createMemoryCore } from "../core/memoryCore";
-import { ensureRemoteAppRooms, loadRemoteAppRooms, saveRemoteAppData } from "./appRooms";
-import { createMemorySyncProvider } from "./memorySyncProvider";
+import { createMemoryCore } from "../../core/memoryCore";
+import { ensureRemoteAppRooms, loadRemoteAppRooms, saveRemoteAppData } from "../rooms/appRooms";
+import { createMemorySyncProvider } from "../testing/memorySyncProvider";
 import { processAppDataSyncQueue } from "./appDataSyncWorker";
 import { createMemorySyncQueueStore, enqueueSaveAppData } from "./syncQueue";
-import { configureTestStorageProfile } from "./testStorageProfile";
-import { createMemoryWorkspaceSyncStore, createWorkspaceSyncRegistry } from "./workspaceSync";
+import { configureTestStorageProfile } from "../testing/testStorageProfile";
+import { createMemoryWorkspaceSyncStore, createWorkspaceSyncRegistry } from "../workspace/workspaceSync";
 
 describe("app data sync worker", () => {
   it("saves queued app data remotely, remembers the data room version, and removes completed work", async () => {

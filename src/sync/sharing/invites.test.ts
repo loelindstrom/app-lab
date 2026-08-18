@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { createRoomCapability } from "./crypto";
+import { createRoomCapability } from "../rooms/crypto";
 import { decodeAppInvite, encodeAppInvite, readInviteFromHash } from "./invites";
-import type { AppInvitePayload } from "./workspaceSync";
+import type { AppInvitePayload } from "../workspace/workspaceSync";
 
 describe("app invite encoding", () => {
   it("round-trips app invites through URL hash payloads", () => {

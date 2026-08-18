@@ -1,5 +1,5 @@
-import { normalizeJsonValue } from "../jsonData";
-import type { JsonValue } from "../core";
+import type { JsonValue } from "../../core";
+import { normalizeJsonValue } from "../../jsonData";
 import type { DecryptRoomPayloadInput, DecryptRoomSnapshotInput, EncryptRoomPayloadInput, RoomCapability } from "./types";
 
 const ENCRYPTED_ROOM_SCHEMA_VERSION = 1;
