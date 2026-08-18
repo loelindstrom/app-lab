@@ -7,24 +7,23 @@ where the design needs more explanation than the code can provide.
 
 ### In The Workspace
 
+- **Host:** The App Lab interface surrounding the generated apps.
 - **Workspace:** The collection of apps kept together by App Lab.
-- **App / generated app:** One HTML source document and its app-owned JSON data. “Generated” emphasizes that the source may come
-  from AI; both terms refer to the same app.
-- **Host:** The App Lab interface surrounding the generated app.
+- **App / generated app:** The apps that the user creates or generates with AI in AppLab.
 - **App source:** The complete HTML document that defines an app.
 - **App data:** The JSON an app saves through `window.AppLab`.
 
 ### Product Areas
 
 - **UI (`src/ui`):** The host interface and coordinator for user actions.
-- **Runtime (`src/runtime`):** The sandbox where generated source runs and communicates through `window.AppLab`.
-- **Core (`src/core`):** The `AppLabCore` contract and local persistence implementation.
+- **Runtime (`src/runtime`):** The sandbox (iFrame) where generated source runs and communicates through `window.AppLab`.
+- **Core (`src/core`):** The `AppLabCore` contract for local persistence (IndexedDB) implementation.
 - **Sync (`src/sync`):** Optional backup, sharing, and cross-device synchronization through `WorkspaceSyncActions`.
 - **AI (`src/ai`):** The agent, AI conversation, and connection to an LLM.
 
 ### When Sync Is Enabled
 
-- **Storage profile (`StorageProfile`):** This browser's connection to the user's Firebase project.
+- **Storage profile (`StorageProfile`):** The browser's connection to the user's storage provider (eg. Firebase).
 - **Sync room:** One encrypted remote unit containing a workspace manifest, app source, or app data.
 - **Owned app:** An app created in this workspace.
 - **Joined app:** An app imported from another person's invite.
@@ -33,20 +32,19 @@ where the design needs more explanation than the code can provide.
 
 ## Architecture Map
 
-App Lab is divided into five product areas. Three are always in use:
+App Lab is divided into different product areas. these are always in use:
 
 1. **UI** is the menu and host around generated apps. It coordinates user actions across the other areas.
 2. **Runtime** is where generated app source runs and appears on screen. It only knows the values and callbacks supplied by UI.
 3. **Core** stores app source, app data, and app metadata locally in IndexedDB.
 
-Two areas are optional:
+These areas are optional and in use if the user sets up integration to a storage provider (for sync) or a LLM provider (for AI):
 
 4. **Sync** extends App Lab's [local-first model](https://en.wikipedia.org/wiki/Local-first_software) with encrypted backup, app
-   sharing, and cross-device sync. Firebase Realtime Database is the current external provider.
-5. **AI** lets App Lab's own agent update app source directly. OpenRouter can connect the agent to the user's chosen LLM.
+   sharing, and cross-device sync. E.g. via integration to Firebase Realtime Database external provider.
+5. **AI** lets App Lab's own agent update app source directly. Integration to LLM provider (e.g. OpenRouter) can connect the agent to the user's chosen LLM.
 
-The diagram uses the same numbers. It also shows the manual AI workflow, which works by copying prompt and source out of App Lab
-and then pasting the result back. Arrows represent deliberate interaction between product areas, not every callback or type import.
+The diagram below has the above numbers written out. The arrows indicate how the different areas interact with each other.
 
 ```mermaid
 flowchart TB
@@ -98,7 +96,7 @@ flowchart TB
 
 **Purpose:** Run generated source without giving it access to the host application.
 
-**Owns:** Sandbox document construction, iframe capabilities, the `window.AppLab` bridge, console forwarding, and host-compiled
+**Owns:** Sandbox document construction, iframe capabilities, the `window.AppLab` bridge (which lets the sandboxed app communicate with the host via `postMessage` to save and subscribe to data changes), console forwarding, and host-compiled
 Tailwind support.
 
 ### 3. `src/core`
@@ -118,7 +116,7 @@ conflict policy.
 
 ### 5. `src/ai`
 
-**Purpose:** Bring the current external-AI workflow into App Lab through OpenRouter.
+**Purpose:** Bring the current external-AI workflow into App Lab through an LLM provider (e.g. OpenRouter).
 
 **Owns:** AI configuration, per-app conversations, bounded model context, and the agent loop.
 
@@ -129,9 +127,14 @@ conflict policy.
 Each flow keeps UI responsible for coordination while the modules retain their own rules:
 
 ```text
-Manual source edit   UI -> runtime compiler -> core -> sync
-Remote source update Firebase -> sync -> core -> UI -> runtime
-Generated app data   runtime -> UI callback -> core -> sync
+Manual source edit (user clicks "Save" in source code view):
+      UI -> runtime compiler -> core -> sync
+
+Remote source update (e.g. another user makes a change to the source code of an app):
+      Storage provider (e.g. Firebase) -> sync -> core -> UI -> runtime
+
+Generated app data (user clicks a button in app which changes app's data):
+        runtime -> UI callback -> core -> sync
 ```
 
 Core is always the local source of truth. Sync writes remote changes through the same `AppLabCore` object that UI uses. UI updates
