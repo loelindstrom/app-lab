@@ -30,6 +30,10 @@ write-token hash checks and optimistic version checks for normal App Lab clients
 client can still write syntactically valid room records for rooms they can access. App invites are therefore full-access bearer
 material for the shared app rooms, not read-only links.
 
+Previewing an app invite is not a local import: it does not save the app source or data into the workspace. Under `auth-v1`, preview
+does still claim Firebase membership for the invite's source room so App Lab can load and decrypt the app metadata before the user
+chooses whether to import.
+
 ## Secret Material
 
 | Material | Where it lives | What compromise means |
