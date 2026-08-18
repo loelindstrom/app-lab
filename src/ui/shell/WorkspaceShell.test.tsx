@@ -3,10 +3,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createMemoryCore } from "../../core/memoryCore";
 import { createRoomCapability } from "../../sync/crypto";
 import { encodeAppInvite } from "../../sync/invites";
-import { createMemorySyncQueueStore, enqueueSaveSource } from "../../sync/syncQueue";
+import { createMemorySyncQueueStore, enqueueSaveSource, resetSyncingQueueItems, type SyncQueueStore } from "../../sync/syncQueue";
 import { configureTestStorageProfile } from "../../sync/testStorageProfile";
-import { createMemoryWorkspaceSyncStore, createWorkspaceSyncRegistry } from "../../sync/workspaceSync";
-import type { WorkspaceSyncActions } from "../../sync/workspaceSyncActions";
+import { createMemoryWorkspaceSyncStore, createWorkspaceSyncRegistry, type WorkspaceSyncRegistry } from "../../sync/workspaceSync";
+import type { WorkspaceSyncActions } from "../../sync";
 import { WorkspaceShell } from "./WorkspaceShell";
 
 describe("WorkspaceShell sync wake-ups", () => {
@@ -22,9 +22,7 @@ describe("WorkspaceShell sync wake-ups", () => {
     render(
       <WorkspaceShell
         core={createMemoryCore()}
-        syncActionsOverride={syncActions}
-        syncQueueStore={createMemorySyncQueueStore()}
-        syncRegistry={createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore())}
+        syncActions={syncActions}
       />,
     );
 
@@ -41,9 +39,7 @@ describe("WorkspaceShell sync wake-ups", () => {
     render(
       <WorkspaceShell
         core={createMemoryCore()}
-        syncActionsOverride={syncActions}
-        syncQueueStore={createMemorySyncQueueStore()}
-        syncRegistry={createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore())}
+        syncActions={syncActions}
       />,
     );
 
@@ -69,9 +65,7 @@ describe("WorkspaceShell sync wake-ups", () => {
     render(
       <WorkspaceShell
         core={createMemoryCore()}
-        syncActionsOverride={syncActions}
-        syncQueueStore={createMemorySyncQueueStore()}
-        syncRegistry={createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore())}
+        syncActions={syncActions}
       />,
     );
 
@@ -92,7 +86,6 @@ describe("WorkspaceShell sync wake-ups", () => {
   });
 
   it("shows queued sync health separately from the app relationship label", async () => {
-    const syncActions = createSyncActionsStub();
     const core = createMemoryCore();
     const app = await core.createBlankApp();
     const queueStore = createMemorySyncQueueStore();
@@ -100,13 +93,12 @@ describe("WorkspaceShell sync wake-ups", () => {
     await configureTestStorageProfile(syncRegistry);
     await syncRegistry.ensureOwnedAppRooms(app.appId);
     await enqueueSaveSource(queueStore, app);
+    const syncActions = createSyncActionsStub({ queueStore, syncRegistry });
 
     render(
       <WorkspaceShell
         core={core}
-        syncActionsOverride={syncActions}
-        syncQueueStore={queueStore}
-        syncRegistry={syncRegistry}
+        syncActions={syncActions}
       />,
     );
 
@@ -115,7 +107,6 @@ describe("WorkspaceShell sync wake-ups", () => {
   });
 
   it("shows offline sync health for queued work when the browser reports offline", async () => {
-    const syncActions = createSyncActionsStub();
     const core = createMemoryCore();
     const app = await core.createBlankApp();
     const queueStore = createMemorySyncQueueStore();
@@ -123,13 +114,12 @@ describe("WorkspaceShell sync wake-ups", () => {
     await configureTestStorageProfile(syncRegistry);
     await syncRegistry.ensureOwnedAppRooms(app.appId);
     await enqueueSaveSource(queueStore, app);
+    const syncActions = createSyncActionsStub({ queueStore, syncRegistry });
 
     render(
       <WorkspaceShell
         core={core}
-        syncActionsOverride={syncActions}
-        syncQueueStore={queueStore}
-        syncRegistry={syncRegistry}
+        syncActions={syncActions}
       />,
     );
 
@@ -139,11 +129,6 @@ describe("WorkspaceShell sync wake-ups", () => {
   });
 
   it("shows offline sync health for queued work when the storage provider reports disconnected", async () => {
-    const syncActions = createSyncActionsStub();
-    vi.mocked(syncActions.subscribeStorageConnection).mockImplementation(async (onChange) => {
-      onChange(false);
-      return () => {};
-    });
     const core = createMemoryCore();
     const app = await core.createBlankApp();
     const queueStore = createMemorySyncQueueStore();
@@ -151,13 +136,16 @@ describe("WorkspaceShell sync wake-ups", () => {
     await configureTestStorageProfile(syncRegistry);
     await syncRegistry.ensureOwnedAppRooms(app.appId);
     await enqueueSaveSource(queueStore, app);
+    const syncActions = createSyncActionsStub({ queueStore, syncRegistry });
+    vi.mocked(syncActions.subscribeStorageConnection).mockImplementation(async (onChange) => {
+      onChange(false);
+      return () => {};
+    });
 
     render(
       <WorkspaceShell
         core={core}
-        syncActionsOverride={syncActions}
-        syncQueueStore={queueStore}
-        syncRegistry={syncRegistry}
+        syncActions={syncActions}
       />,
     );
 
@@ -177,9 +165,7 @@ describe("WorkspaceShell sync wake-ups", () => {
     render(
       <WorkspaceShell
         core={core}
-        syncActionsOverride={syncActions}
-        syncQueueStore={createMemorySyncQueueStore()}
-        syncRegistry={createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore())}
+        syncActions={syncActions}
       />,
     );
 
@@ -202,9 +188,7 @@ describe("WorkspaceShell sync wake-ups", () => {
     render(
       <WorkspaceShell
         core={core}
-        syncActionsOverride={syncActions}
-        syncQueueStore={createMemorySyncQueueStore()}
-        syncRegistry={createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore())}
+        syncActions={syncActions}
       />,
     );
 
@@ -230,9 +214,7 @@ describe("WorkspaceShell sync wake-ups", () => {
     render(
       <WorkspaceShell
         core={core}
-        syncActionsOverride={syncActions}
-        syncQueueStore={createMemorySyncQueueStore()}
-        syncRegistry={createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore())}
+        syncActions={syncActions}
       />,
     );
 
@@ -288,9 +270,7 @@ describe("WorkspaceShell sync wake-ups", () => {
     render(
       <WorkspaceShell
         core={core}
-        syncActionsOverride={syncActions}
-        syncQueueStore={createMemorySyncQueueStore()}
-        syncRegistry={createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore())}
+        syncActions={syncActions}
       />,
     );
 
@@ -344,9 +324,7 @@ describe("WorkspaceShell sync wake-ups", () => {
     render(
       <WorkspaceShell
         core={core}
-        syncActionsOverride={syncActions}
-        syncQueueStore={createMemorySyncQueueStore()}
-        syncRegistry={createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore())}
+        syncActions={syncActions}
       />,
     );
 
@@ -369,9 +347,7 @@ describe("WorkspaceShell sync wake-ups", () => {
     render(
       <WorkspaceShell
         core={createMemoryCore()}
-        syncActionsOverride={syncActions}
-        syncQueueStore={createMemorySyncQueueStore()}
-        syncRegistry={createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore())}
+        syncActions={syncActions}
       />,
     );
 
@@ -397,9 +373,7 @@ describe("WorkspaceShell sync wake-ups", () => {
     render(
       <WorkspaceShell
         core={createMemoryCore()}
-        syncActionsOverride={syncActions}
-        syncQueueStore={createMemorySyncQueueStore()}
-        syncRegistry={createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore())}
+        syncActions={syncActions}
       />,
     );
 
@@ -417,9 +391,7 @@ describe("WorkspaceShell sync wake-ups", () => {
     render(
       <WorkspaceShell
         core={createMemoryCore()}
-        syncActionsOverride={syncActions}
-        syncQueueStore={createMemorySyncQueueStore()}
-        syncRegistry={createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore())}
+        syncActions={syncActions}
       />,
     );
 
@@ -437,16 +409,14 @@ describe("WorkspaceShell sync wake-ups", () => {
   });
 
   it("blocks syncing device material when this browser already has a storage profile", async () => {
-    const syncActions = createSyncActionsStub();
     const syncRegistry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
     await configureTestStorageProfile(syncRegistry);
+    const syncActions = createSyncActionsStub({ syncRegistry });
 
     render(
       <WorkspaceShell
         core={createMemoryCore()}
-        syncActionsOverride={syncActions}
-        syncQueueStore={createMemorySyncQueueStore()}
-        syncRegistry={syncRegistry}
+        syncActions={syncActions}
       />,
     );
 
@@ -493,9 +463,7 @@ describe("WorkspaceShell sync wake-ups", () => {
     render(
       <WorkspaceShell
         core={createMemoryCore()}
-        syncActionsOverride={syncActions}
-        syncQueueStore={createMemorySyncQueueStore()}
-        syncRegistry={createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore())}
+        syncActions={syncActions}
       />,
     );
 
@@ -528,9 +496,7 @@ describe("WorkspaceShell sync wake-ups", () => {
     render(
       <WorkspaceShell
         core={createMemoryCore()}
-        syncActionsOverride={syncActions}
-        syncQueueStore={createMemorySyncQueueStore()}
-        syncRegistry={createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore())}
+        syncActions={syncActions}
       />,
     );
 
@@ -548,9 +514,16 @@ describe("WorkspaceShell sync wake-ups", () => {
   });
 });
 
-function createSyncActionsStub(): WorkspaceSyncActions {
+function createSyncActionsStub(
+  input: { queueStore?: SyncQueueStore; syncRegistry?: WorkspaceSyncRegistry } = {},
+): WorkspaceSyncActions {
+  const queueStore = input.queueStore ?? createMemorySyncQueueStore();
+  const syncRegistry = input.syncRegistry ?? createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
+
   return {
     backUpLocalApps: vi.fn().mockResolvedValue(undefined),
+    clearStorageProfile: vi.fn(() => syncRegistry.clearStorageProfile()),
+    configureStorageProfile: vi.fn((profileInput) => syncRegistry.configureStorageProfile(profileInput)),
     createInvite: vi.fn(),
     deleteSyncedAppRooms: vi.fn().mockResolvedValue(undefined),
     ensureAppBackedUp: vi.fn().mockResolvedValue(undefined),
@@ -560,7 +533,24 @@ function createSyncActionsStub(): WorkspaceSyncActions {
     flushWorkspaceManifestQueue: vi.fn().mockResolvedValue(undefined),
     flushRoomLifecycleQueue: vi.fn().mockResolvedValue(undefined),
     flushSourceSyncQueue: vi.fn().mockResolvedValue(undefined),
+    getWorkspaceSyncOverview: vi.fn(async (appIds) => {
+      const [appBadges, queueItems, syncState] = await Promise.all([
+        syncRegistry.listAppSyncBadges(appIds),
+        queueStore.listItems(),
+        syncRegistry.getState(),
+      ]);
+      return {
+        appBadges,
+        pendingOperations: queueItems.map(({ appId, kind, lastError, status }) => ({ appId, kind, lastError, status })),
+        storageProfile: syncState.storageProfile,
+        workspaceManifestRoomId: syncState.manifestRoom?.roomId ?? null,
+      };
+    }),
     importInvite: vi.fn().mockResolvedValue(undefined),
+    initializeWorkspaceSync: vi.fn(async () => {
+      await resetSyncingQueueItems(queueStore);
+      return { storageConfigured: Boolean(await syncRegistry.getStorageProfile()) };
+    }),
     noteLocalAppDataEdit: vi.fn(),
     previewInvite: vi.fn(),
     pullLatestAppRooms: vi.fn().mockResolvedValue({}),
@@ -568,6 +558,7 @@ function createSyncActionsStub(): WorkspaceSyncActions {
     pushAppData: vi.fn().mockResolvedValue(undefined),
     pushAppSource: vi.fn().mockResolvedValue(undefined),
     queueWorkspaceManifestSave: vi.fn().mockResolvedValue(undefined),
+    removeLocalAppSync: vi.fn((appId) => syncRegistry.removeLocalAppSync(appId)),
     restoreWorkspaceRecovery: vi.fn().mockResolvedValue(undefined),
     subscribeAppData: vi.fn().mockResolvedValue(() => {}),
     subscribeAppSource: vi.fn().mockResolvedValue(() => {}),

@@ -1,19 +1,29 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createAlpineExampleAppInput } from "../../core/alpineExampleApp";
-import type { AppLabCore, AppRecord, AppSummary, CreateAppInput, JsonValue } from "../../core/types";
-import { encodeAppInvite, readInviteFromHash } from "../../sync/invites";
-import type { RemoteDataChange, SandboxConsoleEntry } from "../../runtime/SandboxFrame";
-import { SandboxFrame } from "../../runtime/SandboxFrame";
-import { compileAppStyles } from "../../runtime/tailwindCompiler";
-import type {
-  AppInvitePayload,
-  AppSyncBadge,
-  ConfigureStorageProfileInput,
-  StorageProfile,
-  WorkspaceSyncRegistry,
-} from "../../sync/workspaceSync";
-import { resetSyncingQueueItems, type PendingSyncItem, type SyncQueueStore } from "../../sync/syncQueue";
-import { createWorkspaceSyncActions, type AppInvitePreview, type WorkspaceSyncActions } from "../../sync/workspaceSyncActions";
+import {
+  createAlpineExampleAppInput,
+  type AppLabCore,
+  type AppRecord,
+  type AppSummary,
+  type CreateAppInput,
+  type JsonValue,
+} from "../../core";
+import {
+  compileAppStyles,
+  SandboxFrame,
+  type RemoteDataChange,
+  type SandboxConsoleEntry,
+} from "../../runtime";
+import {
+  encodeAppInvite,
+  readInviteFromHash,
+  type AppInvitePayload,
+  type AppInvitePreview,
+  type AppSyncBadge,
+  type ConfigureStorageProfileInput,
+  type PendingSyncOperation,
+  type StorageProfile,
+  type WorkspaceSyncActions,
+} from "../../sync";
 import { SettingsDialog } from "../dialogs/SettingsDialog";
 import { ToolPanelMode, WorkspaceToolPanel } from "../tools/WorkspaceToolPanel";
 
@@ -30,12 +40,10 @@ interface AppSyncHealth {
 
 interface WorkspaceShellProps {
   core: AppLabCore;
-  syncActionsOverride?: WorkspaceSyncActions;
-  syncQueueStore: SyncQueueStore;
-  syncRegistry: WorkspaceSyncRegistry;
+  syncActions: WorkspaceSyncActions;
 }
 
-export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, syncRegistry }: WorkspaceShellProps) {
+export function WorkspaceShell({ core, syncActions }: WorkspaceShellProps) {
   const [apps, setApps] = useState<AppSummary[]>([]);
   const [syncBadges, setSyncBadges] = useState<Record<string, AppSyncBadge>>({});
   const [syncHealth, setSyncHealth] = useState<Record<string, AppSyncHealth>>({});
@@ -56,8 +64,6 @@ export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, sync
   const [sandboxReloadKey, setSandboxReloadKey] = useState(0);
   const browserOnlineRef = useRef(navigator.onLine);
   const providerOnlineRef = useRef<boolean | null>(null);
-  const defaultSyncActions = useMemo(() => createWorkspaceSyncActions({ core, queueStore: syncQueueStore, syncRegistry }), [core, syncQueueStore, syncRegistry]);
-  const syncActions = syncActionsOverride ?? defaultSyncActions;
 
   function isSyncReachable() {
     return browserOnlineRef.current && providerOnlineRef.current !== false;
@@ -110,9 +116,8 @@ export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, sync
     }
 
     async function startSyncWakeups() {
-      await resetSyncingQueueItems(syncQueueStore);
-      const profile = await syncRegistry.getStorageProfile();
-      if (!profile) {
+      const { storageConfigured } = await syncActions.initializeWorkspaceSync();
+      if (!storageConfigured) {
         void wakePendingSync(isSyncReachable());
         return;
       }
@@ -142,7 +147,7 @@ export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, sync
       window.removeEventListener("focus", wakeIfFocused);
       document.removeEventListener("visibilitychange", wakeIfVisible);
     };
-  }, [storageProfile?.profileId, storageProfile?.databaseUrl, syncActions, syncQueueStore, syncRegistry, workspaceManifestRoomId]);
+  }, [storageProfile?.profileId, storageProfile?.databaseUrl, syncActions, workspaceManifestRoomId]);
 
   useEffect(() => {
     function readHashInvite() {
@@ -214,14 +219,12 @@ export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, sync
 
   async function refreshApps(online = isSyncReachable()) {
     const nextApps = await core.listApps();
-    const nextBadges = await syncRegistry.listAppSyncBadges(nextApps.map((app) => app.appId));
-    const queueItems = await syncQueueStore.listItems();
+    const syncOverview = await syncActions.getWorkspaceSyncOverview(nextApps.map((app) => app.appId));
     setApps(nextApps);
-    setSyncBadges(nextBadges);
-    setSyncHealth(buildAppSyncHealthMap({ apps: nextApps, badges: nextBadges, isOnline: online, queueItems }));
-    const syncState = await syncRegistry.getState();
-    setStorageProfile(syncState.storageProfile);
-    setWorkspaceManifestRoomId(syncState.manifestRoom?.roomId ?? null);
+    setSyncBadges(syncOverview.appBadges);
+    setSyncHealth(buildAppSyncHealthMap({ apps: nextApps, badges: syncOverview.appBadges, isOnline: online, queueItems: syncOverview.pendingOperations }));
+    setStorageProfile(syncOverview.storageProfile);
+    setWorkspaceManifestRoomId(syncOverview.workspaceManifestRoomId);
   }
 
   async function openApp(appId: string) {
@@ -383,7 +386,7 @@ export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, sync
             onDeleteApp={async (appId) => {
               await syncActions.deleteSyncedAppRooms(appId);
               await core.deleteApp(appId);
-              await syncRegistry.removeLocalAppSync(appId);
+              await syncActions.removeLocalAppSync(appId);
               await syncActions.queueWorkspaceManifestSave();
               void syncActions.flushWorkspaceManifestQueue();
               await refreshApps();
@@ -473,12 +476,12 @@ export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, sync
         isOpen={settingsOpen}
         storageProfile={storageProfile}
         onClearStorageProfile={async () => {
-          await syncRegistry.clearStorageProfile();
+          await syncActions.clearStorageProfile();
           await refreshApps();
         }}
         onClose={() => setSettingsOpen(false)}
         onConfigureStorageProfile={async (input: ConfigureStorageProfileInput) => {
-          await syncRegistry.configureStorageProfile(input);
+          await syncActions.configureStorageProfile(input);
           await trySync("Storage configured locally. Remote backup failed", () => syncActions.backUpLocalApps());
           await refreshApps();
         }}
@@ -782,7 +785,7 @@ function buildAppSyncHealthMap(input: {
   apps: AppSummary[];
   badges: Record<string, AppSyncBadge>;
   isOnline: boolean;
-  queueItems: PendingSyncItem[];
+  queueItems: PendingSyncOperation[];
 }): Record<string, AppSyncHealth> {
   return Object.fromEntries(
     input.apps.map((app) => {
@@ -793,7 +796,7 @@ function buildAppSyncHealthMap(input: {
   );
 }
 
-function describeAppSyncHealth(input: { badge?: AppSyncBadge; isOnline: boolean; items: PendingSyncItem[] }): AppSyncHealth {
+function describeAppSyncHealth(input: { badge?: AppSyncBadge; isOnline: boolean; items: PendingSyncOperation[] }): AppSyncHealth {
   if (input.badge?.kind === "local-only") return { kind: "none", label: "", title: "", tone: "neutral" };
   if (input.badge?.kind === "needs-attention") {
     return {
@@ -973,7 +976,7 @@ function CloudSyncIcon({ kind }: { kind: AppSyncHealthKind }) {
   );
 }
 
-function formatQueueKind(kind: PendingSyncItem["kind"]): string {
+function formatQueueKind(kind: PendingSyncOperation["kind"]): string {
   if (kind === "ensure-app-rooms") return "app rooms";
   if (kind === "save-source") return "source code";
   if (kind === "save-app-data") return "app data";

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeJsonValue } from "./jsonData";
+import { normalizeJsonValue } from "../jsonData";
 import { createMemoryCore } from "./memoryCore";
 
 describe("createMemoryCore", () => {

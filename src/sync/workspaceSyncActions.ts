@@ -1,4 +1,4 @@
-import type { AppLabCore, AppRecord, JsonValue } from "../core/types";
+import type { AppLabCore, AppRecord, JsonValue } from "../core";
 import { isRemoteAppDeletedError, loadRemoteAppRooms, loadRemoteAppSource, saveRemoteAppData, saveRemoteAppSource } from "./appRooms";
 import { processAppDataSyncQueue } from "./appDataSyncWorker";
 import { decryptRoomSnapshot, rememberSnapshotVersion, roomReadToken, roomWriteToken } from "./crypto";
@@ -12,12 +12,21 @@ import {
   enqueueSaveAppData,
   enqueueSaveSource,
   enqueueSaveWorkspaceManifest,
+  resetSyncingQueueItems,
   saveAppDataQueueId,
   saveSourceQueueId,
   type SyncQueueStore,
 } from "./syncQueue";
 import type { RealtimeSyncProvider } from "./types";
-import type { AppInvitePayload, AppSyncRecord, RemoteProviderReference, StorageProfile, WorkspaceSyncRegistry } from "./workspaceSync";
+import type {
+  AppInvitePayload,
+  AppSyncBadge,
+  AppSyncRecord,
+  ConfigureStorageProfileInput,
+  RemoteProviderReference,
+  StorageProfile,
+  WorkspaceSyncRegistry,
+} from "./workspaceSync";
 import {
   createWorkspaceRecoveryMaterial,
   decodeWorkspaceRecoveryMaterial,
@@ -69,6 +78,22 @@ export interface WorkspaceManifestChange {
   appIdsDeleted: string[];
 }
 
+export type PendingSyncOperationKind = "delete-owned-app" | "ensure-app-rooms" | "save-app-data" | "save-source" | "save-workspace-manifest";
+
+export interface PendingSyncOperation {
+  appId: string;
+  kind: PendingSyncOperationKind;
+  lastError?: string;
+  status: "pending" | "problem" | "syncing";
+}
+
+export interface WorkspaceSyncOverview {
+  appBadges: Record<string, AppSyncBadge>;
+  pendingOperations: PendingSyncOperation[];
+  storageProfile: StorageProfile | null;
+  workspaceManifestRoomId: string | null;
+}
+
 export type WorkspaceSyncActions = ReturnType<typeof createWorkspaceSyncActions>;
 
 export function createWorkspaceSyncActions(input: WorkspaceSyncActionsInput) {
@@ -86,6 +111,37 @@ export function createWorkspaceSyncActions(input: WorkspaceSyncActionsInput) {
   let deletionFlushAgain = false;
   let deletionFlushPromise: Promise<void> | null = null;
   const localAppDataWriteBarriers = new Map<string, number>();
+
+  async function initializeWorkspaceSync(): Promise<{ storageConfigured: boolean }> {
+    await resetSyncingQueueItems(queueStore);
+    return { storageConfigured: Boolean(await syncRegistry.getStorageProfile()) };
+  }
+
+  async function getWorkspaceSyncOverview(appIds: string[]): Promise<WorkspaceSyncOverview> {
+    const [appBadges, queueItems, syncState] = await Promise.all([
+      syncRegistry.listAppSyncBadges(appIds),
+      queueStore.listItems(),
+      syncRegistry.getState(),
+    ]);
+    return {
+      appBadges,
+      pendingOperations: queueItems.map(({ appId, kind, lastError, status }) => ({ appId, kind, lastError, status })),
+      storageProfile: syncState.storageProfile,
+      workspaceManifestRoomId: syncState.manifestRoom?.roomId ?? null,
+    };
+  }
+
+  async function configureStorageProfile(input: ConfigureStorageProfileInput): Promise<StorageProfile> {
+    return syncRegistry.configureStorageProfile(input);
+  }
+
+  async function clearStorageProfile(): Promise<void> {
+    await syncRegistry.clearStorageProfile();
+  }
+
+  async function removeLocalAppSync(appId: string): Promise<void> {
+    await syncRegistry.removeLocalAppSync(appId);
+  }
 
   async function createInvite(appId: string): Promise<AppInvitePayload> {
     const app = await core.getApp(appId);
@@ -717,6 +773,8 @@ export function createWorkspaceSyncActions(input: WorkspaceSyncActionsInput) {
 
   return {
     backUpLocalApps,
+    clearStorageProfile,
+    configureStorageProfile,
     createInvite,
     deleteSyncedAppRooms,
     ensureAppBackedUp,
@@ -726,7 +784,9 @@ export function createWorkspaceSyncActions(input: WorkspaceSyncActionsInput) {
     flushWorkspaceManifestQueue,
     flushSourceSyncQueue,
     flushRoomLifecycleQueue,
+    getWorkspaceSyncOverview,
     importInvite,
+    initializeWorkspaceSync,
     noteLocalAppDataEdit,
     previewInvite,
     pullLatestAppRooms,
@@ -734,6 +794,7 @@ export function createWorkspaceSyncActions(input: WorkspaceSyncActionsInput) {
     pushAppData,
     pushAppSource,
     queueWorkspaceManifestSave,
+    removeLocalAppSync,
     restoreWorkspaceRecovery,
     subscribeAppData,
     subscribeAppSource,

@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { createAuthFirebaseRules, createFirebaseOwnerSetupSecret } from "../../sync/firebaseAccessRules";
-import type { ConfigureStorageProfileInput, StorageProfile } from "../../sync/workspaceSync";
+import { createAuthFirebaseRules, createFirebaseOwnerSetupSecret, type ConfigureStorageProfileInput, type StorageProfile } from "../../sync";
 
 interface SettingsDialogProps {
   isOpen: boolean;

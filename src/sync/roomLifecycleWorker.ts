@@ -1,4 +1,4 @@
-import type { AppLabCore } from "../core/types";
+import type { AppLabCore } from "../core";
 import { ensureRemoteAppRooms, loadRemoteAppRooms } from "./appRooms";
 import type { RealtimeSyncProvider } from "./types";
 import type { StorageProfile, WorkspaceSyncRegistry } from "./workspaceSync";

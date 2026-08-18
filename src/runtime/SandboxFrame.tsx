@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { AppRecord, JsonValue } from "../core/types";
+import type { AppRecord, JsonValue } from "../core";
 import { prepareSandboxDocument } from "./sandboxDocument";
 
 interface SandboxFrameProps {

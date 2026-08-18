@@ -1,5 +1,4 @@
-import type { JsonValue } from "../core/types";
-import type { AppRecord } from "../core/types";
+import type { AppRecord, JsonValue } from "../core";
 import type { OwnedAppSyncRecord, PrivateCopySyncRecord } from "./workspaceSync";
 
 const QUEUE_DB_NAME = "app-lab-sync-queue-v1";

@@ -1,12 +1,8 @@
-export type AppId = string;
+import type { JsonValue } from "../jsonData";
 
-export type JsonValue =
-  | null
-  | boolean
-  | number
-  | string
-  | JsonValue[]
-  | { [key: string]: JsonValue };
+export type { JsonValue } from "../jsonData";
+
+export type AppId = string;
 
 export interface AppSummary {
   appId: AppId;
@@ -20,11 +16,6 @@ export interface AppRecord extends AppSummary {
   compiledCssSourceHash?: string;
   sourceCode: string;
   createdAt: string;
-}
-
-export interface OpenRouterConfig {
-  apiKey: string;
-  model: string;
 }
 
 export interface CreateAppInput {

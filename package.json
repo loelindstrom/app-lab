@@ -9,6 +9,8 @@
     "build": "tsc -b && vite build",
     "deploy:pages": "bash scripts/deploy-github-pages.sh",
     "preview": "vite preview --host 127.0.0.1",
+    "check": "pnpm deps:check && pnpm test && pnpm build",
+    "hooks:install": "git config core.hooksPath .githooks",
     "test": "vitest run",
     "test:e2e": "playwright test --grep-invert @firebase",
     "test:firebase-e2e": "set -a; [ ! -f .env.test.local ] || . ./.env.test.local; set +a; node scripts/require-firebase-test-env.mjs && playwright test --grep @firebase",

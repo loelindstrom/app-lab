@@ -101,13 +101,69 @@ module.exports = {
       to: {
         path: '^src/(?:ui|runtime)/'
       }
+    },
+    {
+      name: 'use-core-public-api',
+      severity: 'error',
+      comment: 'Production code outside core must import its public entry point.',
+      from: {
+        pathNot: [
+          '^src/core/',
+          '[.](?:spec|test)[.](?:ts|tsx)$'
+        ]
+      },
+      to: {
+        path: '^src/core/(?!index[.]ts$)'
+      }
+    },
+    {
+      name: 'use-runtime-public-api',
+      severity: 'error',
+      comment: 'Production code outside runtime must import its public entry point.',
+      from: {
+        pathNot: [
+          '^src/runtime/',
+          '[.](?:spec|test)[.](?:ts|tsx)$'
+        ]
+      },
+      to: {
+        path: '^src/runtime/(?!index[.]ts$)'
+      }
+    },
+    {
+      name: 'use-sync-public-api',
+      severity: 'error',
+      comment: 'Production code outside sync must import its public entry point.',
+      from: {
+        pathNot: [
+          '^src/sync/',
+          '[.](?:spec|test)[.](?:ts|tsx)$'
+        ]
+      },
+      to: {
+        path: '^src/sync/(?!index[.]ts$)'
+      }
+    },
+    {
+      name: 'use-ui-public-api',
+      severity: 'error',
+      comment: 'Production code outside UI must import its public entry point.',
+      from: {
+        pathNot: [
+          '^src/ui/',
+          '[.](?:spec|test)[.](?:ts|tsx)$'
+        ]
+      },
+      to: {
+        path: '^src/ui/(?!index[.]ts$)'
+      }
     }
   ],
   options: {
     doNotFollow: {
       path: ['node_modules']
     },
-    tsPreCompilationDeps: false,
+    tsPreCompilationDeps: 'specify',
     tsConfig: {
       fileName: 'tsconfig.json'
     },

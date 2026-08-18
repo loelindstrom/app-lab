@@ -1,4 +1,4 @@
-import type { AppLabCore } from "../core/types";
+import type { AppLabCore } from "../core";
 import { saveRemoteAppSource } from "./appRooms";
 import {
   isQueueItemStaleSyncing,

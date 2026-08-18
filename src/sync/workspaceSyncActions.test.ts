@@ -3,7 +3,7 @@ import { createMemoryCore } from "../core/memoryCore";
 import { isRemoteAppDeletedError, loadRemoteAppRooms, saveRemoteAppData, saveRemoteAppSource } from "./appRooms";
 import { roomWriteToken } from "./crypto";
 import { createMemorySyncProvider } from "./memorySyncProvider";
-import { createMemorySyncQueueStore, enqueueSaveAppData, enqueueSaveSource } from "./syncQueue";
+import { createMemorySyncQueueStore, enqueueSaveAppData, enqueueSaveSource, markQueueItemSyncing } from "./syncQueue";
 import { configureTestStorageProfile } from "./testStorageProfile";
 import type { ClaimRoomAccessInput, RealtimeSyncProvider } from "./types";
 import { createWorkspaceSyncActions } from "./workspaceSyncActions";
@@ -11,6 +11,34 @@ import { createMemoryWorkspaceSyncStore, createWorkspaceSyncRegistry } from "./w
 import { createWorkspaceRecoveryMaterial, loadWorkspaceManifest } from "./workspaceManifest";
 
 describe("workspace sync actions", () => {
+  it("exposes sync state without leaking persisted queue records", async () => {
+    const core = createMemoryCore();
+    const queueStore = createMemorySyncQueueStore();
+    const syncRegistry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
+    await configureTestStorageProfile(syncRegistry);
+    const app = await core.createBlankApp();
+    await syncRegistry.ensureOwnedAppRooms(app.appId);
+    const queued = await enqueueSaveSource(queueStore, app);
+    await markQueueItemSyncing(queueStore, queued);
+    const actions = createWorkspaceSyncActions({ core, queueStore, syncRegistry });
+
+    await expect(actions.initializeWorkspaceSync()).resolves.toEqual({ storageConfigured: true });
+    await expect(actions.getWorkspaceSyncOverview([app.appId])).resolves.toMatchObject({
+      appBadges: {
+        [app.appId]: { label: "Private" },
+      },
+      pendingOperations: [
+        {
+          appId: app.appId,
+          kind: "save-source",
+          status: "pending",
+        },
+      ],
+      storageProfile: { provider: "firebase-rtdb" },
+      workspaceManifestRoomId: null,
+    });
+  });
+
   it("backs up an owned app, imports the invite into another workspace, and streams data changes", async () => {
     const provider = createMemorySyncProvider();
     const ownerCore = createMemoryCore();

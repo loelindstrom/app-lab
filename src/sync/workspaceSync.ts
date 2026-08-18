@@ -1,4 +1,4 @@
-import type { AppId } from "../core/types";
+import type { AppId } from "../core";
 import { createRoomCapability } from "./crypto";
 import { createFirebaseOwnerSetupSecret, DEFAULT_FIREBASE_ACCESS_MODEL, type FirebaseAccessModel } from "./firebaseAccessRules";
 import { normalizeFirebaseDatabaseUrl, parseFirebaseWebAppConfig, type FirebaseWebAppConfig } from "./firebaseConfig";

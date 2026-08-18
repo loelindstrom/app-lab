@@ -1,4 +1,10 @@
-import type { JsonValue } from "./types";
+export type JsonValue =
+  | null
+  | boolean
+  | number
+  | string
+  | JsonValue[]
+  | { [key: string]: JsonValue };
 
 export const MAX_APP_DATA_BYTES = 1_048_576;
 

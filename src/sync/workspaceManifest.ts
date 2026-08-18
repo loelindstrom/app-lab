@@ -1,4 +1,4 @@
-import type { JsonValue } from "../core/types";
+import type { JsonValue } from "../core";
 import { decryptRoomSnapshot, encryptRoomPayload, rememberSnapshotVersion, roomReadToken, roomWriteToken } from "./crypto";
 import { DEFAULT_FIREBASE_ACCESS_MODEL } from "./firebaseAccessRules";
 import type { FirebaseWebAppConfig } from "./firebaseConfig";

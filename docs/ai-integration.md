@@ -39,7 +39,27 @@ version only needs to show that this loop works reliably enough to be useful.
 - Generated app code must not talk directly to OpenRouter, Firebase, browser storage, remote URLs, or hidden host internals.
 - Reuse the same prompt rules as the existing "Copy prompt + code" helper so manual and native AI workflows teach the same model
   behavior.
+- Keep `src/ai` behind a public `index.ts` contract. The agent should receive narrow host-supplied tool callbacks instead of
+  importing core, runtime, or sync implementation files.
+- Route manual edits, AI replacements, and AI undo through one host-owned source-save operation. That operation should validate
+  and compile the source, persist it through `AppLabCore`, queue normal source sync, and return the updated app to the UI.
+- Do not use generic IndexedDB observation as the source-sync trigger. Explicit source-save commands preserve whether a write was
+  local or remote and avoid accidental synchronization loops.
 - Prefer simple, observable behavior over clever source-edit machinery until there is evidence it is needed.
+
+## Intended Module Boundary
+
+`src/ai` should own OpenRouter communication, the bounded agent loop, AI configuration, and per-app chat behavior. It should expose
+its production API through `src/ai/index.ts`, following the same boundary convention as core, runtime, sync, and UI.
+
+The UI/application composition should supply implementations of the agent tools. In particular,
+`replace_current_app_source` should call the same source-save operation used by the manual Source tool; it should not write
+IndexedDB or Firebase directly. This keeps the agent unaware of persistence and sync implementation details while guaranteeing
+that AI edits update local state, remote rooms, sync status, and the active sandbox in the same way as manual edits.
+
+The source-save operation can initially remain a focused function owned by the workspace shell and be passed to both the manual
+Source tool and BuilderAI. If it later needs callers outside that composition boundary, move it behind a small application-level
+contract rather than duplicating the orchestration.
 
 ## Must Have For MVP
 
@@ -92,7 +112,8 @@ version only needs to show that this loop works reliably enough to be useful.
    - `read_recent_console_output`
    - `replace_current_app_source`
 
-   The write tool should accept one complete HTML document. Partial patch tools can wait.
+   The write tool should accept one complete HTML document and invoke the host-supplied source replacement callback. The agent
+   module itself should not write to core or sync. Partial patch tools can wait.
 
 7. Prompting based on the current helper
 
@@ -102,7 +123,8 @@ version only needs to show that this loop works reliably enough to be useful.
 8. Source replacement validation
 
    Before saving, App Lab should reject obviously invalid writes: empty source, non-HTML output, or responses that do not look like
-   a complete document. Existing source-save behavior should still parse title/description and compile Tailwind when enabled.
+   a complete document. Existing source-save behavior should still parse title/description and compile Tailwind when enabled. The
+   manual Source tool and BuilderAI should share this implementation rather than merely duplicate the same validation rules.
 
 9. Immediate apply plus undo last AI edit
 
@@ -241,13 +263,15 @@ version only needs to show that this loop works reliably enough to be useful.
 
 ## First Implementation Slice
 
-1. Add a local AI config store and wire it into Settings with a basic OpenRouter setup path.
-2. Port the useful parts of the old V1 OpenRouter client to TypeScript.
-3. Add host-owned per-app chat storage, initially local-first.
-4. Add a V2 BuilderAI agent module with the bounded tool loop and bounded model context.
-5. Replace the placeholder Builder panel with chat, progress, errors, copy-prompt fallback, clear chat, and undo-last-edit.
-6. Add synced chat rooms for configured workspaces.
-7. Add focused unit tests for config, client parsing, agent behavior, Builder panel states, chat persistence, and undo behavior.
+1. Extract the current manual source-save sequence into one reusable host operation with focused tests.
+2. Add a local AI config store and wire it into Settings with a basic OpenRouter setup path.
+3. Port the useful parts of the old V1 OpenRouter client to TypeScript.
+4. Add host-owned per-app chat storage, initially local-first.
+5. Add a V2 BuilderAI agent module with the bounded tool loop, bounded model context, and injected tool callbacks.
+6. Replace the placeholder Builder panel with chat, progress, errors, copy-prompt fallback, clear chat, and undo-last-edit.
+7. Add synced chat rooms for configured workspaces.
+8. Add focused unit tests for config, client parsing, agent behavior, shared source saving, Builder panel states, chat persistence,
+   and undo behavior.
 
 ## Open Questions
 

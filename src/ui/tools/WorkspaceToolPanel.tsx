@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import type { AppRecord, JsonValue } from "../../core/types";
-import type { SandboxConsoleEntry } from "../../runtime/SandboxFrame";
+import type { AppRecord, JsonValue } from "../../core";
+import type { SandboxConsoleEntry } from "../../runtime";
 
 export type ToolPanelMode = "builder" | "console" | "source";
 type SourceExportKind = "data" | "source";

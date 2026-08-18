@@ -1,6 +1,6 @@
 import { createAlpineExampleAppInput } from "./alpineExampleApp";
 import { readAppHtmlMetadata } from "./htmlMetadata";
-import { normalizeJsonValue } from "./jsonData";
+import { normalizeJsonValue } from "../jsonData";
 import type { AppLabCore, AppRecord, AppSummary, CreateAppInput, JsonValue, UpdateAppInput } from "./types";
 
 export function createMemoryCore(): AppLabCore {
