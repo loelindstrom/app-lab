@@ -116,9 +116,8 @@ DEPLOY_INSTALL=1 pnpm deploy:pages -- --ref v0.2.0
 Before deployment, the normal build checks are:
 
 ```bash
-pnpm typecheck
-pnpm test
-pnpm build
+pnpm check
+pnpm test:e2e
 ```
 
 After deployment, open:

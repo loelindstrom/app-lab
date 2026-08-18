@@ -9,7 +9,7 @@ App Lab aims to protect:
 
 - the host shell from generated app source
 - other apps in the same workspace
-- Firebase config, room capabilities, recovery material, and sync queue metadata
+- Firebase config, room capabilities, workspace sync material, and sync queue metadata
 - local workspace metadata that generated apps do not need
 
 App Lab does not make arbitrary generated or shared app source trustworthy. Generated app code can read its own app-owned JSON
@@ -18,7 +18,7 @@ Only run or import apps from sources you trust.
 
 Generated apps run in sandboxed iframes with scripts enabled and without `allow-same-origin`. They use the host-provided
 `window.AppLab` API for JSON persistence and live data updates. Generated apps should not receive Firebase credentials, room ids,
-room decrypt secrets, invite material, workspace recovery material, or OpenRouter configuration.
+room decrypt secrets, invite material, workspace sync material, or OpenRouter configuration.
 
 ## Optional Sync
 
@@ -39,12 +39,12 @@ chooses whether to import.
 | Material | Where it lives | What compromise means |
 | --- | --- | --- |
 | Workspace sync store | Browser local storage | Reveals storage profile metadata, workspace room capabilities, app room capabilities, and owner setup material for this browser. |
-| Workspace recovery material | User-copied text | Restores/decrypts the whole workspace manifest and includes owner setup material for creating more rooms in the user's Firebase project. Treat it like a password. |
+| Workspace sync material (`WorkspaceRecoveryMaterial` in code) | User-copied text | Restores/decrypts the whole workspace manifest and includes owner setup material for creating more rooms in the user's Firebase project. Treat it like a password. |
 | App invite link | URL fragment copied by the user | Grants full read/write access to one app's source and data rooms. Anyone with the link can import or forward it. |
-| Firebase owner setup secret | Settings UI, local sync metadata, recovery material | Lets another browser owned by the user claim owner setup in that Firebase project. |
-| Room decrypt secret | Local sync metadata, invite/recovery material | Decrypts one encrypted room payload. Firebase does not store this secret in plaintext. |
-| Room access token | Local sync metadata, invite/recovery material | Authorizes normal App Lab client reads/writes for one room and is used as the Firebase room membership claim token. |
-| OpenRouter API key | Future local AI config | Should remain local to the browser. It should not be synced, exported in recovery material, or exposed to generated apps. |
+| Firebase owner setup secret | Settings UI, local sync metadata, workspace sync material | Lets another browser owned by the user claim owner setup in that Firebase project. |
+| Room decrypt secret | Local sync metadata, invite links, and workspace sync material | Decrypts one encrypted room payload. Firebase does not store this secret in plaintext. |
+| Room access token | Local sync metadata, invite links, and workspace sync material | Authorizes normal App Lab client reads/writes for one room and is used as the Firebase room membership claim token. |
+| OpenRouter API key | Future local AI config | Should remain local to the browser. It should not be synced, exported in workspace sync material, or exposed to generated apps. |
 
 ## Reporting Vulnerabilities
 

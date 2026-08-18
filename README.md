@@ -1,100 +1,55 @@
 # App Lab
 
-App Lab is a browser workspace for creating, editing, running, exporting, and syncing small sandboxed HTML apps. The host is a
-React/Vite application; user apps are complete HTML documents that run inside isolated iframes and persist JSON data through the
-host-provided `window.AppLab` API.
+App Lab is a home in your browser for the small apps you make with AI. Create an app quickly, keep using it, improve it later,
+and share it with friends without turning every idea into a software project.
 
-## How It Fits Together
+Each app is a real, self-contained web app. App Lab keeps its source and data together, runs it inside a protected sandbox, and
+gives you a quiet workspace for returning to it. Your browser is the starting point; cloud services are optional.
 
-```mermaid
-flowchart TB
-  subgraph manual["Manual"]
-    direction TB
-    aimanual["<b>AI</b>\nManually copy from AppLab to external AI chat and then back again"]
-  end
+[Open App Lab](https://loelindstrom.github.io/app-lab/)
 
-  subgraph browser["<b>In the browser</b> (App Lab code lives fully client-side.)"]
-    ui["<b>src/ui</b>\nThe UI shell surrounding the sandboxed apps"]
-    core["<b>src/core</b>\n Local-first persisting operations to IndexedDB"]
-    runtime["<b>src/runtime</b>\nSandboxed app"]
-    subgraph optional["Optional for user to set up"]
-        ai["<b>src/ai</b>\nAi agent + integration with LLM"]
-        sync["<b>src/sync</b>\n Enables sharing apps and cross-device support"]
-    end
-  end
+## Start With Just Your Browser
 
-  subgraph integrations["External Integrations"]
-    direction TB
-    subgraph aiBox["AI"]
-        openrouter["<b>OpenRouter</b>\nMediates with LLM"]
-    end
-    subgraph syncBox["Sync"]
-        firebase["<b>Firebase</b>\nRealtime Database (RTDB)"]
-    end
-  end
+App Lab works without an account or cloud setup:
 
-  ui <--> runtime
-  ui <--> core
+- create, run, and edit small apps
+- keep each app's data in this browser
+- copy an App Lab-aware prompt and source into the AI service you already use
+- paste the improved source back and run it immediately
+- export source and app data whenever you want
 
-  
-  ui <--> sync
-  sync <--> core
-  sync <--> syncBox
-  
-  ui <--> ai
-  ai <--> core
-  ai <--> aiBox
-  
-  ui <--> aimanual
-  
-```
+This is what **local-first** means here: the local workspace is useful on its own. Adding a remote service extends it rather than
+turning the remote service into a requirement.
 
-App Lab itself is local-first: the workspace and each app's JSON data live in this browser first. The generated app cannot reach
-the host, Firebase, or your settings directly; it only exchanges app-data messages with the sandbox runtime. Firebase sync and
-AI assistance are opt-in integrations, not requirements for using the workspace.
+## Connect Your Own Services
 
-The important architecture docs are:
+You decide which integrations to add:
 
-- [Architecture overview](./docs/architecture.md)
-- [General architecture](./docs/1.architecture-general.md)
-- [Sync architecture](./docs/2.architecture-sync.md)
-- [Deployment](./docs/deploy.md)
-- [Backlog](./docs/backlog.md)
+- **Firebase is available now.** Connect your own Firebase project for encrypted backup, device sync, app sharing, and live
+  updates. App source and data are encrypted in the browser before they are stored remotely.
+- **OpenRouter is the next MVP feature.** It will bring the existing AI workflow into App Lab using your own API key. Until then,
+  the built-in prompt-and-source handoff works with an external AI chat and needs no setup.
 
-## Development
+Generated apps never receive your Firebase configuration, sync secrets, or future AI key. They run inside sandboxed frames and
+use a small App Lab bridge when they need to save JSON data.
 
-```bash
-pnpm install
-pnpm hooks:install
-pnpm dev
-pnpm typecheck
-pnpm test
-pnpm test:e2e
-pnpm deps:check
-pnpm check
-```
+## Choose Your Path
 
-The normal local loop is `pnpm typecheck`, `pnpm test`, and `pnpm test:e2e`. These commands do not require Firebase credentials;
-`pnpm test:e2e` excludes tests tagged `@firebase`.
+### How To Use App Lab
 
-Run `pnpm hooks:install` once per clone to activate the tracked Git hooks. The pre-commit hook runs `pnpm check`, which checks the
-module boundaries, unit tests, TypeScript, and the production build. Browser and real Firebase tests remain explicit because they
-are slower and may require local credentials.
+Learn the local workflow first, then add Firebase only when you want backup, another device, or sharing.
 
-Real Firebase checks are opt-in and load `.env.test.local`; copy the shape from
-[.env.test.local.example](./.env.test.local.example). With that file configured:
+[Read the user guide](./docs/user-guide.md)
 
-```bash
-pnpm test:firebase-smoke
-pnpm test:firebase-e2e
-```
+### For Developers
 
-`pnpm test:firebase-smoke` verifies low-level provider and RTDB rules behavior. `pnpm test:firebase-e2e` runs the browser-level
-sync workflows tagged `@firebase`.
+Start with the shared vocabulary and architecture map, then follow links into sync, AI, testing, compatibility, or deployment.
 
-`pnpm deps:graph` writes a compact folder-level Mermaid import graph to `dependency-graph.mmd`;
-`pnpm deps:graph:files` writes the detailed per-file graph. Both generated files are ignored by Git.
+[Read the developer guide](./docs/README.md)
 
-Each top-level source module exposes its production API through `src/<module>/index.ts`. Code outside that module must use this
-entry point instead of importing implementation files directly; `pnpm deps:check` enforces the boundary. Tests may import module
-internals when focused coverage requires it.
+### Security
+
+Understand what the sandbox protects, what generated apps can access, and which invite or workspace sync material must be kept
+private.
+
+[Read the security model](./SECURITY.md)
