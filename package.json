@@ -10,8 +10,9 @@
     "deploy:pages": "bash scripts/deploy-github-pages.sh",
     "preview": "vite preview --host 127.0.0.1",
     "test": "vitest run",
-    "test:e2e": "set -a; [ ! -f .env.test.local ] || . ./.env.test.local; set +a; playwright test",
-    "test:firebase-smoke": "set -a; [ ! -f .env.test.local ] || . ./.env.test.local; set +a; vitest run src/sync/firebaseRealtimeProvider.smoke.test.ts",
+    "test:e2e": "playwright test --grep-invert @firebase",
+    "test:firebase-e2e": "set -a; [ ! -f .env.test.local ] || . ./.env.test.local; set +a; node scripts/require-firebase-test-env.mjs && playwright test --grep @firebase",
+    "test:firebase-smoke": "set -a; [ ! -f .env.test.local ] || . ./.env.test.local; set +a; node scripts/require-firebase-test-env.mjs && vitest run --config vitest.firebase-smoke.config.ts",
     "typecheck": "tsc -b"
   },
   "dependencies": {

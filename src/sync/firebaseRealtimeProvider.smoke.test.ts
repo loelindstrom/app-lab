@@ -11,9 +11,8 @@ import type { FirebaseWebAppConfig } from "./firebaseConfig";
 
 const authFirebaseConfig = readFirebaseSmokeConfig("APP_LAB_FIREBASE_AUTH_V1_SMOKE_CONFIG");
 const authOwnerSetupSecret = process.env.APP_LAB_FIREBASE_AUTH_V1_OWNER_SETUP_SECRET ?? "";
-const describeAuthFirebaseSmoke = authFirebaseConfig && authOwnerSetupSecret ? describe : describe.skip;
 
-describeAuthFirebaseSmoke("firebase realtime sync provider auth-v1 smoke", () => {
+describe("firebase realtime sync provider auth-v1 smoke", () => {
   it("lets invite recipients claim shared rooms without owner create access", async () => {
     if (!authFirebaseConfig || !authOwnerSetupSecret) {
       throw new Error("APP_LAB_FIREBASE_AUTH_V1_SMOKE_CONFIG and APP_LAB_FIREBASE_AUTH_V1_OWNER_SETUP_SECRET are required.");

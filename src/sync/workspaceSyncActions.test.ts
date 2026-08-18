@@ -133,6 +133,62 @@ describe("workspace sync actions", () => {
     ]);
   });
 
+  it("previews shared app source before importing executable source locally", async () => {
+    const provider = createMemorySyncProvider();
+    const ownerCore = createMemoryCore();
+    const ownerRegistry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
+    await configureTestStorageProfile(ownerRegistry);
+    const ownerActions = createWorkspaceSyncActions({
+      core: ownerCore,
+      createProviderFromReference: () => provider,
+      createProviderFromStorageProfile: () => provider,
+      queueStore: createMemorySyncQueueStore(),
+      syncRegistry: ownerRegistry,
+    });
+
+    const app = await ownerCore.createApp({
+      description: "Preview before import",
+      name: "Preview app",
+      sourceCode: "<!doctype html><title>Preview app</title>",
+    });
+    await ownerCore.saveAppData(app.appId, { count: 1 });
+    await ownerActions.ensureAppBackedUp(app);
+    const invite = await ownerActions.createInvite(app.appId);
+
+    const operations: string[] = [];
+    const claimingProvider: RealtimeSyncProvider = {
+      ...provider,
+      async claimRoomAccess(input) {
+        operations.push(`claim:${input.roomId}`);
+      },
+      async loadRoom(input) {
+        operations.push(`load:${input.roomId}`);
+        return provider.loadRoom(input);
+      },
+    };
+    const joinedCore = createMemoryCore();
+    const joinedActions = createWorkspaceSyncActions({
+      core: joinedCore,
+      createProviderFromReference: () => claimingProvider,
+      createProviderFromStorageProfile: () => claimingProvider,
+      queueStore: createMemorySyncQueueStore(),
+      syncRegistry: createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore()),
+    });
+
+    const preview = await joinedActions.previewInvite(invite);
+
+    expect(preview).toMatchObject({
+      appId: app.appId,
+      dataRoomId: invite.dataRoom.roomId,
+      description: "Preview before import",
+      name: "Preview app",
+      sourceRoomId: invite.sourceRoom.roomId,
+    });
+    expect(operations).toEqual([`claim:${invite.sourceRoom.roomId}`, `load:${invite.sourceRoom.roomId}`]);
+    await expect(joinedCore.getApp(app.appId)).resolves.toBeNull();
+    await expect(joinedCore.getAppData(app.appId)).resolves.toBeNull();
+  });
+
   it("queues source saves and shares the latest queued source", async () => {
     const provider = createMemorySyncProvider();
     const ownerCore = createMemoryCore();
@@ -423,6 +479,144 @@ describe("workspace sync actions", () => {
       name: "Created on restored",
     });
     await expect(ownerCore.getAppData(restoredCreated.appId)).resolves.toEqual({ source: "restored" });
+  });
+
+  it("hydrates remote manifest entries discovered while saving a stale local manifest", async () => {
+    const provider = createMemorySyncProvider();
+    const ownerCore = createMemoryCore();
+    const ownerRegistry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
+    await configureTestStorageProfile(ownerRegistry);
+    const ownerActions = createWorkspaceSyncActions({
+      core: ownerCore,
+      createProviderFromReference: () => provider,
+      createProviderFromStorageProfile: () => provider,
+      queueStore: createMemorySyncQueueStore(),
+      syncRegistry: ownerRegistry,
+    });
+
+    const initialApp = await ownerCore.createApp({
+      description: "Initial stale manifest app",
+      name: "Initial stale manifest app",
+      sourceCode: "<!doctype html><title>Initial stale manifest app</title>",
+    });
+    await ownerActions.ensureAppBackedUp(initialApp);
+    await ownerActions.flushWorkspaceManifestQueue();
+    const recoveryText = await ownerActions.exportWorkspaceRecovery();
+    await ownerActions.flushWorkspaceManifestQueue();
+
+    const staleCore = createMemoryCore();
+    const staleRegistry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
+    const staleActions = createWorkspaceSyncActions({
+      core: staleCore,
+      createProviderFromReference: () => provider,
+      createProviderFromStorageProfile: () => provider,
+      queueStore: createMemorySyncQueueStore(),
+      syncRegistry: staleRegistry,
+    });
+    await staleActions.restoreWorkspaceRecovery(recoveryText);
+    await staleActions.flushWorkspaceManifestQueue();
+
+    const ownerCreated = await ownerCore.createApp({
+      description: "Remote manifest app",
+      name: "Remote manifest app",
+      sourceCode: "<!doctype html><title>Remote manifest app</title>",
+    });
+    await ownerCore.saveAppData(ownerCreated.appId, { source: "owner" });
+    await ownerActions.ensureAppBackedUp(ownerCreated);
+    await ownerActions.flushWorkspaceManifestQueue();
+
+    const staleCreated = await staleCore.createApp({
+      description: "Stale manifest app",
+      name: "Stale manifest app",
+      sourceCode: "<!doctype html><title>Stale manifest app</title>",
+    });
+    await staleCore.saveAppData(staleCreated.appId, { source: "stale" });
+    await staleActions.ensureAppBackedUp(staleCreated);
+    await staleActions.flushWorkspaceManifestQueue();
+
+    await expect(staleCore.getApp(ownerCreated.appId)).resolves.toMatchObject({
+      appId: ownerCreated.appId,
+      name: "Remote manifest app",
+    });
+    await expect(staleCore.getAppData(ownerCreated.appId)).resolves.toEqual({ source: "owner" });
+
+    await expect(ownerActions.pullLatestWorkspaceManifest()).resolves.toMatchObject({
+      appIdsChanged: [staleCreated.appId],
+    });
+    await expect(ownerCore.getApp(staleCreated.appId)).resolves.toMatchObject({
+      appId: staleCreated.appId,
+      name: "Stale manifest app",
+    });
+    await expect(ownerCore.getAppData(staleCreated.appId)).resolves.toEqual({ source: "stale" });
+  });
+
+  it("preserves remote tombstones discovered while saving a stale local manifest", async () => {
+    const provider = createMemorySyncProvider();
+    const ownerCore = createMemoryCore();
+    const ownerRegistry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
+    await configureTestStorageProfile(ownerRegistry);
+    const ownerActions = createWorkspaceSyncActions({
+      core: ownerCore,
+      createProviderFromReference: () => provider,
+      createProviderFromStorageProfile: () => provider,
+      queueStore: createMemorySyncQueueStore(),
+      syncRegistry: ownerRegistry,
+    });
+
+    const deletedApp = await ownerCore.createApp({
+      description: "Deleted stale manifest app",
+      name: "Deleted stale manifest app",
+      sourceCode: "<!doctype html><title>Deleted stale manifest app</title>",
+    });
+    await ownerActions.ensureAppBackedUp(deletedApp);
+    await ownerActions.flushWorkspaceManifestQueue();
+    const recoveryText = await ownerActions.exportWorkspaceRecovery();
+    await ownerActions.flushWorkspaceManifestQueue();
+
+    const staleCore = createMemoryCore();
+    const staleRegistry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
+    const staleActions = createWorkspaceSyncActions({
+      core: staleCore,
+      createProviderFromReference: () => provider,
+      createProviderFromStorageProfile: () => provider,
+      queueStore: createMemorySyncQueueStore(),
+      syncRegistry: staleRegistry,
+    });
+    await staleActions.restoreWorkspaceRecovery(recoveryText);
+    await staleActions.flushWorkspaceManifestQueue();
+
+    await ownerActions.deleteSyncedAppRooms(deletedApp.appId);
+    await ownerActions.flushOwnedAppDeletionQueue();
+    await ownerCore.deleteApp(deletedApp.appId);
+    await ownerRegistry.removeLocalAppSync(deletedApp.appId);
+    await ownerActions.queueWorkspaceManifestSave();
+    await ownerActions.flushWorkspaceManifestQueue();
+
+    const preservedApp = await staleCore.createApp({
+      description: "Preserved stale manifest app",
+      name: "Preserved stale manifest app",
+      sourceCode: "<!doctype html><title>Preserved stale manifest app</title>",
+    });
+    await staleCore.saveAppData(preservedApp.appId, { source: "stale" });
+    await staleActions.ensureAppBackedUp(preservedApp);
+    await staleActions.flushWorkspaceManifestQueue();
+
+    await expect(staleCore.getApp(deletedApp.appId)).resolves.toBeNull();
+    await expect(staleCore.getApp(preservedApp.appId)).resolves.toMatchObject({
+      appId: preservedApp.appId,
+      name: "Preserved stale manifest app",
+    });
+    await expect(staleCore.getAppData(preservedApp.appId)).resolves.toEqual({ source: "stale" });
+
+    await expect(ownerActions.pullLatestWorkspaceManifest()).resolves.toMatchObject({
+      appIdsChanged: [preservedApp.appId],
+      appIdsDeleted: [],
+    });
+    await expect(ownerCore.getApp(deletedApp.appId)).resolves.toBeNull();
+    await expect(ownerCore.getApp(preservedApp.appId)).resolves.toMatchObject({
+      appId: preservedApp.appId,
+      name: "Preserved stale manifest app",
+    });
   });
 
   it("keeps joined app tombstones when remote deletion reaches another synced recipient device", async () => {

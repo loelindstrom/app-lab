@@ -1,10 +1,22 @@
-import { describe, expect, it } from "vitest";
-import { extractClassCandidates, sourceUsesTailwind } from "./tailwindCompiler";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { compileAppStyles, extractClassCandidates, sourceUsesTailwind } from "./tailwindCompiler";
 
 describe("tailwindCompiler", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("requires an explicit App Lab Tailwind marker", () => {
     expect(sourceUsesTailwind('<!doctype html><html><head><meta name="app-lab-tailwind" content="enabled"></head></html>')).toBe(true);
     expect(sourceUsesTailwind('<!doctype html><html><body class="bg-slate-950"></body></html>')).toBe(false);
+  });
+
+  it("fails fast when Tailwind compilation is requested offline", async () => {
+    vi.spyOn(window.navigator, "onLine", "get").mockReturnValue(false);
+
+    await expect(
+      compileAppStyles('<!doctype html><html><head><meta name="app-lab-tailwind" content="enabled"></head><body class="p-4"></body></html>'),
+    ).rejects.toThrow(/offline/i);
   });
 
   it("extracts literal Tailwind class candidates from markup and strings", () => {

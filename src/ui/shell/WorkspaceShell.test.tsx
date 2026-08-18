@@ -1,6 +1,8 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createMemoryCore } from "../../core/memoryCore";
+import { createRoomCapability } from "../../sync/crypto";
+import { encodeAppInvite } from "../../sync/invites";
 import { createMemorySyncQueueStore, enqueueSaveSource } from "../../sync/syncQueue";
 import { configureTestStorageProfile } from "../../sync/testStorageProfile";
 import { createMemoryWorkspaceSyncStore, createWorkspaceSyncRegistry } from "../../sync/workspaceSync";
@@ -8,7 +10,11 @@ import type { WorkspaceSyncActions } from "../../sync/workspaceSyncActions";
 import { WorkspaceShell } from "./WorkspaceShell";
 
 describe("WorkspaceShell sync wake-ups", () => {
-  afterEach(() => cleanup());
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+    history.replaceState(null, "", window.location.pathname + window.location.search);
+  });
 
   it("drains queued room and source sync on startup", async () => {
     const syncActions = createSyncActionsStub();
@@ -49,6 +55,34 @@ describe("WorkspaceShell sync wake-ups", () => {
     vi.mocked(syncActions.flushWorkspaceManifestQueue).mockClear();
 
     window.dispatchEvent(new Event("online"));
+
+    await waitFor(() => expect(syncActions.flushRoomLifecycleQueue).toHaveBeenCalledTimes(1));
+    expect(syncActions.flushSourceSyncQueue).toHaveBeenCalledTimes(1);
+    expect(syncActions.flushAppDataSyncQueue).toHaveBeenCalledTimes(1);
+    expect(syncActions.flushOwnedAppDeletionQueue).toHaveBeenCalledTimes(1);
+    expect(syncActions.flushWorkspaceManifestQueue).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries pending sync when the browser window receives focus", async () => {
+    const syncActions = createSyncActionsStub();
+
+    render(
+      <WorkspaceShell
+        core={createMemoryCore()}
+        syncActionsOverride={syncActions}
+        syncQueueStore={createMemorySyncQueueStore()}
+        syncRegistry={createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore())}
+      />,
+    );
+
+    await waitFor(() => expect(syncActions.flushSourceSyncQueue).toHaveBeenCalledTimes(1));
+    vi.mocked(syncActions.flushRoomLifecycleQueue).mockClear();
+    vi.mocked(syncActions.flushSourceSyncQueue).mockClear();
+    vi.mocked(syncActions.flushAppDataSyncQueue).mockClear();
+    vi.mocked(syncActions.flushOwnedAppDeletionQueue).mockClear();
+    vi.mocked(syncActions.flushWorkspaceManifestQueue).mockClear();
+
+    window.dispatchEvent(new Event("focus"));
 
     await waitFor(() => expect(syncActions.flushRoomLifecycleQueue).toHaveBeenCalledTimes(1));
     expect(syncActions.flushSourceSyncQueue).toHaveBeenCalledTimes(1);
@@ -156,6 +190,34 @@ describe("WorkspaceShell sync wake-ups", () => {
     expect(syncActions.pullLatestAppRooms).toHaveBeenCalledTimes(1);
   });
 
+  it("pulls the workspace manifest when returning to the launcher", async () => {
+    const syncActions = createSyncActionsStub();
+    const core = createMemoryCore();
+    await core.createApp({
+      description: "Launcher refresh",
+      name: "Launcher refresh",
+      sourceCode: "<!doctype html><title>Launcher refresh</title>",
+    });
+
+    render(
+      <WorkspaceShell
+        core={core}
+        syncActionsOverride={syncActions}
+        syncQueueStore={createMemorySyncQueueStore()}
+        syncRegistry={createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore())}
+      />,
+    );
+
+    expect(await screen.findByRole("button", { name: "Open app actions for Launcher refresh" })).toBeTruthy();
+    await waitFor(() => expect(syncActions.pullLatestWorkspaceManifest).toHaveBeenCalled());
+    vi.mocked(syncActions.pullLatestWorkspaceManifest).mockClear();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Apps/ }));
+
+    await waitFor(() => expect(syncActions.pullLatestWorkspaceManifest).toHaveBeenCalledTimes(1));
+  });
+
   it("updates launcher metadata from the saved source HTML head", async () => {
     const syncActions = createSyncActionsStub();
     const core = createMemoryCore();
@@ -209,6 +271,65 @@ describe("WorkspaceShell sync wake-ups", () => {
 
     expect(await screen.findByText("Saved launcher title")).toBeTruthy();
     expect(await screen.findByText("Saved launcher description")).toBeTruthy();
+  });
+
+  it("saves source locally when Tailwind compilation is unavailable", async () => {
+    vi.spyOn(window.navigator, "onLine", "get").mockReturnValue(false);
+    const syncActions = createSyncActionsStub();
+    const core = createMemoryCore();
+    const app = await core.createApp({
+      compiledCss: ".old { color: red; }",
+      compiledCssSourceHash: "old-hash",
+      description: "Initial description",
+      name: "Initial app",
+      sourceCode: "<!doctype html><html><head><title>Initial app</title></head><body></body></html>",
+    });
+
+    render(
+      <WorkspaceShell
+        core={core}
+        syncActionsOverride={syncActions}
+        syncQueueStore={createMemorySyncQueueStore()}
+        syncRegistry={createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore())}
+      />,
+    );
+
+    expect(await screen.findByText("Initial app")).toBeTruthy();
+    fireEvent.click(await screen.findByRole("button", { name: "Open" }));
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "Toggle source" }).length).toBeGreaterThan(0));
+    fireEvent.click(screen.getAllByRole("button", { name: "Toggle source" })[0]);
+
+    const sourcePanel = await screen.findByRole("complementary", { name: "Source" });
+    const sourceInput = sourcePanel.querySelector("textarea");
+    if (!(sourceInput instanceof HTMLTextAreaElement)) throw new Error("Expected source textarea.");
+
+    fireEvent.change(sourceInput, {
+      target: {
+        value: `<!doctype html>
+<html>
+  <head>
+    <title>Offline Tailwind</title>
+    <meta name="app-lab-tailwind" content="enabled">
+  </head>
+  <body class="p-4"></body>
+</html>`,
+      },
+    });
+    fireEvent.click(within(sourcePanel).getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(syncActions.pushAppSource).toHaveBeenCalledWith(
+        expect.objectContaining({
+          compiledCss: undefined,
+          compiledCssSourceHash: undefined,
+          name: "Offline Tailwind",
+        }),
+      ),
+    );
+    const saved = await core.getApp(app.appId);
+    expect(saved?.compiledCss).toBeUndefined();
+    expect(saved?.compiledCssSourceHash).toBeUndefined();
+    expect(await screen.findByRole("button", { name: /Open sync status: Source saved without compiled Tailwind CSS/i })).toBeTruthy();
   });
 
   it("opens storage settings from share when cloud sync is not configured", async () => {
@@ -340,6 +461,67 @@ describe("WorkspaceShell sync wake-ups", () => {
     expect(syncActions.restoreWorkspaceRecovery).not.toHaveBeenCalled();
   });
 
+  it("requires a shared app preview before importing invite source", async () => {
+    const syncActions = createSyncActionsStub();
+    const invite = {
+      createdAt: "2026-08-07T12:00:00.000Z",
+      dataRoom: createRoomCapability(),
+      kind: "app-lab-invite" as const,
+      provider: {
+        accessModel: "auth-v1" as const,
+        databaseUrl: "https://example.firebaseio.com",
+        firebaseConfig: {
+          apiKey: "test-api-key",
+          databaseURL: "https://example.firebaseio.com",
+        },
+        provider: "firebase-rtdb" as const,
+      },
+      schemaVersion: 1 as const,
+      sourceRoom: createRoomCapability(),
+    };
+    vi.mocked(syncActions.previewInvite).mockResolvedValue({
+      appId: "shared-app",
+      dataRoomId: invite.dataRoom.roomId,
+      description: "Preview description",
+      name: "Preview title",
+      providerDatabaseUrl: invite.provider.databaseUrl,
+      sourceRoomId: invite.sourceRoom.roomId,
+      updatedAt: "2026-08-07T12:30:00.000Z",
+    });
+    window.location.hash = encodeAppInvite(invite);
+
+    render(
+      <WorkspaceShell
+        core={createMemoryCore()}
+        syncActionsOverride={syncActions}
+        syncQueueStore={createMemorySyncQueueStore()}
+        syncRegistry={createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore())}
+      />,
+    );
+
+    const dialog = await screen.findByRole("dialog", { name: "Import shared app" });
+    const importButton = within(dialog).getByRole("button", { name: "Import" }) as HTMLButtonElement;
+    expect(importButton.disabled).toBe(true);
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Preview app" }));
+
+    expect(await within(dialog).findByText("Preview title")).toBeTruthy();
+    expect(within(dialog).getByText("Preview description")).toBeTruthy();
+    expect(importButton.disabled).toBe(false);
+
+    fireEvent.click(importButton);
+
+    await waitFor(() =>
+      expect(syncActions.importInvite).toHaveBeenCalledWith(
+        expect.objectContaining({
+          dataRoom: expect.objectContaining({ roomId: invite.dataRoom.roomId }),
+          provider: expect.objectContaining({ databaseUrl: invite.provider.databaseUrl }),
+          sourceRoom: expect.objectContaining({ roomId: invite.sourceRoom.roomId }),
+        }),
+      ),
+    );
+  });
+
   it("lets storage guide sections all close and marks completed steps", async () => {
     const syncActions = createSyncActionsStub();
 
@@ -380,6 +562,7 @@ function createSyncActionsStub(): WorkspaceSyncActions {
     flushSourceSyncQueue: vi.fn().mockResolvedValue(undefined),
     importInvite: vi.fn().mockResolvedValue(undefined),
     noteLocalAppDataEdit: vi.fn(),
+    previewInvite: vi.fn(),
     pullLatestAppRooms: vi.fn().mockResolvedValue({}),
     pullLatestWorkspaceManifest: vi.fn().mockResolvedValue({ appIdsChanged: [], appIdsDeleted: [] }),
     pushAppData: vi.fn().mockResolvedValue(undefined),

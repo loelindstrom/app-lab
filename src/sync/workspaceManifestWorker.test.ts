@@ -50,4 +50,46 @@ describe("workspace manifest worker", () => {
 
     await expect(queueStore.listItems()).resolves.toMatchObject([{ attempts: 1, kind: "save-workspace-manifest", status: "pending" }]);
   });
+
+  it("stores the merged manifest returned from a stale save conflict", async () => {
+    const provider = createMemorySyncProvider();
+    const queueStore = createMemorySyncQueueStore();
+    const remoteRegistry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
+    await configureTestStorageProfile(remoteRegistry);
+    await remoteRegistry.ensureWorkspaceManifestRoom();
+    let remoteState = await remoteRegistry.getState();
+    await enqueueSaveWorkspaceManifest(queueStore, remoteState.workspaceId);
+
+    await processWorkspaceManifestQueue({
+      createProviderFromStorageProfile: () => provider,
+      queueStore,
+      syncRegistry: remoteRegistry,
+    });
+    remoteState = await remoteRegistry.getState();
+
+    const staleRegistry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore(remoteState));
+    const staleQueueStore = createMemorySyncQueueStore();
+    await remoteRegistry.ensureOwnedAppRooms("remote-app");
+    remoteState = await remoteRegistry.getState();
+    await enqueueSaveWorkspaceManifest(queueStore, remoteState.workspaceId);
+    await processWorkspaceManifestQueue({
+      createProviderFromStorageProfile: () => provider,
+      queueStore,
+      syncRegistry: remoteRegistry,
+    });
+
+    await staleRegistry.ensureOwnedAppRooms("local-app");
+    const staleState = await staleRegistry.getState();
+    await enqueueSaveWorkspaceManifest(staleQueueStore, staleState.workspaceId);
+    await processWorkspaceManifestQueue({
+      createProviderFromStorageProfile: () => provider,
+      queueStore: staleQueueStore,
+      syncRegistry: staleRegistry,
+    });
+
+    const mergedState = await staleRegistry.getState();
+    expect(mergedState.apps["remote-app"]).toMatchObject({ appId: "remote-app", kind: "owned" });
+    expect(mergedState.apps["local-app"]).toMatchObject({ appId: "local-app", kind: "owned" });
+    expect(mergedState.manifestRoom?.lastSeenVersion).toBe(3);
+  });
 });

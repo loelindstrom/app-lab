@@ -19,13 +19,19 @@ pnpm install
 pnpm dev
 pnpm typecheck
 pnpm test
+pnpm test:e2e
 ```
 
-Firebase-backed E2E tests need a local `.env.test.local`; copy the shape from [.env.test.local.example](./.env.test.local.example).
-With that file configured:
+The normal local loop is `pnpm typecheck`, `pnpm test`, and `pnpm test:e2e`. These commands do not require Firebase credentials;
+`pnpm test:e2e` excludes tests tagged `@firebase`.
+
+Real Firebase checks are opt-in and load `.env.test.local`; copy the shape from
+[.env.test.local.example](./.env.test.local.example). With that file configured:
 
 ```bash
-pnpm test:e2e
 pnpm test:firebase-smoke
+pnpm test:firebase-e2e
 ```
 
+`pnpm test:firebase-smoke` verifies low-level provider and RTDB rules behavior. `pnpm test:firebase-e2e` runs the browser-level
+sync workflows tagged `@firebase`.

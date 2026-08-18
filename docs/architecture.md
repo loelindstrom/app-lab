@@ -10,6 +10,7 @@ Start here, then read the focused documents as needed:
 - [General architecture](./1.architecture-general.md)
 - [Sync architecture](./2.architecture-sync.md)
 - [Backlog](./backlog.md)
+- [Security](../SECURITY.md)
 
 ## Current Product Shape
 
@@ -52,4 +53,6 @@ pnpm test
 pnpm test:e2e
 ```
 
-Firebase-backed E2E and smoke tests require `.env.test.local` values matching the example file at the repository root.
+`pnpm test` excludes real-provider smoke tests, and `pnpm test:e2e` excludes browser tests tagged `@firebase`. Firebase-backed E2E
+and smoke tests require `.env.test.local` values matching the example file at the repository root. Use `pnpm test:firebase-smoke`
+for low-level provider and RTDB rules checks, and `pnpm test:firebase-e2e` for browser workflows tagged `@firebase`.

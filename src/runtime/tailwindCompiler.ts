@@ -16,6 +16,9 @@ export async function compileAppStyles(sourceCode: string): Promise<CompiledAppS
   if (!sourceUsesTailwind(sourceCode)) {
     return { compiledCss: undefined, compiledCssSourceHash: undefined };
   }
+  if (isBrowserOffline()) {
+    throw new Error("Tailwind CSS compilation is unavailable while offline.");
+  }
 
   const cached = compileCache.get(compiledCssSourceHash);
   if (cached) return cached;
@@ -38,6 +41,7 @@ export function sourceUsesTailwind(sourceCode: string): boolean {
 }
 
 async function compileTailwind(sourceCode: string, compiledCssSourceHash: string): Promise<CompiledAppStyles> {
+  const compilerId = createCompilerId();
   const sanitizedMarkup = createSanitizedCompilerMarkup(sourceCode);
   const supplementalCandidates = extractStringClassCandidates(sourceCode);
   const tailwindCssInput = extractTailwindCssInput(sourceCode);
@@ -45,13 +49,14 @@ async function compileTailwind(sourceCode: string, compiledCssSourceHash: string
 
   const frame = document.createElement("iframe");
   frame.setAttribute("aria-hidden", "true");
+  frame.setAttribute("sandbox", "allow-scripts");
   frame.tabIndex = -1;
   frame.style.cssText = "position:absolute;left:-10000px;top:-10000px;width:1px;height:1px;border:0;visibility:hidden;";
 
   try {
-    frame.srcdoc = createCompilerDocument(sanitizedMarkup, supplementalCandidates, tailwindCssInput, tailwindBrowserRuntime);
+    frame.srcdoc = createCompilerDocument(compilerId, sanitizedMarkup, supplementalCandidates, tailwindCssInput, tailwindBrowserRuntime);
     document.body.appendChild(frame);
-    const compiledCss = await waitForCompiledCss(frame);
+    const compiledCss = await waitForCompiledCss(frame, compilerId);
     return { compiledCss, compiledCssSourceHash };
   } finally {
     frame.remove();
@@ -119,19 +124,32 @@ function isSafeClassCandidate(candidate: string): boolean {
   return true;
 }
 
-function createCompilerDocument(sanitizedMarkup: string, supplementalCandidates: string[], tailwindCssInput: string, tailwindBrowserRuntime: string): string {
+function isBrowserOffline(): boolean {
+  return typeof navigator !== "undefined" && navigator.onLine === false;
+}
+
+function createCompilerDocument(
+  compilerId: string,
+  sanitizedMarkup: string,
+  supplementalCandidates: string[],
+  tailwindCssInput: string,
+  tailwindBrowserRuntime: string,
+): string {
   const candidateMarkup = supplementalCandidates.map((candidate) => `<div class="${escapeAttribute(candidate)}"></div>`).join("");
   const cssInput = tailwindCssInput.trim() ? tailwindCssInput : "";
   return `<!doctype html>
 <html>
   <head>
     <meta charset="utf-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'none'; font-src 'none'; connect-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; worker-src 'none'; form-action 'none'; base-uri 'none'">
     <style type="text/tailwindcss">${escapeStyleText(cssInput)}</style>
   </head>
   <body>
     ${sanitizedMarkup}
     ${candidateMarkup}
+    <script>${createCompilerErrorForwarderScript(compilerId)}</script>
     <script>${tailwindBrowserRuntime.replaceAll("</script", "<\\/script")}</script>
+    <script>${createCompilerResultScript(compilerId)}</script>
   </body>
 </html>`;
 }
@@ -172,30 +190,86 @@ function sanitizeCompilerNode(root: ParentNode) {
   }
 }
 
-async function waitForCompiledCss(frame: HTMLIFrameElement): Promise<string> {
-  const startedAt = performance.now();
+async function waitForCompiledCss(frame: HTMLIFrameElement, compilerId: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const timeout = window.setTimeout(() => {
+      cleanup();
+      reject(new Error("Tailwind CSS compilation timed out."));
+    }, COMPILE_TIMEOUT_MS);
 
-  while (performance.now() - startedAt < COMPILE_TIMEOUT_MS) {
-    const document = frame.contentDocument;
-    const compiledStyles = document
-      ? [...document.head.querySelectorAll("style")]
-          .filter((style) => style.getAttribute("type") !== "text/tailwindcss")
-          .map((style) => style.textContent?.trim() ?? "")
-          .filter(Boolean)
-      : [];
-
-    if (compiledStyles.length > 0) {
-      return compiledStyles.join("\n");
+    function cleanup() {
+      window.clearTimeout(timeout);
+      window.removeEventListener("message", handleMessage);
     }
 
-    await delay(25);
-  }
+    function handleMessage(event: MessageEvent) {
+      if (event.source !== frame.contentWindow || !isCompilerMessage(event.data, compilerId)) return;
+      cleanup();
+      if (event.data.error) {
+        reject(new Error(event.data.error));
+        return;
+      }
+      resolve(event.data.css);
+    }
 
-  throw new Error("Tailwind CSS compilation timed out.");
+    window.addEventListener("message", handleMessage);
+  });
 }
 
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => window.setTimeout(resolve, ms));
+function createCompilerErrorForwarderScript(compilerId: string): string {
+  return `(function () {
+  const compilerId = ${JSON.stringify(compilerId)};
+  function report(error) {
+    parent.postMessage({
+      type: "APP_LAB_TAILWIND_COMPILE_RESULT",
+      compilerId,
+      error: error && error.message ? error.message : String(error || "Tailwind CSS compilation failed.")
+    }, "*");
+  }
+  window.addEventListener("error", (event) => report(event.error || event.message));
+  window.addEventListener("unhandledrejection", (event) => report(event.reason));
+})();`.replaceAll("</script", "<\\/script");
+}
+
+function createCompilerResultScript(compilerId: string): string {
+  return `(function () {
+  const compilerId = ${JSON.stringify(compilerId)};
+  const startedAt = performance.now();
+  function readCompiledCss() {
+    const compiledStyles = Array.from(document.head.querySelectorAll("style"))
+      .filter((style) => style.getAttribute("type") !== "text/tailwindcss")
+      .map((style) => (style.textContent || "").trim())
+      .filter(Boolean);
+    if (compiledStyles.length > 0) {
+      parent.postMessage({
+        type: "APP_LAB_TAILWIND_COMPILE_RESULT",
+        compilerId,
+        css: compiledStyles.join("\\n")
+      }, "*");
+      return;
+    }
+    if (performance.now() - startedAt > ${COMPILE_TIMEOUT_MS}) {
+      parent.postMessage({
+        type: "APP_LAB_TAILWIND_COMPILE_RESULT",
+        compilerId,
+        error: "Tailwind CSS compilation timed out."
+      }, "*");
+      return;
+    }
+    setTimeout(readCompiledCss, 25);
+  }
+  readCompiledCss();
+})();`.replaceAll("</script", "<\\/script");
+}
+
+function isCompilerMessage(value: unknown, compilerId: string): value is { compilerId: string; css: string; error?: string; type: "APP_LAB_TAILWIND_COMPILE_RESULT" } {
+  if (!value || typeof value !== "object") return false;
+  const message = value as { compilerId?: unknown; css?: unknown; error?: unknown; type?: unknown };
+  return (
+    message.type === "APP_LAB_TAILWIND_COMPILE_RESULT" &&
+    message.compilerId === compilerId &&
+    (typeof message.css === "string" || typeof message.error === "string")
+  );
 }
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
@@ -220,6 +294,10 @@ function escapeAttribute(value: string): string {
 
 function escapeStyleText(value: string): string {
   return value.replaceAll("</style", "<\\/style");
+}
+
+function createCompilerId(): string {
+  return typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `compiler_${Math.random().toString(36).slice(2)}`;
 }
 
 async function hashSourceCode(sourceCode: string): Promise<string> {

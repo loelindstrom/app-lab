@@ -6,6 +6,6 @@ export default defineConfig(({ command }) => ({
   plugins: [react()],
   test: {
     environment: "jsdom",
-    exclude: ["e2e/**", "node_modules/**"],
+    exclude: ["**/*.smoke.test.ts", "e2e/**", "node_modules/**"],
   },
 }));

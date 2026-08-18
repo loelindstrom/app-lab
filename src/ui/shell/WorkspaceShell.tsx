@@ -13,7 +13,7 @@ import type {
   WorkspaceSyncRegistry,
 } from "../../sync/workspaceSync";
 import { resetSyncingQueueItems, type PendingSyncItem, type SyncQueueStore } from "../../sync/syncQueue";
-import { createWorkspaceSyncActions, type WorkspaceSyncActions } from "../../sync/workspaceSyncActions";
+import { createWorkspaceSyncActions, type AppInvitePreview, type WorkspaceSyncActions } from "../../sync/workspaceSyncActions";
 import { SettingsDialog } from "../dialogs/SettingsDialog";
 import { ToolPanelMode, WorkspaceToolPanel } from "../tools/WorkspaceToolPanel";
 
@@ -95,6 +95,10 @@ export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, sync
       if (document.visibilityState === "visible") void wakePendingSync(isSyncReachable());
     }
 
+    function wakeIfFocused() {
+      void wakePendingSync(isSyncReachable());
+    }
+
     function markOnline() {
       browserOnlineRef.current = true;
       void wakePendingSync(isSyncReachable());
@@ -127,6 +131,7 @@ export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, sync
     void startSyncWakeups();
     window.addEventListener("online", markOnline);
     window.addEventListener("offline", markOffline);
+    window.addEventListener("focus", wakeIfFocused);
     document.addEventListener("visibilitychange", wakeIfVisible);
     return () => {
       cancelled = true;
@@ -134,6 +139,7 @@ export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, sync
       unsubscribeWorkspaceManifest?.();
       window.removeEventListener("online", markOnline);
       window.removeEventListener("offline", markOffline);
+      window.removeEventListener("focus", wakeIfFocused);
       document.removeEventListener("visibilitychange", wakeIfVisible);
     };
   }, [storageProfile?.profileId, storageProfile?.databaseUrl, syncActions, syncQueueStore, syncRegistry, workspaceManifestRoomId]);
@@ -244,10 +250,7 @@ export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, sync
       ...input,
       ...compiledStyles,
     });
-    await trySync("App created locally. Remote backup failed", () => syncActions.ensureAppBackedUp(app));
     if (compileWarning) setSyncStatus(compileWarning);
-    refreshWhenSettled(syncActions.flushRoomLifecycleQueue());
-    await refreshApps();
     setActiveApp(app);
     setMode("app");
     setActiveTool(null);
@@ -255,6 +258,16 @@ export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, sync
     setSyncStatusOpen(false);
     setAiAttentionKey((key) => key + 1);
     setAiAttentionDismissed(false);
+    void syncActions.ensureAppBackedUp(app, { flush: isSyncReachable() }).then(
+      () => refreshApps(),
+      (error) => {
+        const detail = error instanceof Error ? error.message : "Unknown sync error.";
+        setSyncStatus(`App created locally. Remote backup failed: ${detail}`);
+        void refreshApps(false);
+      },
+    );
+    refreshWhenSettled(syncActions.flushRoomLifecycleQueue());
+    await refreshApps();
   }
 
   async function createApp() {
@@ -264,6 +277,15 @@ export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, sync
   function openLauncher() {
     setMode("launcher");
     setActiveTool(null);
+    void syncActions
+      .pullLatestWorkspaceManifest()
+      .catch((error) => {
+        const detail = error instanceof Error ? error.message : "Unknown sync error.";
+        setSyncStatus(`Could not pull latest workspace: ${detail}`);
+      })
+      .finally(() => {
+        void refreshApps(isSyncReachable());
+      });
   }
 
   function toggleTool(nextTool: ToolPanelMode) {
@@ -415,9 +437,18 @@ export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, sync
             onClose={() => setActiveTool(null)}
             onLoadAppData={core.getAppData}
             onSaveSource={async (sourceCode) => {
-              const compiledStyles = await compileAppStyles(sourceCode);
+              let compiledStyles: Pick<AppRecord, "compiledCss" | "compiledCssSourceHash">;
+              let compileWarning: string | null = null;
+              try {
+                compiledStyles = await compileAppStyles(sourceCode);
+              } catch (error) {
+                const detail = error instanceof Error ? error.message : "Unknown Tailwind compile error.";
+                compiledStyles = { compiledCss: undefined, compiledCssSourceHash: undefined };
+                compileWarning = `Source saved without compiled Tailwind CSS: ${detail}`;
+              }
               const updated = await core.updateApp({ appId: activeApp.appId, sourceCode, ...compiledStyles });
-              await trySync("Source saved locally. Remote source sync failed", () => syncActions.pushAppSource(updated));
+              const syncWarning = await trySync("Source saved locally. Remote source sync failed", () => syncActions.pushAppSource(updated));
+              if (compileWarning || syncWarning) setSyncStatus([compileWarning, syncWarning].filter(Boolean).join(" "));
               refreshWhenSettled(syncActions.flushSourceSyncQueue());
               setActiveApp(updated);
               setConsoleEntries([]);
@@ -479,6 +510,7 @@ export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, sync
           setPendingInvite(null);
           if (window.location.hash.startsWith("#applab-invite=")) history.replaceState(null, "", window.location.pathname + window.location.search);
         }}
+        onPreview={syncActions.previewInvite}
         onImport={async (invite) => {
           await syncActions.importInvite(invite);
           await refreshApps();
@@ -498,13 +530,16 @@ export function WorkspaceShell({ core, syncActionsOverride, syncQueueStore, sync
     await refreshApps();
   }
 
-  async function trySync(prefix: string, action: () => Promise<void>) {
+  async function trySync(prefix: string, action: () => Promise<void>): Promise<string | null> {
     try {
       await action();
       setSyncStatus(null);
+      return null;
     } catch (error) {
       const detail = error instanceof Error ? error.message : "Unknown sync error.";
-      setSyncStatus(`${prefix}: ${detail}`);
+      const message = `${prefix}: ${detail}`;
+      setSyncStatus(message);
+      return message;
     }
   }
 
@@ -1051,18 +1086,35 @@ function InviteImportDialog({
   invite,
   onClose,
   onImport,
+  onPreview,
 }: {
   invite: AppInvitePayload | null;
   onClose: () => void;
   onImport: (invite: AppInvitePayload) => Promise<void>;
+  onPreview: (invite: AppInvitePayload) => Promise<AppInvitePreview>;
 }) {
+  const [preview, setPreview] = useState<AppInvitePreview | null>(null);
   const [status, setStatus] = useState("Ready");
 
   useEffect(() => {
+    setPreview(null);
     setStatus("Ready");
-  }, [invite?.createdAt]);
+  }, [invite]);
 
   if (!invite) return null;
+
+  async function previewInvite() {
+    if (!invite) return;
+    const currentInvite = invite;
+    setStatus("Loading app preview...");
+    try {
+      setPreview(await onPreview(currentInvite));
+      setStatus("Preview loaded. Review before importing.");
+    } catch (error) {
+      setPreview(null);
+      setStatus(error instanceof Error ? error.message : "Could not load app preview.");
+    }
+  }
 
   async function importInvite() {
     if (!invite) return;
@@ -1113,13 +1165,45 @@ function InviteImportDialog({
           </p>
         </div>
 
+        {preview ? (
+          <div className="grid gap-2 rounded-lg border border-app-line bg-white p-3">
+            <div className="min-w-0">
+              <p className="mb-1 text-xs font-extrabold uppercase text-app-muted">Preview</p>
+              <h3 className="truncate text-base font-extrabold text-app-ink">{preview.name}</h3>
+              {preview.description ? <p className="mt-1 text-sm leading-relaxed text-app-muted">{preview.description}</p> : null}
+            </div>
+            <div className="grid gap-1 text-xs text-app-muted">
+              <p>
+                App id: <span className="font-mono">{shortFingerprint(preview.appId)}</span>
+              </p>
+              <p>
+                Source room: <span className="font-mono">{shortFingerprint(preview.sourceRoomId)}</span>
+              </p>
+              <p>
+                Data room: <span className="font-mono">{shortFingerprint(preview.dataRoomId)}</span>
+              </p>
+              <p>
+                Updated: <span className="font-mono">{formatDate(preview.updatedAt)}</span>
+              </p>
+            </div>
+          </div>
+        ) : null}
+
         <div className="flex flex-wrap items-center justify-between gap-3">
           <span className="text-xs font-bold text-app-muted">{status}</span>
           <div className="flex gap-2">
             <button className="min-h-9 rounded-md border border-app-line bg-white px-3 text-sm font-bold text-app-ink hover:border-app-accent" type="button" onClick={onClose}>
               Cancel
             </button>
-            <button className="min-h-9 rounded-md border border-app-accent bg-app-accent px-3 text-sm font-extrabold text-white hover:bg-app-strong" type="button" onClick={importInvite}>
+            <button className="min-h-9 rounded-md border border-app-line bg-white px-3 text-sm font-bold text-app-ink hover:border-app-accent" type="button" onClick={previewInvite}>
+              Preview app
+            </button>
+            <button
+              className="min-h-9 rounded-md border border-app-accent bg-app-accent px-3 text-sm font-extrabold text-white hover:bg-app-strong disabled:opacity-50"
+              type="button"
+              disabled={!preview}
+              onClick={importInvite}
+            >
               Import
             </button>
           </div>
@@ -1127,6 +1211,11 @@ function InviteImportDialog({
       </div>
     </div>
   );
+}
+
+function shortFingerprint(value: string): string {
+  if (value.length <= 18) return value;
+  return `${value.slice(0, 8)}...${value.slice(-6)}`;
 }
 
 function LauncherAppActionsDialog({

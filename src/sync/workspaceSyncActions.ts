@@ -54,6 +54,16 @@ export interface PullLatestResult {
   deletedAt?: string;
 }
 
+export interface AppInvitePreview {
+  appId: string;
+  dataRoomId: string;
+  description: string;
+  name: string;
+  providerDatabaseUrl: string;
+  sourceRoomId: string;
+  updatedAt: string;
+}
+
 export interface WorkspaceManifestChange {
   appIdsChanged: string[];
   appIdsDeleted: string[];
@@ -97,6 +107,37 @@ export function createWorkspaceSyncActions(input: WorkspaceSyncActionsInput) {
     await enqueueCurrentWorkspaceManifest();
     void flushWorkspaceManifestQueue();
     return invite;
+  }
+
+  async function previewInvite(invite: AppInvitePayload): Promise<AppInvitePreview> {
+    const provider = createProviderFromReference(invite.provider);
+    if (provider.claimRoomAccess) {
+      await provider.claimRoomAccess({
+        claimToken: roomWriteToken(invite.sourceRoom),
+        roomId: invite.sourceRoom.roomId,
+      });
+    }
+    const loaded = await loadRemoteAppSource({
+      provider,
+      syncRecord: {
+        appId: "pending-preview",
+        dataProvider: invite.provider,
+        dataRoom: invite.dataRoom,
+        importedAt: new Date().toISOString(),
+        kind: "joined",
+        sourceProvider: invite.provider,
+        sourceRoom: invite.sourceRoom,
+      },
+    });
+    return {
+      appId: loaded.app.appId,
+      dataRoomId: invite.dataRoom.roomId,
+      description: loaded.app.description,
+      name: loaded.app.name,
+      providerDatabaseUrl: invite.provider.databaseUrl,
+      sourceRoomId: loaded.sourceRoom.roomId,
+      updatedAt: loaded.app.updatedAt,
+    };
   }
 
   async function importInvite(invite: AppInvitePayload): Promise<void> {
@@ -160,11 +201,15 @@ export function createWorkspaceSyncActions(input: WorkspaceSyncActionsInput) {
     void flushAppDataSyncQueue();
   }
 
-  async function ensureAppBackedUp(app: AppRecord): Promise<void> {
+  async function ensureAppBackedUp(app: AppRecord, options: { flush?: boolean } = {}): Promise<void> {
     const profile = await syncRegistry.getStorageProfile();
     if (!profile) return;
     await syncRegistry.ensureOwnedAppRooms(app.appId);
     await enqueueEnsureAppRooms(queueStore, app.appId);
+    if (options.flush === false) {
+      await enqueueCurrentWorkspaceManifest();
+      return;
+    }
     await flushRoomLifecycleQueue();
     await enqueueCurrentWorkspaceManifest();
     void flushWorkspaceManifestQueue();
@@ -597,6 +642,9 @@ export function createWorkspaceSyncActions(input: WorkspaceSyncActionsInput) {
         manifestFlushAgain = false;
         await processWorkspaceManifestQueue({
           createProviderFromStorageProfile,
+          onSavedState: async (savedState) => {
+            await applyRemoteWorkspaceManifest(savedState);
+          },
           queueStore,
           syncRegistry,
           throwOnError: options.throwOnError,
@@ -680,6 +728,7 @@ export function createWorkspaceSyncActions(input: WorkspaceSyncActionsInput) {
     flushRoomLifecycleQueue,
     importInvite,
     noteLocalAppDataEdit,
+    previewInvite,
     pullLatestAppRooms,
     pullLatestWorkspaceManifest,
     pushAppData,

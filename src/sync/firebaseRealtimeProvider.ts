@@ -222,10 +222,17 @@ export function createFirebaseRealtimeDriverFromDatabase(
     async saveRoom(input) {
       await prepareReadWriteAccess();
       let currentRecord: FirebaseRealtimeRoomRecord | null = null;
+      let handledInitialCacheMiss = false;
       const result = await runTransaction(roomRef(database, input.roomId), (current) => {
         const parsed = parseRoomRecord(current, input.roomId);
         currentRecord = parsed;
-        if (!parsed || parsed.version !== input.expectedVersion) return;
+        if (!parsed) {
+          if (handledInitialCacheMiss) return;
+          handledInitialCacheMiss = true;
+          return input.nextRecord;
+        }
+        handledInitialCacheMiss = true;
+        if (parsed.version !== input.expectedVersion) return;
         currentRecord = input.nextRecord;
         return input.nextRecord;
       });

@@ -2,8 +2,8 @@ import type { JsonValue } from "../core/types";
 import { decryptRoomSnapshot, encryptRoomPayload, rememberSnapshotVersion, roomReadToken, roomWriteToken } from "./crypto";
 import { DEFAULT_FIREBASE_ACCESS_MODEL } from "./firebaseAccessRules";
 import type { FirebaseWebAppConfig } from "./firebaseConfig";
-import type { RealtimeSyncProvider, RoomCapability } from "./types";
-import type { RemoteProviderReference, StorageProfile, WorkspaceSyncState } from "./workspaceSync";
+import type { RealtimeSyncProvider, RemoteRoomSnapshot, RoomCapability } from "./types";
+import type { AppSyncRecord, JoinedAppSyncRecord, OwnedAppSyncRecord, PrivateCopySyncRecord, RemoteProviderReference, StorageProfile, TombstoneRecord, WorkspaceSyncState } from "./workspaceSync";
 
 const WORKSPACE_RECOVERY_SCHEMA_VERSION = 1;
 
@@ -62,14 +62,14 @@ export async function saveWorkspaceManifest(input: {
   state: WorkspaceSyncState;
 }): Promise<WorkspaceSyncState> {
   const capability = requireManifestCapability(input.state);
-  const snapshot =
+  const saved =
     capability.lastSeenVersion === 0
       ? await createOrUpdateManifestRoom(input.provider, capability, input.state)
       : await saveManifestRoom(input.provider, capability, input.state, capability.lastSeenVersion);
 
   return {
-    ...input.state,
-    manifestRoom: rememberSnapshotVersion(capability, snapshot),
+    ...saved.state,
+    manifestRoom: rememberSnapshotVersion(saved.state.manifestRoom ?? capability, saved.snapshot),
     updatedAt: new Date().toISOString(),
   };
 }
@@ -78,27 +78,34 @@ export async function loadWorkspaceManifest(input: {
   provider: RealtimeSyncProvider;
   recoveryMaterial: WorkspaceRecoveryMaterial;
 }): Promise<WorkspaceSyncState> {
-  if (input.recoveryMaterial.workspaceState) {
-    return withRecoveryProviderMetadata(parseWorkspaceManifestPayload(input.recoveryMaterial.workspaceState), input.recoveryMaterial);
+  const embeddedState = input.recoveryMaterial.workspaceState
+    ? withRecoveryProviderMetadata(parseWorkspaceManifestPayload(input.recoveryMaterial.workspaceState), input.recoveryMaterial)
+    : null;
+
+  let remoteState: WorkspaceSyncState | null = null;
+  try {
+    const snapshot = await input.provider.loadRoom({
+      readToken: roomReadToken(input.recoveryMaterial.manifestRoom),
+      roomId: input.recoveryMaterial.manifestRoom.roomId,
+    });
+    remoteState = await readWorkspaceManifestSnapshot({
+      snapshot,
+      state: {
+        apps: {},
+        deletedApps: {},
+        manifestRoom: input.recoveryMaterial.manifestRoom,
+        schemaVersion: WORKSPACE_RECOVERY_SCHEMA_VERSION,
+        storageProfile: null,
+        updatedAt: input.recoveryMaterial.createdAt,
+        workspaceId: input.recoveryMaterial.workspaceId,
+      },
+    });
+  } catch (error) {
+    if (embeddedState) return embeddedState;
+    throw error;
   }
 
-  const snapshot = await input.provider.loadRoom({
-    readToken: roomReadToken(input.recoveryMaterial.manifestRoom),
-    roomId: input.recoveryMaterial.manifestRoom.roomId,
-  });
-  const payload = await decryptRoomSnapshot({
-    capability: input.recoveryMaterial.manifestRoom,
-    roomType: "workspace-manifest",
-    snapshot,
-  });
-  const state = parseWorkspaceManifestPayload(payload);
-  return withRecoveryProviderMetadata(
-    {
-      ...state,
-      manifestRoom: rememberSnapshotVersion(input.recoveryMaterial.manifestRoom, snapshot),
-    },
-    input.recoveryMaterial,
-  );
+  return withRecoveryProviderMetadata(embeddedState ? mergeWorkspaceManifestStates(remoteState, embeddedState) : remoteState, input.recoveryMaterial);
 }
 
 export async function loadLatestWorkspaceManifest(input: {
@@ -149,44 +156,187 @@ function withRecoveryProviderMetadata(state: WorkspaceSyncState, recoveryMateria
   };
 }
 
-async function createOrUpdateManifestRoom(provider: RealtimeSyncProvider, capability: RoomCapability, state: WorkspaceSyncState) {
+interface SavedManifestRoom {
+  snapshot: RemoteRoomSnapshot;
+  state: WorkspaceSyncState;
+}
+
+async function createOrUpdateManifestRoom(provider: RealtimeSyncProvider, capability: RoomCapability, state: WorkspaceSyncState): Promise<SavedManifestRoom> {
   try {
     return await createManifestRoom(provider, capability, state);
   } catch (error) {
     if (!(error instanceof Error) || !/already exists/i.test(error.message)) throw error;
     const current = await provider.loadRoom({ readToken: roomReadToken(capability), roomId: capability.roomId });
-    return saveManifestRoom(provider, capability, state, current.version);
+    const currentState = await readWorkspaceManifestSnapshot({ snapshot: current, state });
+    return saveManifestRoom(provider, capability, mergeWorkspaceManifestStates(currentState, state), current.version);
   }
 }
 
-async function createManifestRoom(provider: RealtimeSyncProvider, capability: RoomCapability, state: WorkspaceSyncState) {
-  return provider.createRoom({
+async function createManifestRoom(provider: RealtimeSyncProvider, capability: RoomCapability, state: WorkspaceSyncState): Promise<SavedManifestRoom> {
+  const snapshot = await provider.createRoom({
     encryptedPayload: await encryptWorkspaceManifest(capability, state, 1),
     readToken: roomReadToken(capability),
     roomId: capability.roomId,
     writeToken: roomWriteToken(capability),
   });
+  return { snapshot, state };
 }
 
-async function saveManifestRoom(provider: RealtimeSyncProvider, capability: RoomCapability, state: WorkspaceSyncState, expectedVersion: number) {
+async function saveManifestRoom(
+  provider: RealtimeSyncProvider,
+  capability: RoomCapability,
+  state: WorkspaceSyncState,
+  expectedVersion: number,
+): Promise<SavedManifestRoom> {
   try {
-    return await provider.saveRoom({
+    const snapshot = await provider.saveRoom({
       encryptedPayload: await encryptWorkspaceManifest(capability, state, expectedVersion + 1),
       expectedVersion,
       roomId: capability.roomId,
       writeToken: roomWriteToken(capability),
     });
+    return { snapshot, state };
   } catch (error) {
     if (isRoomNotFoundError(error)) return createManifestRoom(provider, capability, state);
     if (!isRoomVersionConflictError(error)) throw error;
     const current = await provider.loadRoom({ readToken: roomReadToken(capability), roomId: capability.roomId });
-    return provider.saveRoom({
-      encryptedPayload: await encryptWorkspaceManifest(capability, state, current.version + 1),
+    const currentState = await readWorkspaceManifestSnapshot({ snapshot: current, state });
+    const mergedState = mergeWorkspaceManifestStates(currentState, state);
+    const snapshot = await provider.saveRoom({
+      encryptedPayload: await encryptWorkspaceManifest(capability, mergedState, current.version + 1),
       expectedVersion: current.version,
       roomId: capability.roomId,
       writeToken: roomWriteToken(capability),
     });
+    return { snapshot, state: mergedState };
   }
+}
+
+function mergeWorkspaceManifestStates(primary: WorkspaceSyncState, secondary: WorkspaceSyncState): WorkspaceSyncState {
+  if (primary.workspaceId !== secondary.workspaceId) {
+    throw new Error("Workspace manifest belongs to a different workspace.");
+  }
+
+  const deletedApps = mergeTombstones(primary.deletedApps, secondary.deletedApps);
+  const apps: WorkspaceSyncState["apps"] = {};
+
+  for (const record of [...Object.values(primary.apps), ...Object.values(secondary.apps)]) {
+    if (deletedApps[record.appId]) continue;
+    apps[record.appId] = mergeAppSyncRecord(apps[record.appId], record);
+  }
+
+  return {
+    apps,
+    deletedApps,
+    manifestRoom: mergeRoomCapability(primary.manifestRoom, secondary.manifestRoom),
+    schemaVersion: primary.schemaVersion,
+    storageProfile: primary.storageProfile ?? secondary.storageProfile,
+    updatedAt: maxIsoTimestamp(primary.updatedAt, secondary.updatedAt),
+    workspaceId: primary.workspaceId,
+  };
+}
+
+function mergeTombstones(
+  primary: WorkspaceSyncState["deletedApps"],
+  secondary: WorkspaceSyncState["deletedApps"],
+): WorkspaceSyncState["deletedApps"] {
+  const deletedApps: WorkspaceSyncState["deletedApps"] = {};
+  for (const tombstone of [...Object.values(primary), ...Object.values(secondary)]) {
+    deletedApps[tombstone.appId] = mergeTombstone(deletedApps[tombstone.appId], tombstone);
+  }
+  return deletedApps;
+}
+
+function mergeTombstone(existing: TombstoneRecord | undefined, candidate: TombstoneRecord): TombstoneRecord {
+  if (!existing) return candidate;
+  if (candidate.deletedAt > existing.deletedAt) return candidate;
+  if (candidate.deletedAt === existing.deletedAt && candidate.reason === "remote-owner-delete") return candidate;
+  return existing;
+}
+
+function mergeAppSyncRecord(existing: AppSyncRecord | undefined, candidate: AppSyncRecord): AppSyncRecord {
+  if (!existing) return candidate;
+  const base = isAppSyncRecordNewer(candidate, existing) ? candidate : existing;
+  const other = base === candidate ? existing : candidate;
+
+  if (base.kind === "owned" && other.kind === "owned") return mergeOwnedAppSyncRecord(base, other);
+  if (base.kind === "private-copy" && other.kind === "private-copy") return mergePrivateCopySyncRecord(base, other);
+  if (base.kind === "joined" && other.kind === "joined") return mergeJoinedAppSyncRecord(base, other);
+  return base;
+}
+
+function mergeOwnedAppSyncRecord(base: OwnedAppSyncRecord, other: OwnedAppSyncRecord): OwnedAppSyncRecord {
+  return {
+    ...base,
+    dataRoom: mergeSameRoomCapability(base.dataRoom, other.dataRoom),
+    shareState: base.shareState === "invite-created" || other.shareState === "invite-created" ? "invite-created" : "private",
+    sourceRoom: mergeSameRoomCapability(base.sourceRoom, other.sourceRoom),
+    updatedAt: maxIsoTimestamp(base.updatedAt, other.updatedAt),
+  };
+}
+
+function mergePrivateCopySyncRecord(base: PrivateCopySyncRecord, other: PrivateCopySyncRecord): PrivateCopySyncRecord {
+  return {
+    ...base,
+    dataRoom: mergeSameRoomCapability(base.dataRoom, other.dataRoom),
+    sourceRoom: mergeSameRoomCapability(base.sourceRoom, other.sourceRoom),
+    updatedAt: maxIsoTimestamp(base.updatedAt, other.updatedAt),
+  };
+}
+
+function mergeJoinedAppSyncRecord(base: JoinedAppSyncRecord, other: JoinedAppSyncRecord): JoinedAppSyncRecord {
+  return {
+    ...base,
+    cachedAt: maxOptionalIsoTimestamp(base.cachedAt, other.cachedAt),
+    dataRoom: mergeSameRoomCapability(base.dataRoom, other.dataRoom),
+    remoteDeletedAt: maxOptionalIsoTimestamp(base.remoteDeletedAt, other.remoteDeletedAt),
+    sourceRoom: mergeSameRoomCapability(base.sourceRoom, other.sourceRoom),
+  };
+}
+
+function isAppSyncRecordNewer(candidate: AppSyncRecord, existing: AppSyncRecord): boolean {
+  const candidateVersion = maxRoomVersion(candidate);
+  const existingVersion = maxRoomVersion(existing);
+  if (candidateVersion !== existingVersion) return candidateVersion > existingVersion;
+  return appSyncRecordTimestamp(candidate) > appSyncRecordTimestamp(existing);
+}
+
+function maxRoomVersion(record: AppSyncRecord): number {
+  return Math.max(record.sourceRoom.lastSeenVersion, record.dataRoom.lastSeenVersion);
+}
+
+function appSyncRecordTimestamp(record: AppSyncRecord): string {
+  if ("updatedAt" in record) return record.updatedAt;
+  return maxOptionalIsoTimestamp(record.remoteDeletedAt, record.cachedAt, record.importedAt) ?? "";
+}
+
+function mergeRoomCapability(primary?: RoomCapability, secondary?: RoomCapability): RoomCapability | undefined {
+  if (!primary) return secondary;
+  if (!secondary) return primary;
+  return mergeSameRoomCapability(primary, secondary);
+}
+
+function mergeSameRoomCapability(primary: RoomCapability, secondary: RoomCapability): RoomCapability {
+  if (primary.roomId !== secondary.roomId) {
+    return primary.lastSeenVersion >= secondary.lastSeenVersion ? primary : secondary;
+  }
+  const base = primary.lastSeenVersion >= secondary.lastSeenVersion ? primary : secondary;
+  const other = base === primary ? secondary : primary;
+  return {
+    ...base,
+    lastSeenVersion: Math.max(primary.lastSeenVersion, secondary.lastSeenVersion),
+    readToken: base.readToken || other.readToken,
+    writeToken: base.writeToken || other.writeToken,
+    accessToken: base.accessToken || other.accessToken,
+  };
+}
+
+function maxOptionalIsoTimestamp(...timestamps: Array<string | undefined>): string | undefined {
+  return timestamps.filter((timestamp): timestamp is string => Boolean(timestamp)).sort().at(-1);
+}
+
+function maxIsoTimestamp(primary: string, secondary: string): string {
+  return maxOptionalIsoTimestamp(primary, secondary) ?? primary;
 }
 
 function encryptWorkspaceManifest(capability: RoomCapability, state: WorkspaceSyncState, roomVersion: number) {

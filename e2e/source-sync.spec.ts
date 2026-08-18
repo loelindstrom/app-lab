@@ -1,181 +1,245 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 import { readFirebaseE2eProfile, type FirebaseE2eProfile } from "./firebaseProfile";
 
 const firebaseProfile = readFirebaseE2eProfile();
+let ownerContext: BrowserContext | null = null;
+let joinedContext: BrowserContext | null = null;
 
-test.describe("source sync", () => {
+test.beforeAll(async ({ browser }) => {
+  if (!firebaseProfile) return;
+  ownerContext = await browser.newContext();
+  joinedContext = await browser.newContext();
+});
+
+test.afterAll(async () => {
+  await Promise.all([ownerContext?.close(), joinedContext?.close()]);
+  ownerContext = null;
+  joinedContext = null;
+});
+
+test.describe("@firebase source sync", () => {
   test.skip(!firebaseProfile, "Auth-capable Firebase E2E profile is required for Firebase-backed E2E tests.");
 
-  test("queued offline source save syncs to another browser when the owner comes back online", async ({ browser }) => {
+  test("queued offline source save syncs to another browser when the owner comes back online", async () => {
     if (!firebaseProfile) throw new Error("Auth-capable Firebase E2E profile is required.");
 
-    const ownerContext = await browser.newContext();
-    const joinedContext = await browser.newContext();
-    const owner = await ownerContext.newPage();
-    const joined = await joinedContext.newPage();
+    const ownerBrowserContext = requireContext(ownerContext);
+    const joinedBrowserContext = requireContext(joinedContext);
+    const owner = await newCleanWorkspacePage(ownerBrowserContext);
+    const joined = await newCleanWorkspacePage(joinedBrowserContext);
     const initialTitle = `E2E initial ${Date.now()}`;
     const offlineTitle = `E2E offline ${Date.now()}`;
 
-    await owner.goto("/");
-    await configureStorage(owner, firebaseProfile.config, firebaseProfile);
-    await createExampleApp(owner);
-    await saveSource(owner, htmlForTitle(initialTitle));
-    const inviteUrl = await createInvite(owner);
+    try {
+      await configureStorage(owner, firebaseProfile.config, firebaseProfile);
+      await createExampleApp(owner);
+      await saveSource(owner, htmlForTitle(initialTitle));
+      const inviteUrl = await createInvite(owner);
 
-    await joined.goto(inviteUrl);
-    await joined.getByRole("button", { name: "Import", exact: true }).click();
-    await expect(joined.getByText(initialTitle).first()).toBeVisible();
-    await joined.getByRole("button", { name: "Open", exact: true }).click();
-    await expect(joined.getByRole("heading", { name: initialTitle })).toBeVisible();
+      await joined.goto(inviteUrl);
+      await previewAndImportSharedApp(joined);
+      await expect(joined.getByText(initialTitle).first()).toBeVisible({ timeout: 15_000 });
+      await joined.getByRole("button", { name: "Open", exact: true }).click();
+      await expect(joined.getByRole("heading", { name: initialTitle })).toBeVisible();
 
-    await ownerContext.setOffline(true);
-    await saveSource(owner, htmlForTitle(offlineTitle));
-    await expect(owner.getByRole("heading", { name: offlineTitle })).toBeVisible();
-    await owner.getByRole("button", { name: "‹ Apps" }).click();
-    await owner.getByRole("button", { name: "Open", exact: true }).click();
-    await expect(owner.getByRole("heading", { name: offlineTitle })).toBeVisible();
+      await ownerBrowserContext.setOffline(true);
+      await saveSource(owner, htmlForTitle(offlineTitle));
+      await expect(owner.getByRole("heading", { name: offlineTitle })).toBeVisible();
+      await owner.getByRole("button", { name: "‹ Apps" }).click();
+      await owner.getByRole("button", { name: "Open", exact: true }).click();
+      await expect(owner.getByRole("heading", { name: offlineTitle })).toBeVisible();
 
-    await ownerContext.setOffline(false);
-    await owner.evaluate(() => window.dispatchEvent(new Event("online")));
+      await ownerBrowserContext.setOffline(false);
+      await owner.evaluate(() => window.dispatchEvent(new Event("online")));
 
-    await expect(joined.getByRole("heading", { name: offlineTitle })).toBeVisible({ timeout: 15_000 });
-
-    await ownerContext.close();
-    await joinedContext.close();
+      await expect(joined.getByRole("heading", { name: offlineTitle })).toBeVisible({ timeout: 15_000 });
+    } finally {
+      await ownerBrowserContext.setOffline(false);
+      await closePages(owner, joined);
+    }
   });
 
-  test("open shared app receives repeated live source updates without reloading", async ({ browser }) => {
+  test("open shared app receives repeated live source updates without reloading", async () => {
     if (!firebaseProfile) throw new Error("Auth-capable Firebase E2E profile is required.");
 
-    const ownerContext = await browser.newContext();
-    const joinedContext = await browser.newContext();
-    const owner = await ownerContext.newPage();
-    const joined = await joinedContext.newPage();
+    const owner = await newCleanWorkspacePage(requireContext(ownerContext));
+    const joined = await newCleanWorkspacePage(requireContext(joinedContext));
     const initialTitle = `E2E source initial ${Date.now()}`;
 
-    await owner.goto("/");
-    await configureStorage(owner, firebaseProfile.config, firebaseProfile);
-    await createExampleApp(owner);
-    await saveSource(owner, htmlForTitle(initialTitle));
-    const inviteUrl = await createInvite(owner);
+    try {
+      await configureStorage(owner, firebaseProfile.config, firebaseProfile);
+      await createExampleApp(owner);
+      await saveSource(owner, htmlForTitle(initialTitle));
+      const inviteUrl = await createInvite(owner);
 
-    await joined.goto(inviteUrl);
-    await joined.getByRole("button", { name: "Import", exact: true }).click();
-    await expect(joined.getByText(initialTitle).first()).toBeVisible();
-    await joined.getByRole("button", { name: "Open", exact: true }).click();
-    await expect(joined.getByRole("heading", { name: initialTitle })).toBeVisible();
+      await joined.goto(inviteUrl);
+      await previewAndImportSharedApp(joined);
+      await expect(joined.getByText(initialTitle).first()).toBeVisible({ timeout: 15_000 });
+      await joined.getByRole("button", { name: "Open", exact: true }).click();
+      await expect(joined.getByRole("heading", { name: initialTitle })).toBeVisible();
 
-    for (const title of [`E2E source one ${Date.now()}`, `E2E source two ${Date.now()}`, `E2E source three ${Date.now()}`]) {
-      await saveSource(owner, htmlForTitle(title));
-      await expect(joined.getByRole("heading", { name: title })).toBeVisible({ timeout: 15_000 });
+      for (const title of [`E2E source one ${Date.now()}`, `E2E source two ${Date.now()}`, `E2E source three ${Date.now()}`]) {
+        await saveSource(owner, htmlForTitle(title));
+        await expect(joined.getByRole("heading", { name: title })).toBeVisible({ timeout: 15_000 });
+      }
+    } finally {
+      await closePages(owner, joined);
     }
-
-    await ownerContext.close();
-    await joinedContext.close();
   });
 
-  test("queued offline app data save syncs to another browser when the owner comes back online", async ({ browser }) => {
+  test("queued offline app data save syncs to another browser when the owner comes back online", async () => {
     if (!firebaseProfile) throw new Error("Auth-capable Firebase E2E profile is required.");
 
-    const ownerContext = await browser.newContext();
-    const joinedContext = await browser.newContext();
-    const owner = await ownerContext.newPage();
-    const joined = await joinedContext.newPage();
+    const ownerBrowserContext = requireContext(ownerContext);
+    const owner = await newCleanWorkspacePage(ownerBrowserContext);
+    const joined = await newCleanWorkspacePage(requireContext(joinedContext));
 
-    await owner.goto("/");
-    await configureStorage(owner, firebaseProfile.config, firebaseProfile);
-    await createExampleApp(owner);
-    const inviteUrl = await createInvite(owner);
+    try {
+      await configureStorage(owner, firebaseProfile.config, firebaseProfile);
+      await createExampleApp(owner);
+      const inviteUrl = await createInvite(owner);
 
-    await joined.goto(inviteUrl);
-    await joined.getByRole("button", { name: "Import", exact: true }).click();
-    await expect(joined.getByText("Example App").first()).toBeVisible();
-    await joined.getByRole("button", { name: "Open", exact: true }).click();
-    await expect(appFrame(joined).getByRole("heading", { name: "Example App" })).toBeVisible();
+      await joined.goto(inviteUrl);
+      await previewAndImportSharedApp(joined);
+      await expect(joined.getByText("Example App").first()).toBeVisible({ timeout: 15_000 });
+      await joined.getByRole("button", { name: "Open", exact: true }).click();
+      await expect(appFrame(joined).getByRole("heading", { name: "Example App" })).toBeVisible();
 
-    await addExampleItem(owner, "Online item");
-    await expect(appFrame(joined).getByText("Online item")).toBeVisible();
-    await expect(appFrame(owner).getByText("Online item")).toBeVisible();
+      await addExampleItem(owner, "Online item");
+      await expect(appFrame(joined).getByText("Online item")).toBeVisible({ timeout: 15_000 });
+      await expect(appFrame(owner).getByText("Online item")).toBeVisible();
 
-    await ownerContext.setOffline(true);
-    await addExampleItem(owner, "Offline item");
-    await expect(appFrame(owner).getByText("Offline item")).toBeVisible();
-    await owner.getByRole("button", { name: "‹ Apps" }).click();
-    await owner.getByRole("button", { name: "Open", exact: true }).click();
-    await expect(appFrame(owner).getByText("Offline item")).toBeVisible();
+      await ownerBrowserContext.setOffline(true);
+      await addExampleItem(owner, "Offline item");
+      await expect(appFrame(owner).getByText("Offline item")).toBeVisible();
+      await owner.getByRole("button", { name: "‹ Apps" }).click();
+      await owner.getByRole("button", { name: "Open", exact: true }).click();
+      await expect(appFrame(owner).getByText("Offline item")).toBeVisible();
 
-    await ownerContext.setOffline(false);
-    await owner.evaluate(() => window.dispatchEvent(new Event("online")));
+      await ownerBrowserContext.setOffline(false);
+      await owner.evaluate(() => window.dispatchEvent(new Event("online")));
 
-    await expect(appFrame(joined).getByText("Offline item")).toBeVisible({ timeout: 15_000 });
-
-    await ownerContext.close();
-    await joinedContext.close();
+      await expect(appFrame(joined).getByText("Offline item")).toBeVisible({ timeout: 15_000 });
+    } finally {
+      await ownerBrowserContext.setOffline(false);
+      await closePages(owner, joined);
+    }
   });
 
-  test("open shared app receives repeated live app data updates without reloading", async ({ browser }) => {
+  test("open shared app receives repeated live app data updates without reloading", async () => {
     if (!firebaseProfile) throw new Error("Auth-capable Firebase E2E profile is required.");
 
-    const ownerContext = await browser.newContext();
-    const joinedContext = await browser.newContext();
-    const owner = await ownerContext.newPage();
-    const joined = await joinedContext.newPage();
+    const owner = await newCleanWorkspacePage(requireContext(ownerContext));
+    const joined = await newCleanWorkspacePage(requireContext(joinedContext));
 
-    await owner.goto("/");
-    await configureStorage(owner, firebaseProfile.config, firebaseProfile);
-    await createExampleApp(owner);
-    const inviteUrl = await createInvite(owner);
+    try {
+      await configureStorage(owner, firebaseProfile.config, firebaseProfile);
+      await createExampleApp(owner);
+      const inviteUrl = await createInvite(owner);
 
-    await joined.goto(inviteUrl);
-    await joined.getByRole("button", { name: "Import", exact: true }).click();
-    await expect(joined.getByText("Example App").first()).toBeVisible();
-    await joined.getByRole("button", { name: "Open", exact: true }).click();
-    await expect(appFrame(joined).getByRole("heading", { name: "Example App" })).toBeVisible();
+      await joined.goto(inviteUrl);
+      await previewAndImportSharedApp(joined);
+      await expect(joined.getByText("Example App").first()).toBeVisible({ timeout: 15_000 });
+      await joined.getByRole("button", { name: "Open", exact: true }).click();
+      await expect(appFrame(joined).getByRole("heading", { name: "Example App" })).toBeVisible();
 
-    for (const item of ["Live one", "Live two", "Live three"]) {
-      await addExampleItem(owner, item);
-      await expect(appFrame(owner).getByText(item, { exact: true })).toBeVisible();
-      await expect(appFrame(joined).getByText(item, { exact: true })).toBeVisible({ timeout: 15_000 });
+      for (const item of ["Live one", "Live two", "Live three"]) {
+        await addExampleItem(owner, item);
+        await expect(appFrame(owner).getByText(item, { exact: true })).toBeVisible();
+        await expect(appFrame(joined).getByText(item, { exact: true })).toBeVisible({ timeout: 15_000 });
+      }
+    } finally {
+      await closePages(owner, joined);
     }
-
-    await ownerContext.close();
-    await joinedContext.close();
   });
 
-  test("multiple offline app data edits keep updating locally before sync resumes", async ({ browser }) => {
+  test("multiple offline app data edits keep updating locally before sync resumes", async () => {
     if (!firebaseProfile) throw new Error("Auth-capable Firebase E2E profile is required.");
 
-    const ownerContext = await browser.newContext();
-    const owner = await ownerContext.newPage();
+    const ownerBrowserContext = requireContext(ownerContext);
+    const owner = await newCleanWorkspacePage(ownerBrowserContext);
 
-    await owner.goto("/");
-    await configureStorage(owner, firebaseProfile.config, firebaseProfile);
-    await createExampleApp(owner);
+    try {
+      await configureStorage(owner, firebaseProfile.config, firebaseProfile);
+      await createExampleApp(owner);
 
-    for (const item of ["One", "Two", "Three"]) {
-      await addExampleItem(owner, item);
-      await expect(appFrame(owner).getByText(item, { exact: true })).toBeVisible();
+      for (const item of ["One", "Two", "Three"]) {
+        await addExampleItem(owner, item);
+        await expect(appFrame(owner).getByText(item, { exact: true })).toBeVisible();
+      }
+
+      await ownerBrowserContext.setOffline(true);
+
+      await deleteExampleItem(owner, "One");
+      await expect(appFrame(owner).getByText("One", { exact: true })).toBeHidden();
+
+      await addExampleItem(owner, "Four");
+      await expect(appFrame(owner).getByText("Four", { exact: true })).toBeVisible();
+
+      await deleteExampleItem(owner, "Two");
+      await expect(appFrame(owner).getByText("Two", { exact: true })).toBeHidden();
+      await expect(appFrame(owner).getByText("Three", { exact: true })).toBeVisible();
+      await expect(appFrame(owner).getByText("Four", { exact: true })).toBeVisible();
+
+      await ownerBrowserContext.setOffline(false);
+      await owner.evaluate(() => window.dispatchEvent(new Event("online")));
+    } finally {
+      await ownerBrowserContext.setOffline(false);
+      await closePages(owner);
     }
-
-    await ownerContext.setOffline(true);
-
-    await deleteExampleItem(owner, "One");
-    await expect(appFrame(owner).getByText("One", { exact: true })).toBeHidden();
-
-    await addExampleItem(owner, "Four");
-    await expect(appFrame(owner).getByText("Four", { exact: true })).toBeVisible();
-
-    await deleteExampleItem(owner, "Two");
-    await expect(appFrame(owner).getByText("Two", { exact: true })).toBeHidden();
-    await expect(appFrame(owner).getByText("Three", { exact: true })).toBeVisible();
-    await expect(appFrame(owner).getByText("Four", { exact: true })).toBeVisible();
-
-    await ownerContext.setOffline(false);
-    await owner.evaluate(() => window.dispatchEvent(new Event("online")));
-
-    await ownerContext.close();
   });
 });
+
+function requireContext(context: BrowserContext | null): BrowserContext {
+  if (!context) throw new Error("Firebase E2E browser context was not initialized.");
+  return context;
+}
+
+async function newCleanWorkspacePage(context: BrowserContext): Promise<Page> {
+  await context.setOffline(false);
+  const page = await context.newPage();
+  await page.goto("/");
+  await page.evaluate(async () => {
+    localStorage.removeItem("app-lab-workspace-sync-v1");
+    await Promise.all([
+      clearObjectStores("app-lab-v2", ["apps_registry", "apps_data"]),
+      clearObjectStores("app-lab-sync-queue-v1", ["sync_queue"]),
+    ]);
+
+    async function clearObjectStores(databaseName: string, storeNames: string[]): Promise<void> {
+      if (indexedDB.databases) {
+        const databases = await indexedDB.databases();
+        if (!databases.some((database) => database.name === databaseName)) return;
+      }
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open(databaseName);
+        request.onerror = () => reject(request.error ?? new Error(`Could not open ${databaseName}.`));
+        request.onsuccess = () => resolve(request.result);
+      });
+      const existingStoreNames = storeNames.filter((storeName) => db.objectStoreNames.contains(storeName));
+      if (!existingStoreNames.length) {
+        db.close();
+        return;
+      }
+      await new Promise<void>((resolve, reject) => {
+        const transaction = db.transaction(existingStoreNames, "readwrite");
+        for (const storeName of existingStoreNames) {
+          transaction.objectStore(storeName).clear();
+        }
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error ?? new Error(`Could not clear ${databaseName}.`));
+        transaction.onabort = () => reject(transaction.error ?? new Error(`Could not clear ${databaseName}.`));
+      });
+      db.close();
+    }
+  });
+  await page.reload();
+  return page;
+}
+
+async function closePages(...pages: Page[]): Promise<void> {
+  await Promise.all(pages.map((page) => page.close().catch(() => {})));
+}
 
 async function configureStorage(page: Page, config: Record<string, string>, profile: FirebaseE2eProfile) {
   await page.evaluate(({ firebaseConfig, profile }) => {
@@ -248,6 +312,14 @@ async function createInvite(page: Page): Promise<string> {
   const inviteUrl = await inviteText.inputValue();
   await dialog.getByRole("button", { name: "Close share dialog" }).click();
   return inviteUrl;
+}
+
+async function previewAndImportSharedApp(page: Page) {
+  const dialog = page.getByRole("dialog", { name: "Import shared app" });
+  await dialog.getByRole("button", { name: "Preview app" }).click();
+  await expect(dialog.getByText("Preview loaded. Review before importing.")).toBeVisible({ timeout: 15_000 });
+  await dialog.getByRole("button", { name: "Import", exact: true }).click();
+  await expect(dialog).toBeHidden({ timeout: 15_000 });
 }
 
 function htmlForTitle(title: string) {

@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 import { readFirebaseE2eProfile, type FirebaseE2eProfile } from "./firebaseProfile";
 
 const firebaseProfile = readFirebaseE2eProfile();
@@ -81,139 +81,155 @@ test.describe("local app persistence", () => {
   });
 });
 
-test.describe("synced app persistence", () => {
+test.describe("@firebase synced app persistence", () => {
+  let firebaseContext: BrowserContext | null = null;
+
+  test.beforeAll(async ({ browser }) => {
+    if (!firebaseProfile) return;
+    firebaseContext = await browser.newContext();
+  });
+
+  test.afterAll(async () => {
+    await firebaseContext?.close();
+    firebaseContext = null;
+  });
+
   test.skip(!firebaseProfile, "Auth-capable Firebase E2E profile is required for Firebase-backed E2E tests.");
 
-  test("keeps built-in example data after returning to the launcher with storage configured", async ({ page }) => {
+  test("keeps built-in example data after returning to the launcher with storage configured", async () => {
     if (!firebaseProfile) throw new Error("Auth-capable Firebase E2E profile is required.");
 
-    await page.goto("/");
-    await page.evaluate(async () => {
-      indexedDB.deleteDatabase("app-lab-v2");
-      indexedDB.deleteDatabase("app-lab-sync-queue-v1");
-      localStorage.clear();
-    });
-    await page.reload();
-    await configureStorage(page, firebaseProfile.config, firebaseProfile);
+    const context = requireContext(firebaseContext);
+    const page = await newCleanWorkspacePage(context);
 
-    await createExampleApp(page);
-    await expect(appFrame(page).getByRole("heading", { name: "Example App" })).toBeVisible();
-    await page.getByRole("button", { name: "‹ Apps" }).click();
-    await expect(page.getByTitle("Synced with remote storage.")).toBeVisible({ timeout: 15_000 });
-    await page.getByRole("button", { name: "Open", exact: true }).click();
+    try {
+      await configureStorage(page, firebaseProfile.config, firebaseProfile);
 
-    await addExampleItem(page, "Synced persisted item");
+      await createExampleApp(page);
+      await expect(appFrame(page).getByRole("heading", { name: "Example App" })).toBeVisible();
+      await page.getByRole("button", { name: "‹ Apps" }).click();
+      await expect(page.getByTitle("Synced with remote storage.")).toBeVisible({ timeout: 15_000 });
+      await page.getByRole("button", { name: "Open", exact: true }).click();
 
-    await page.getByRole("button", { name: "‹ Apps" }).click();
-    await page.getByRole("button", { name: "Open", exact: true }).click();
+      await addExampleItem(page, "Synced persisted item");
 
-    await expect(appFrame(page).getByRole("heading", { name: "Example App" })).toBeVisible();
-    await expect(appFrame(page).getByText("Synced persisted item", { exact: true })).toBeVisible();
+      await page.getByRole("button", { name: "‹ Apps" }).click();
+      await page.getByRole("button", { name: "Open", exact: true }).click();
+
+      await expect(appFrame(page).getByRole("heading", { name: "Example App" })).toBeVisible();
+      await expect(appFrame(page).getByText("Synced persisted item", { exact: true })).toBeVisible();
+    } finally {
+      await context.setOffline(false);
+      await closePages(page);
+    }
   });
 
-  test("keeps source edits after returning to the launcher with storage configured", async ({ page }) => {
+  test("keeps source edits after returning to the launcher with storage configured", async () => {
     if (!firebaseProfile) throw new Error("Auth-capable Firebase E2E profile is required.");
 
-    await page.goto("/");
-    await page.evaluate(async () => {
-      indexedDB.deleteDatabase("app-lab-v2");
-      indexedDB.deleteDatabase("app-lab-sync-queue-v1");
-      localStorage.clear();
-    });
-    await page.reload();
-    await configureStorage(page, firebaseProfile.config, firebaseProfile);
+    const context = requireContext(firebaseContext);
+    const page = await newCleanWorkspacePage(context);
 
-    await createExampleApp(page);
-    await saveSource(page, htmlForChecklistTitle("Synced Source Persisted"));
-    await expect(appFrame(page).getByRole("heading", { name: "Synced Source Persisted" })).toBeVisible();
+    try {
+      await configureStorage(page, firebaseProfile.config, firebaseProfile);
 
-    await page.getByRole("button", { name: "‹ Apps" }).click();
-    await page.getByRole("button", { name: "Open", exact: true }).click();
+      await createExampleApp(page);
+      await saveSource(page, htmlForChecklistTitle("Synced Source Persisted"));
+      await expect(appFrame(page).getByRole("heading", { name: "Synced Source Persisted" })).toBeVisible();
 
-    await expect(appFrame(page).getByRole("heading", { name: "Synced Source Persisted" })).toBeVisible();
+      await page.getByRole("button", { name: "‹ Apps" }).click();
+      await page.getByRole("button", { name: "Open", exact: true }).click();
+
+      await expect(appFrame(page).getByRole("heading", { name: "Synced Source Persisted" })).toBeVisible();
+    } finally {
+      await context.setOffline(false);
+      await closePages(page);
+    }
   });
 
-  test("keeps offline app data edits across repeated launcher re-entry with storage configured", async ({ page, context }) => {
+  test("keeps offline app data edits across repeated launcher re-entry with storage configured", async () => {
     if (!firebaseProfile) throw new Error("Auth-capable Firebase E2E profile is required.");
 
-    await page.goto("/");
-    await page.evaluate(async () => {
-      indexedDB.deleteDatabase("app-lab-v2");
-      indexedDB.deleteDatabase("app-lab-sync-queue-v1");
-      localStorage.clear();
-    });
-    await page.reload();
-    await configureStorage(page, firebaseProfile.config, firebaseProfile);
+    const context = requireContext(firebaseContext);
+    const page = await newCleanWorkspacePage(context);
 
-    await createExampleApp(page);
-    await expect(appFrame(page).getByRole("heading", { name: "Example App" })).toBeVisible();
-    await page.getByRole("button", { name: "‹ Apps" }).click();
-    await expect(page.getByTitle("Synced with remote storage.")).toBeVisible({ timeout: 15_000 });
-    await page.getByRole("button", { name: "Open", exact: true }).click();
+    try {
+      await configureStorage(page, firebaseProfile.config, firebaseProfile);
 
-    await context.setOffline(true);
-    await page.evaluate(() => window.dispatchEvent(new Event("offline")));
+      await createExampleApp(page);
+      await expect(appFrame(page).getByRole("heading", { name: "Example App" })).toBeVisible();
+      await page.getByRole("button", { name: "‹ Apps" }).click();
+      await expect(page.getByTitle("Synced with remote storage.")).toBeVisible({ timeout: 15_000 });
+      await page.getByRole("button", { name: "Open", exact: true }).click();
 
-    await addExampleItem(page, "Offline first");
-    await expect(appFrame(page).getByText("Offline first", { exact: true })).toBeVisible();
+      await context.setOffline(true);
+      await page.evaluate(() => window.dispatchEvent(new Event("offline")));
 
-    await page.getByRole("button", { name: "‹ Apps" }).click();
-    await expect(page.getByRole("button", { name: /Open sync status: Offline/ })).toBeVisible();
-    await page.getByRole("button", { name: "Open", exact: true }).click();
-    await expect(appFrame(page).getByText("Offline first", { exact: true })).toBeVisible();
+      await addExampleItem(page, "Offline first");
+      await expect(appFrame(page).getByText("Offline first", { exact: true })).toBeVisible();
 
-    await addExampleItem(page, "Offline second");
-    await expect(appFrame(page).getByText("Offline second", { exact: true })).toBeVisible();
+      await page.getByRole("button", { name: "‹ Apps" }).click();
+      await expect(page.getByRole("button", { name: /Open sync status: Offline/ })).toBeVisible();
+      await page.getByRole("button", { name: "Open", exact: true }).click();
+      await expect(appFrame(page).getByText("Offline first", { exact: true })).toBeVisible();
 
-    await page.getByRole("button", { name: "‹ Apps" }).click();
-    await page.getByRole("button", { name: "Open", exact: true }).click();
-    await expect(appFrame(page).getByText("Offline first", { exact: true })).toBeVisible();
-    await expect(appFrame(page).getByText("Offline second", { exact: true })).toBeVisible();
+      await addExampleItem(page, "Offline second");
+      await expect(appFrame(page).getByText("Offline second", { exact: true })).toBeVisible();
 
-    await context.setOffline(false);
-    await page.evaluate(() => window.dispatchEvent(new Event("online")));
-    await page.getByRole("button", { name: "‹ Apps" }).click();
-    await expect(page.getByTitle("Synced with remote storage.")).toBeVisible({ timeout: 15_000 });
+      await page.getByRole("button", { name: "‹ Apps" }).click();
+      await page.getByRole("button", { name: "Open", exact: true }).click();
+      await expect(appFrame(page).getByText("Offline first", { exact: true })).toBeVisible();
+      await expect(appFrame(page).getByText("Offline second", { exact: true })).toBeVisible();
+
+      await context.setOffline(false);
+      await page.evaluate(() => window.dispatchEvent(new Event("online")));
+      await page.getByRole("button", { name: "‹ Apps" }).click();
+      await expect(page.getByTitle("Synced with remote storage.")).toBeVisible({ timeout: 15_000 });
+    } finally {
+      await context.setOffline(false);
+      await closePages(page);
+    }
   });
 
-  test("keeps offline source edits across repeated launcher re-entry with storage configured", async ({ page, context }) => {
+  test("keeps offline source edits across repeated launcher re-entry with storage configured", async () => {
     if (!firebaseProfile) throw new Error("Auth-capable Firebase E2E profile is required.");
 
-    await page.goto("/");
-    await page.evaluate(async () => {
-      indexedDB.deleteDatabase("app-lab-v2");
-      indexedDB.deleteDatabase("app-lab-sync-queue-v1");
-      localStorage.clear();
-    });
-    await page.reload();
-    await configureStorage(page, firebaseProfile.config, firebaseProfile);
+    const context = requireContext(firebaseContext);
+    const page = await newCleanWorkspacePage(context);
 
-    await createExampleApp(page);
-    await expect(appFrame(page).getByRole("heading", { name: "Example App" })).toBeVisible();
-    await page.getByRole("button", { name: "‹ Apps" }).click();
-    await expect(page.getByTitle("Synced with remote storage.")).toBeVisible({ timeout: 15_000 });
-    await page.getByRole("button", { name: "Open", exact: true }).click();
+    try {
+      await configureStorage(page, firebaseProfile.config, firebaseProfile);
 
-    await context.setOffline(true);
-    await page.evaluate(() => window.dispatchEvent(new Event("offline")));
+      await createExampleApp(page);
+      await expect(appFrame(page).getByRole("heading", { name: "Example App" })).toBeVisible();
+      await page.getByRole("button", { name: "‹ Apps" }).click();
+      await expect(page.getByTitle("Synced with remote storage.")).toBeVisible({ timeout: 15_000 });
+      await page.getByRole("button", { name: "Open", exact: true }).click();
 
-    await saveSource(page, htmlForChecklistTitle("Offline Source One"));
-    await expect(appFrame(page).getByRole("heading", { name: "Offline Source One" })).toBeVisible();
-    await page.getByRole("button", { name: "‹ Apps" }).click();
-    await expect(page.getByRole("button", { name: /Open sync status: Offline/ })).toBeVisible();
-    await page.getByRole("button", { name: "Open", exact: true }).click();
-    await expect(appFrame(page).getByRole("heading", { name: "Offline Source One" })).toBeVisible();
+      await context.setOffline(true);
+      await page.evaluate(() => window.dispatchEvent(new Event("offline")));
 
-    await saveSource(page, htmlForChecklistTitle("Offline Source Two"));
-    await expect(appFrame(page).getByRole("heading", { name: "Offline Source Two" })).toBeVisible();
-    await page.getByRole("button", { name: "‹ Apps" }).click();
-    await page.getByRole("button", { name: "Open", exact: true }).click();
-    await expect(appFrame(page).getByRole("heading", { name: "Offline Source Two" })).toBeVisible();
+      await saveSource(page, htmlForChecklistTitle("Offline Source One"));
+      await expect(appFrame(page).getByRole("heading", { name: "Offline Source One" })).toBeVisible();
+      await page.getByRole("button", { name: "‹ Apps" }).click();
+      await expect(page.getByRole("button", { name: /Open sync status: Offline/ })).toBeVisible();
+      await page.getByRole("button", { name: "Open", exact: true }).click();
+      await expect(appFrame(page).getByRole("heading", { name: "Offline Source One" })).toBeVisible();
 
-    await context.setOffline(false);
-    await page.evaluate(() => window.dispatchEvent(new Event("online")));
-    await page.getByRole("button", { name: "‹ Apps" }).click();
-    await expect(page.getByTitle("Synced with remote storage.")).toBeVisible({ timeout: 15_000 });
+      await saveSource(page, htmlForChecklistTitle("Offline Source Two"));
+      await expect(appFrame(page).getByRole("heading", { name: "Offline Source Two" })).toBeVisible();
+      await page.getByRole("button", { name: "‹ Apps" }).click();
+      await page.getByRole("button", { name: "Open", exact: true }).click();
+      await expect(appFrame(page).getByRole("heading", { name: "Offline Source Two" })).toBeVisible();
+
+      await context.setOffline(false);
+      await page.evaluate(() => window.dispatchEvent(new Event("online")));
+      await page.getByRole("button", { name: "‹ Apps" }).click();
+      await expect(page.getByTitle("Synced with remote storage.")).toBeVisible({ timeout: 15_000 });
+    } finally {
+      await context.setOffline(false);
+      await closePages(page);
+    }
   });
 });
 
@@ -229,6 +245,57 @@ async function addExampleItem(page: Page, title: string, description = "") {
   if (description) await frame.getByLabel("Description").fill(description);
   await frame.getByRole("button", { name: "Save" }).click();
   await expect(frame.getByText(title, { exact: true })).toBeVisible();
+}
+
+function requireContext(context: BrowserContext | null): BrowserContext {
+  if (!context) throw new Error("Firebase E2E browser context was not initialized.");
+  return context;
+}
+
+async function newCleanWorkspacePage(context: BrowserContext): Promise<Page> {
+  await context.setOffline(false);
+  const page = await context.newPage();
+  await page.goto("/");
+  await page.evaluate(async () => {
+    localStorage.removeItem("app-lab-workspace-sync-v1");
+    await Promise.all([
+      clearObjectStores("app-lab-v2", ["apps_registry", "apps_data"]),
+      clearObjectStores("app-lab-sync-queue-v1", ["sync_queue"]),
+    ]);
+
+    async function clearObjectStores(databaseName: string, storeNames: string[]): Promise<void> {
+      if (indexedDB.databases) {
+        const databases = await indexedDB.databases();
+        if (!databases.some((database) => database.name === databaseName)) return;
+      }
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open(databaseName);
+        request.onerror = () => reject(request.error ?? new Error(`Could not open ${databaseName}.`));
+        request.onsuccess = () => resolve(request.result);
+      });
+      const existingStoreNames = storeNames.filter((storeName) => db.objectStoreNames.contains(storeName));
+      if (!existingStoreNames.length) {
+        db.close();
+        return;
+      }
+      await new Promise<void>((resolve, reject) => {
+        const transaction = db.transaction(existingStoreNames, "readwrite");
+        for (const storeName of existingStoreNames) {
+          transaction.objectStore(storeName).clear();
+        }
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error ?? new Error(`Could not clear ${databaseName}.`));
+        transaction.onabort = () => reject(transaction.error ?? new Error(`Could not clear ${databaseName}.`));
+      });
+      db.close();
+    }
+  });
+  await page.reload();
+  return page;
+}
+
+async function closePages(...pages: Page[]): Promise<void> {
+  await Promise.all(pages.map((page) => page.close().catch(() => {})));
 }
 
 async function configureStorage(page: Page, config: Record<string, string>, profile: FirebaseE2eProfile) {

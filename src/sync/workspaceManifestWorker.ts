@@ -1,5 +1,5 @@
 import type { RealtimeSyncProvider } from "./types";
-import type { StorageProfile, WorkspaceSyncRegistry } from "./workspaceSync";
+import type { StorageProfile, WorkspaceSyncRegistry, WorkspaceSyncState } from "./workspaceSync";
 import { saveWorkspaceManifest } from "./workspaceManifest";
 import {
   isQueueItemStaleSyncing,
@@ -11,6 +11,7 @@ import {
 
 export interface WorkspaceManifestWorkerInput {
   createProviderFromStorageProfile: (profile: StorageProfile) => RealtimeSyncProvider;
+  onSavedState?: (state: WorkspaceSyncState) => Promise<void>;
   queueStore: SyncQueueStore;
   syncRegistry: WorkspaceSyncRegistry;
   throwOnError?: boolean;
@@ -46,9 +47,8 @@ async function processSaveWorkspaceManifestItem(input: WorkspaceManifestWorkerIn
       provider: input.createProviderFromStorageProfile(profile),
       state,
     });
-    if (savedState.manifestRoom) {
-      await input.syncRegistry.rememberWorkspaceManifestVersion(savedState.manifestRoom.lastSeenVersion);
-    }
+    if (input.onSavedState) await input.onSavedState(savedState);
+    else await input.syncRegistry.replaceState(savedState);
     await input.queueStore.removeItem(item.id);
   } catch (error) {
     await markQueueItemFailed(input.queueStore, syncingItem, error);
