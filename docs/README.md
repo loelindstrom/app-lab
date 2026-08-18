@@ -5,127 +5,122 @@ where the design needs more explanation than the code can provide.
 
 ## Glossary
 
-| Term | Meaning |
-| --- | --- |
-| **Workspace** | The collection of apps and workspace-owned settings in one browser. |
-| **App** | One HTML source document, its launcher metadata, and its app-owned JSON data. |
-| **Host** | The App Lab React application surrounding generated apps. |
-| **Generated app** | User or AI-provided source that runs inside the sandbox. |
-| **Core** | The `AppLabCore` contract and local persistence implementation. |
-| **Runtime** | The sandbox boundary and the `window.AppLab` bridge available inside an app. |
-| **Sync room** | One encrypted remote unit containing a workspace manifest, app source, or app data. |
-| **Storage profile** | This browser's connection to the user's Firebase project. |
-| **Owned app** | An app created in this workspace. |
-| **Joined app** | An app imported from another person's invite. |
-| **Recovery material** | Sensitive text that lets another browser restore and continue syncing the workspace. |
+### In The Workspace
+
+- **Workspace:** The collection of apps kept together by App Lab.
+- **App / generated app:** One HTML source document and its app-owned JSON data. “Generated” emphasizes that the source may come
+  from AI; both terms refer to the same app.
+- **Host:** The App Lab interface surrounding the generated app.
+- **App source:** The complete HTML document that defines an app.
+- **App data:** The JSON an app saves through `window.AppLab`.
+
+### Product Areas
+
+- **UI (`src/ui`):** The host interface and coordinator for user actions.
+- **Runtime (`src/runtime`):** The sandbox where generated source runs and communicates through `window.AppLab`.
+- **Core (`src/core`):** The `AppLabCore` contract and local persistence implementation.
+- **Sync (`src/sync`):** Optional backup, sharing, and cross-device synchronization through `WorkspaceSyncActions`.
+- **AI (`src/ai`):** The agent, AI conversation, and connection to an LLM.
+
+### When Sync Is Enabled
+
+- **Storage profile (`StorageProfile`):** This browser's connection to the user's Firebase project.
+- **Sync room:** One encrypted remote unit containing a workspace manifest, app source, or app data.
+- **Owned app:** An app created in this workspace.
+- **Joined app:** An app imported from another person's invite.
+- **Workspace sync material (`WorkspaceRecoveryMaterial` in code):** Sensitive text that lets another browser restore and continue
+  syncing the workspace.
 
 ## Architecture Map
 
-Every `src/...` node inside the browser represents one top-level product module. The arrows describe deliberate module
-interaction, not every callback or type import. Runtime remains a leaf because it only knows the values and callbacks supplied by
-UI.
+App Lab is divided into five product areas. Three are always in use:
+
+1. **UI** is the menu and host around generated apps. It coordinates user actions across the other areas.
+2. **Runtime** is where generated app source runs and appears on screen. It only knows the values and callbacks supplied by UI.
+3. **Core** stores app source, app data, and app metadata locally in IndexedDB.
+
+Two areas are optional:
+
+4. **Sync** extends App Lab's [local-first model](https://en.wikipedia.org/wiki/Local-first_software) with encrypted backup, app
+   sharing, and cross-device sync. Firebase Realtime Database is the current external provider.
+5. **AI** lets App Lab's own agent update app source directly. OpenRouter can connect the agent to the user's chosen LLM.
+
+The diagram uses the same numbers. It also shows the manual AI workflow, which works by copying prompt and source out of App Lab
+and then pasting the result back. Arrows represent deliberate interaction between product areas, not every callback or type import.
 
 ```mermaid
 flowchart TB
-  subgraph manual["Manual"]
+  subgraph manual["Manual AI workflow"]
     direction TB
-    aimanual["<b>AI</b>\nManually copy from AppLab to external AI chat and then back again"]
+    aimanual["<b>External AI chat</b>\nPrompt and source copied out and back"]
   end
 
   subgraph browser["<b>In the browser</b> (App Lab code lives fully client-side.)"]
-    ui["<b>src/ui</b>\nThe UI shell surrounding the sandboxed apps"]
-    core["<b>src/core</b>\n Local-first persisting operations to IndexedDB"]
-    runtime["<b>src/runtime</b>\nSandboxed app"]
+    ui["<b>1. src/ui</b>\nThe UI shell surrounding the sandboxed apps"]
+    core["<b>3. src/core</b>\nPersists apps and data locally"]
+    runtime["<b>2. src/runtime</b>\nRuns generated apps in a sandbox"]
     subgraph optional["Optional for user to set up"]
-        ai["<b>src/ai</b>\nAi agent + integration with LLM"]
-        sync["<b>src/sync</b>\n Enables sharing apps and cross-device support"]
+        ai["<b>5. src/ai</b>\nAI agent and LLM integration"]
+        sync["<b>4. src/sync</b>\nEnables sharing and cross-device sync"]
     end
   end
 
-  subgraph integrations["External Integrations"]
+  subgraph integrations["Optional external services"]
     direction TB
-    subgraph aiBox["AI"]
-        openrouter["<b>OpenRouter</b>\nMediates with LLM"]
+    subgraph aiBox["AI integration"]
+        openrouter["<b>OpenRouter</b>\nConnects App Lab to LLMs"]
     end
-    subgraph syncBox["Sync"]
-        firebase["<b>Firebase</b>\nRealtime Database (RTDB)"]
+    subgraph syncBox["Sync provider"]
+        firebase["<b>Firebase</b>\nStores encrypted rooms in RTDB"]
     end
   end
 
   ui <--> runtime
   ui <--> core
-
-  
   ui <--> sync
   sync <--> core
   sync <--> syncBox
-  
   ui <--> ai
   ai <--> core
   ai <--> aiBox
-  
   ui <--> aimanual
 ```
 
-`src/jsonData.ts` contains the shared JSON contract and normalization used by core and sync. It is a shared primitive rather than
-another product module, so it is intentionally not a node in this map.
-
 ## Modules
 
-### `src/ui`
+### 1. `src/ui`
 
 **Purpose:** Coordinate user actions and render the workspace around the active app.
 
 **Owns:** React state, launcher and app views, tools, dialogs, and the ordering of local and optional remote actions.
 
-**Public contract:** `src/ui/index.ts`.
-
-**Does not own:** IndexedDB details, Firebase providers, encryption, or sandbox internals.
-
-### `src/core`
-
-**Purpose:** Provide the local source of truth for apps and their JSON data.
-
-**Owns:** `AppLabCore`, app records, HTML metadata, IndexedDB persistence, and the in-memory test implementation.
-
-**Public contract:** `src/core/index.ts`.
-
-**Does not own:** React state, source execution, remote providers, or sync policy.
-
-### `src/runtime`
+### 2. `src/runtime`
 
 **Purpose:** Run generated source without giving it access to the host application.
 
 **Owns:** Sandbox document construction, iframe capabilities, the `window.AppLab` bridge, console forwarding, and host-compiled
 Tailwind support.
 
-**Public contract:** `src/runtime/index.ts`.
+### 3. `src/core`
 
-**Does not own:** Local persistence or sync. UI supplies narrow read/write callbacks without runtime knowing their implementation.
+**Purpose:** Provide the local source of truth for apps and their JSON data.
 
-### `src/sync`
+**Owns:** `AppLabCore`, app records, HTML metadata, IndexedDB persistence, and the in-memory test implementation.
+
+### 4. `src/sync`
 
 **Purpose:** Extend the local workspace with encrypted backup, device sync, and app sharing.
 
 **Owns:** The public sync actions, local sync metadata, durable queues, encrypted rooms, provider adapters, invites, recovery, and
 conflict policy.
 
-**Public contract:** `src/sync/index.ts`. The browser factory receives the same `AppLabCore` instance used by UI.
-
-**Does not own:** Generated app behavior, React presentation, or the local app model.
-
 [Read the sync design](./sync.md)
 
-### `src/ai` (planned)
+### 5. `src/ai`
 
 **Purpose:** Bring the current external-AI workflow into App Lab through OpenRouter.
 
-**Will own:** AI configuration, per-app conversations, bounded model context, and the agent loop.
-
-**Planned public contract:** `src/ai/index.ts`. UI will supply narrow tools so AI source edits use the same save path as manual
-edits.
-
-**Will not own:** IndexedDB app persistence, source sync, or sandbox execution.
+**Owns:** AI configuration, per-app conversations, bounded model context, and the agent loop.
 
 [Read the AI integration brief](./ai-integration.md)
 
