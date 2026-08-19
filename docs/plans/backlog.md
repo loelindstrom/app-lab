@@ -25,6 +25,16 @@ App Lab is a React/Vite browser app with:
 
    Reintroduce native AI editing for the active app. The working feature brief is [AI integration](./ai-integration.md).
 
+2. Onboarding guide
+   Showcasing how one gets started with the app:
+     - Welcome dialog/blurb/something asking if user "wants to build your first app in X steps?"
+     - Highlight FAB-button
+     - Inside example app describe what one is seeing
+     - Highlight "AI" button, when user clicks move on
+     - highlight "Copy prompt + ..." and say that user shall try putting the prompt into another AI (preferably a quite smart model) and ask to create an app for counting how many cinnamon buns one has eaten or something silly, and then to copy the new code the AI produce. Then offer a "next" button which the user is indicated to click on when they have come back with the copied code. The button moves to next step
+     - Highlights "<>" button and has a description which stays after clicking "<>" button where it says one should replace the code seen and press save
+     - "Congratulations! You created your first app! To use AI directly here, or to share your app with friends, set up AI integration or storage provider in Settings"
+
 Known limitations that are intentionally not blockers for the current MVP:
 
 - invite links are sensitive full-access bearer material for the shared app rooms
