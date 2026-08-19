@@ -1,4 +1,4 @@
-# App Lab
+# 🧪 App Lab
 
 App Lab is a home in your browser for the small apps you make with AI. Create an app quickly, keep using it, improve it later,
 and share it with friends without turning every idea into a software project.
@@ -8,7 +8,7 @@ gives you a quiet workspace for returning to it. Your browser is the starting po
 
 [Open App Lab](https://loelindstrom.github.io/app-lab/)
 
-## Start With Just Your Browser
+### 🏁 Start With Just Your Browser
 
 App Lab works without an account or cloud setup:
 
@@ -21,7 +21,7 @@ App Lab works without an account or cloud setup:
 This is what **local-first** means here: the local workspace is useful on its own. Adding a remote service extends it rather than
 turning the remote service into a requirement.
 
-## Connect Your Own Services
+### 🔗 Connect Your Own Services
 
 You decide which integrations to add:
 
@@ -33,24 +33,16 @@ You decide which integrations to add:
 Generated apps never receive your Firebase configuration, sync secrets, or future AI key. They run inside sandboxed frames and
 use a small App Lab bridge when they need to save JSON data.
 
-## Choose Your Path
+## 👟 Choose Your Path
 
-### How To Use App Lab
-
-Learn the local workflow first, then add Firebase only when you want backup, another device, or sharing.
+### 🚀 How To Use App Lab
 
 [Read the user guide](./docs/user-guide.md)
 
-### For Developers
-
-Start with the shared vocabulary and architecture map, then follow links into runtime, sync, AI, testing, compatibility, or
-deployment.
+### 🛠️ For Developers
 
 [Read the developer guide](./docs/README.md)
 
-### Security
-
-Understand what the sandbox protects, what generated apps can access, and which invite or workspace sync material must be kept
-private.
+### 🔐 Security
 
 [Read the security model](./SECURITY.md)
