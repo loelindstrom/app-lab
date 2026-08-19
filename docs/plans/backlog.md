@@ -75,6 +75,9 @@ Known limitations that are intentionally not blockers for the current MVP:
 
 ## Nice-To-Have After MVP
 
+0. PWA 
+   Easy to make into a PWA so the app becomes very accessible for people
+
 1. Source history
 
    Add lightweight source snapshots only if manual experimentation shows real need. This should not block current sync work.
