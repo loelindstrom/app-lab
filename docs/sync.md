@@ -118,18 +118,35 @@ The architecture above describes the participants. To follow a concrete sync flo
 App Lab uses explicit commands and callbacks for these paths. IndexedDB is persistence, not a global event bus, so the origin of a
 write remains visible.
 
+In the algorithms below, the bold prefix names the module that owns the step. `src/a -> src/b` means that the first module calls
+or supplies a callback into the second. Deeper paths name the implementation file or folder worth opening next.
+
 ### App Package
 
 **Use case:** A user edits an app's HTML source on browser A and browser B should run the new version.
 
-**Local to remote:** UI first compiles any Tailwind styles and saves the complete `AppRecord` through core. It then calls
-`pushAppSource`. Sync creates the app's room relationship when needed, adds a source operation to the durable queue, and starts a
-worker. The worker reads the current record from core, encrypts the app package, writes it to the source room, and records the
-accepted version.
+**Local to remote:**
 
-**Remote to local:** Browser B's source-room subscription receives a newer snapshot. If no unsent local source should take
-priority, sync decrypts the package and writes it through `AppLabCore.upsertApp`. It then calls UI with the updated record. React
-passes that record to runtime, which rebuilds the generated-app iframe.
+1. **`src/ui`** receives the complete edited HTML from the Source tool.
+2. **`src/ui -> src/runtime`** calls `compileAppStyles(sourceCode)` and receives any compiled Tailwind CSS.
+3. **`src/ui -> src/core`** calls `core.updateApp(...)`, making the complete `AppRecord` durable locally.
+4. **`src/ui -> src/sync`** calls `syncActions.pushAppSource(updatedApp)`.
+5. **`src/sync/workspaceSyncActions.ts`** reuses the app's room relationship or creates an owned one for a configured local app,
+   then enqueues `save-source` work.
+6. **`src/sync/queue/`** ensures the remote rooms exist, reads the current app from core, and asks `src/sync/rooms/` to encrypt
+   and save the app package through the provider.
+7. **`src/sync/workspace/`** records the accepted source-room version and queues a workspace-manifest update.
+
+**Remote to local:**
+
+1. **`src/sync/providers/`** reports a newer source-room snapshot to the subscription created by
+   `WorkspaceSyncActions.subscribeAppSource`.
+2. **`src/sync/workspaceSyncActions.ts`** rejects stale snapshots and pauses if unsent local source should take priority.
+3. **`src/sync/rooms/`** loads and decrypts the `app-package` payload.
+4. **`src/sync/workspaceSyncActions.ts -> src/core`** calls `core.upsertApp(remoteApp)`.
+5. **`src/sync/workspace/`** records the observed source-room version.
+6. **`src/sync -> src/ui`** calls the source-change callback with the accepted `AppRecord`.
+7. **`src/ui -> src/runtime`** updates React state; `SandboxFrame` receives the record and rebuilds the generated-app iframe.
 
 The synchronized unit is the whole app package: metadata, complete HTML source, and compiled CSS. There is no line-level source
 protocol hidden underneath it.
@@ -138,12 +155,25 @@ protocol hidden underneath it.
 
 **Use case:** A generated app saves JSON on browser A and an open copy on browser B should reflect the new value live.
 
-**Local to remote:** The generated app calls `AppLab.saveData`. Runtime passes the request to UI, which saves the JSON through
-core and then calls `pushAppData`. Sync queues the latest data snapshot, encrypts it, and writes it to the app-data room.
+**Local to remote:**
 
-**Remote to local:** Browser B's data-room subscription checks and decrypts the newer snapshot, saves it through core, and calls
-UI. UI passes the change through runtime to the generated app's `AppLab.onDataChange` handlers. If the app has not registered a
-handler, App Lab keeps the data in core and tells the user to reopen the app to load it.
+1. **Generated app -> `src/runtime`** calls `AppLab.saveData(data)` through the injected bridge.
+2. **`src/runtime -> src/ui`** validates the message, binds it to the active app id, and invokes the host save callback.
+3. **`src/ui -> src/core`** calls `core.saveAppData(appId, data)` before attempting remote work.
+4. **`src/ui -> src/sync`** calls `syncActions.pushAppData(appId, data)`.
+5. **`src/sync/queue/`** coalesces the latest data snapshot into `save-app-data` work.
+6. **`src/sync/queue/ -> src/sync/rooms/ -> provider`** encrypts and saves the app-data room, then records its accepted version.
+
+**Remote to local:**
+
+1. **`src/sync/providers/`** reports a newer data-room snapshot to `WorkspaceSyncActions.subscribeAppData`.
+2. **`src/sync/workspaceSyncActions.ts`** rejects stale data and pauses while a recent or queued local edit should take priority.
+3. **`src/sync/rooms/`** decrypts the `app-data` payload.
+4. **`src/sync/workspaceSyncActions.ts -> src/core`** calls `core.saveAppData(appId, data)`.
+5. **`src/sync/workspace/`** records the observed data-room version.
+6. **`src/sync -> src/ui`** calls the data-change callback.
+7. **`src/ui -> src/runtime`** passes the change to the generated app's `AppLab.onDataChange` handlers. If none is registered,
+   App Lab keeps the data in core and tells the user to reopen the app.
 
 Source and data use separate rooms because this live data path should not rebuild the iframe.
 
@@ -151,12 +181,26 @@ Source and data use separate rooms because this live data path should not rebuil
 
 **Use case:** A user creates or deletes an app on browser A and browser B's launcher should show the same workspace structure.
 
-**Local to remote:** Changes to app-room relationships, observed versions, or tombstones update the sync registry. Sync queues a
-manifest save, merges with a newer remote manifest when necessary, encrypts the result, and writes it to the workspace-manifest
-room. Core is not involved because the manifest describes sync relationships rather than app content.
+**Local to remote:**
 
-**Remote to local:** Browser B's manifest subscription merges records by app id. Sync loads newly referenced app-package and
-app-data rooms into core, removes apps covered by owner-deletion tombstones, and calls UI to refresh the launcher.
+1. **`src/sync/workspace/`** updates the local registry after a relationship, room version, or tombstone changes.
+2. **`src/sync/workspaceSyncActions.ts`** enqueues `save-workspace-manifest` work.
+3. **`src/sync/queue/workspaceManifestWorker.ts`** reads the current registry and ensures the manifest room exists.
+4. **`src/sync/workspace/workspaceManifest.ts`** merges a conflicting remote manifest when necessary and encrypts the result.
+5. **`src/sync/providers/`** saves the encrypted manifest room.
+6. **`src/sync/workspace/`** stores the accepted manifest version and merged registry state locally.
+
+Core is absent from this path because the manifest describes sync relationships rather than app content.
+
+**Remote to local:**
+
+1. **`src/sync/providers/`** reports a newer manifest snapshot to `WorkspaceSyncActions.subscribeWorkspaceManifest`.
+2. **`src/sync/workspace/`** decrypts the manifest and validates its workspace identity and version.
+3. **`src/sync/workspaceSyncActions.ts`** merges app records and tombstones while preserving pending local work.
+4. **`src/sync -> src/core`** loads newly referenced app-package and app-data rooms, upserts their content, and applies remote
+   deletions.
+5. **`src/sync/workspace/`** saves the reconstructed local registry.
+6. **`src/sync -> src/ui`** calls the manifest-change callback, causing UI to refresh the launcher.
 
 ## Establishing A Sync Relationship
 
@@ -165,39 +209,65 @@ ways: configuring the user's own storage, importing an app invite, or restoring 
 
 ### Configure A Storage Provider
 
-Saving a storage profile records the provider connection in the sync registry. App Lab then scans the current apps in core,
-creates an **owned** source/data room pair for each one, uploads their current package and data, and creates the workspace-manifest
-room.
+1. **`src/ui/dialogs/SettingsDialog.tsx`** collects the provider configuration and calls UI's configuration callback.
+2. **`src/ui -> src/sync`** calls `syncActions.configureStorageProfile(...)`.
+3. **`src/sync/workspace/`** validates and stores the profile in the local sync registry.
+4. **`src/ui -> src/sync`** calls `syncActions.backUpLocalApps()`.
+5. **`src/sync -> src/core`** lists the current apps and reads each complete app record and its data.
+6. **`src/sync/workspace/`** creates an **owned** source/data room relationship for each app.
+7. **`src/sync/queue/ -> src/sync/rooms/ -> provider`** creates the rooms and uploads each app's current package and data.
+8. **`src/sync/workspaceSyncActions.ts -> src/sync/queue/`** queues the manifest; the workspace worker creates and publishes
+   its room through `src/sync/workspace/` and the provider.
 
 Edits made before this setup are not retained as a queue history. Local-only saves went only to core; setup backs up the latest
 state that core contains at that moment.
 
 ### Import A Shared App
 
-An invite carries the owner's provider reference and capabilities for one app's source and data rooms. Previewing the invite
-claims source-room membership and decrypts enough metadata for the confirmation dialog, but does not write the app into core.
+1. **`src/ui`** reads the invite from the URL fragment through the public parser exported by `src/sync`.
+2. **`src/ui -> src/sync`** calls `syncActions.previewInvite(invite)`.
+3. **`src/sync/providers/`** connects using the provider reference in the invite and claims source-room membership.
+4. **`src/sync/rooms/`** decrypts app metadata for the confirmation dialog without writing the app into core.
+5. After confirmation, **`src/ui -> src/sync`** calls `syncActions.importInvite(invite)`.
+6. **`src/sync/providers/`** claims both rooms, then **`src/sync/rooms/`** loads and decrypts their content.
+7. **`src/sync/workspaceSyncActions.ts -> src/core`** upserts the app package and saves its app data.
+8. **`src/sync/workspace/`** records a **joined** relationship and queues a manifest update when this workspace has sync.
 
-Importing claims both rooms, loads their content into core, and records a **joined** relationship. The app remains connected to
-the owner's provider, so the recipient does not need to configure a storage project of their own. A **private copy** instead gets
-new rooms owned by the recipient's workspace.
+The joined app remains connected to the owner's provider, so the recipient does not need a storage project of their own. A
+**private copy** instead gets new rooms owned by the recipient's workspace.
 
 ### Restore A Workspace
 
-Another browser needs more than the same provider configuration: it must know the workspace-manifest room and possess its
-decryption capability. **Workspace sync material** contains that capability, the provider reference, owner setup material, and an
-embedded point-in-time manifest.
+1. **`src/ui/dialogs/SettingsDialog.tsx`** accepts the workspace sync material and calls the restore callback.
+2. **`src/ui -> src/sync`** calls `syncActions.restoreWorkspaceRecovery(recoveryText)`.
+3. **`src/sync/workspace/workspaceManifest.ts`** decodes the provider reference, manifest capability, owner setup material, and
+   embedded point-in-time manifest.
+4. **`src/sync/providers/ -> src/sync/workspace/`** loads, decrypts, and merges the remote manifest with the embedded snapshot.
+5. **`src/sync/workspaceSyncActions.ts -> src/core`** loads every applicable app-room pair and writes its package and data
+   locally.
+6. **`src/sync/workspaceSyncActions.ts -> src/sync/workspace/`** replaces the local registry with the restored state and queues a
+   new manifest save.
 
-During restore, sync loads and merges the manifest, loads its referenced app rooms into core, and saves the reconstructed sync
-registry. Decryption secrets cannot be recovered from the provider alone.
+The same provider configuration alone is insufficient because the manifest capability and decryption secrets cannot be recovered
+from the provider.
 
 ### Without A Current Storage Profile
 
-On a fresh local-only workspace, the sync facade still runs but owned apps have no room relationships. Source and data saves do
-not enter the durable queue, and no provider connection is opened.
+**Fresh local-only workspace:**
 
-Sync metadata can outlive a configuration. For example, after a user configures Firebase and backs up apps, selecting **Remove
-profile** clears the connection but retains per-app room relationships and pending queue records. Owned-app sync remains paused
-until the profile is configured or restored again. Joined apps can continue using the provider references in their invites.
+1. **`src/App.tsx`** still creates `WorkspaceSyncActions`, so UI can keep one orchestration path.
+2. **`src/ui -> src/sync`** initializes status and inspects the local registry and durable queue.
+3. **`src/ui -> src/core`** continues saving source and data normally.
+4. **`src/ui -> src/sync`** still offers those saves to `pushAppSource` or `pushAppData`.
+5. **`src/sync/workspaceSyncActions.ts`** finds neither an app-room relationship nor a storage profile and returns without
+   enqueuing work or opening a provider connection.
+
+**Profile removed after earlier sync:**
+
+1. **`src/ui -> src/sync`** calls `clearStorageProfile()` when the user selects **Remove profile**.
+2. **`src/sync/workspace/`** clears the provider connection but retains per-app relationships and existing queue records.
+3. **`src/sync/queue/`** keeps owned-app work pending until the profile is configured or restored again.
+4. Joined apps continue through **`src/sync/providers/`** using the provider references stored in their invite-derived records.
 
 ## Reliability Rules
 
