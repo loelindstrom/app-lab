@@ -3,6 +3,37 @@
 This backlog captures the current next steps. It is not a roadmap promise; it is the working plan for the next implementation
 passes.
 
+## Potential bugs
+
+**Console message not showing up in UI**  
+There seems to be a bug which makes it so that certain console messages don't show up in the UI, only the console.
+For example this one:
+```
+about:srcdoc:1 Blocked form submission to '' because the form's frame is sandboxed and the 'allow-forms' permission is not set.
+```
+
+And the code which caused it was probably this:
+```
+<form class="mx-auto max-w-4xl flex gap-3" @submit.prevent="submitUserMessage">
+          <input 
+            type="text" 
+            class="flex-1 bg-slate-900 border border-cyan-800 px-4 py-3 text-sm text-cyan-100 placeholder-cyan-800 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition-all rounded-none" 
+            placeholder="Describe the bug..." 
+            autocomplete="off"
+            x-model="ui.draft"
+            :disabled="ui.isTyping"
+            x-ref="inputField"
+          >
+          <button 
+            type="submit" 
+            class="bg-cyan-900 border border-cyan-500 px-6 font-black uppercase tracking-widest text-cyan-50 hover:bg-cyan-700 hover:neon-border-cyan disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            :disabled="!ui.draft.trim() || ui.isTyping"
+          >
+            Transmit
+          </button>
+        </form>
+```
+
 ## Current Baseline
 
 App Lab is a React/Vite browser app with:
