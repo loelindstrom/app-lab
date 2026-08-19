@@ -15,11 +15,11 @@ Need inspiration? Here is a quick walkthrough of what you can do. It is as easy 
    - **Built-in AI:** If you have set up AI integration from the settings wheel in the top-right corner, then you can just write directly how you want your app in the chat.
 3. Select the back arrow in the top-left corner. Create another app, or delete this one if the rubber duck didn't tickle your nerve.
 
-## 🤝 Share Your App With Friends
+## 🤜🤛 Share Your App With Friends
 
-1. Open the settings wheel in the top-right corner and follow the instructions for connecting a Firebase Realtime Database (don't forget those security steps!).
-2. Select **Share** and send the link to a friend. You can both edit the source and update app data live. So better keep a backup if you don't trust your friends' coding skills ;).
-4. Since Firebase is connected, you can also restore and sync your whole workspace on another device from **Settings > Sync
+1. Open the settings wheel in the top-right corner and follow the instructions under **Storage** > **First-time setup** (don't forget those security steps!).
+2. On/in an app, select **Share** and send the link to a friend. You can both edit the source and update app data live. So better keep a backup if you don't trust your friends' coding skills ;).
+4. Since Firebase is connected, you can also restore and sync your whole workspace on another device from settings: **Storage > Sync
    device**.
 
 ## 🛠️ Contribute To App Lab
