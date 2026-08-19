@@ -269,6 +269,45 @@ from the provider.
 3. **`src/sync/queue/`** keeps owned-app work pending until the profile is configured or restored again.
 4. Joined apps continue through **`src/sync/providers/`** using the provider references stored in their invite-derived records.
 
+## Operational Rules
+
+The preceding flows describe what moves. The following rules describe when sync runs and which relationships it must preserve.
+
+### When Sync Runs
+
+App Lab does not continuously poll every room:
+
+1. **`src/ui/shell/WorkspaceShell.tsx`** initializes sync when the workspace shell mounts and returns interrupted `syncing` queue
+   items to `pending`.
+2. When sync is reachable, **`src/ui -> src/sync`** processes room creation, source writes, data writes, owned deletions, and the
+   workspace manifest in that order. It then pulls the latest manifest and refreshes the launcher state.
+3. UI repeats that process when the browser comes online, the provider reconnects, the window receives focus, or a hidden tab
+   becomes visible again.
+4. While the workspace is open, **`src/sync`** subscribes to its manifest when a storage profile is configured.
+5. Only the active app receives individual source-room and data-room subscriptions. Opening an app first shows the local core
+   copy, then pulls and subscribes to its remote rooms when it has a sync relationship.
+
+This keeps local startup independent from the network while still giving the active app live updates.
+
+### Relationship Identity
+
+- A local-only app has no room relationship and therefore creates no queue work.
+- An owned app keeps the same source and data room ids when it is shared. Creating an invite changes its sharing state rather than
+  creating a second remote copy.
+- A joined app keeps using the provider and room capabilities from its invite, even if the recipient later configures a different
+  provider for their own workspace.
+- Forwarding a joined app passes on that same relationship. A remotely deleted joined app cannot be forwarded.
+- A private copy is independent: its rooms belong to the recipient's configured workspace rather than to the original owner.
+
+### Recovery And Repair
+
+- Workspace recovery merges its embedded point-in-time manifest with the current remote manifest. Newer remote records and
+  tombstones survive, while embedded records that had not reached the provider yet are retained.
+- Missing rooms owned by the current workspace can be recreated from local core and registry state. A missing joined room cannot
+  be recreated by the recipient because that room belongs to the owner.
+- A missing owned workspace-manifest room can likewise be recreated from the local sync registry.
+- Repair retains room identities and capabilities. It does not silently turn a joined relationship into an owned one.
+
 ## Reliability Rules
 
 ### Durable Queue
@@ -282,18 +321,26 @@ the latest relevant state rather than every intermediate edit. Interrupted `sync
 Pending local source or data work acts as a barrier: sync will not accept a remote snapshot that would discard the unsent local
 change. Beyond that, the MVP policy follows the payload taxonomy:
 
-- **App package:** The complete HTML document is one change; there is no line or CRDT merge.
+- **App package:** The complete HTML document is one change; there is no line or CRDT merge. On an ordinary version conflict,
+  sync reloads the current room version and the pending local package wins.
 - **App data:** A reconnecting browser's pending JSON snapshot can overwrite a newer remote snapshot.
 - **Workspace manifest:** Records merge by app id, highest observed room versions survive, and deletion tombstones prevent stale
   resurrection.
+
+An app-package deletion marker takes priority when a pending package conflicts with it. Once the source worker observes that
+marker, it discards the stale package and any queued data for the app rather than resurrecting the deleted app.
 
 These policies differ because source, arbitrary app-owned JSON, and workspace relationships have different semantics.
 
 ### Deletion
 
 - Deleting a local-only app removes its source and data from core.
-- Deleting an owned synced app also queues remote room deletion and a workspace tombstone.
+- Deleting an owned synced app writes a deletion marker to its app-package room, deletes its app-data room, and records a
+  workspace tombstone. The marker tells collaborators that the owner deleted the app rather than the room being temporarily
+  unavailable.
 - Deleting a joined app removes only this browser's local app and relationship; the owner's rooms remain.
+- When a joined browser observes the owner's deletion marker, it keeps its cached local copy but marks the relationship **Deleted
+  by owner** and prevents the app from being forwarded.
 
 ## Security Boundaries
 

@@ -81,8 +81,14 @@ describe("app data sync worker", () => {
     await configureTestStorageProfile(syncRegistry);
 
     const app = await core.createBlankApp();
-    const syncRecord = await syncRegistry.ensureOwnedAppRooms(app.appId);
-    await ensureRemoteAppRooms({ app, appData: { count: 0 }, provider, syncRecord });
+    const initialRecord = await syncRegistry.ensureOwnedAppRooms(app.appId);
+    await ensureRemoteAppRooms({ app, appData: { count: 0 }, provider, syncRecord: initialRecord });
+    const initialRemote = await loadRemoteAppRooms({ provider, syncRecord: initialRecord });
+    const syncRecord = await syncRegistry.rememberAppRoomVersions({
+      appId: app.appId,
+      dataRoom: initialRemote.dataRoom,
+      sourceRoom: initialRemote.sourceRoom,
+    });
     const remoteDataRoom = await saveRemoteAppData({
       appData: { count: 99 },
       provider,

@@ -59,6 +59,42 @@ test.describe("@firebase source sync", () => {
     }
   });
 
+  test("queued offline source wins after another browser updates the same app", async () => {
+    if (!firebaseProfile) throw new Error("Auth-capable Firebase E2E profile is required.");
+
+    const ownerBrowserContext = requireContext(ownerContext);
+    const owner = await newCleanWorkspacePage(ownerBrowserContext);
+    const joined = await newCleanWorkspacePage(requireContext(joinedContext));
+    const initialTitle = `E2E conflict initial ${Date.now()}`;
+    const offlineTitle = `E2E conflict offline ${Date.now()}`;
+    const remoteTitle = `E2E conflict remote ${Date.now()}`;
+
+    try {
+      await configureStorage(owner, firebaseProfile.config, firebaseProfile);
+      await createExampleApp(owner);
+      await saveSource(owner, htmlForTitle(initialTitle));
+      const inviteUrl = await createInvite(owner);
+
+      await joined.goto(inviteUrl);
+      await previewAndImportSharedApp(joined);
+      await expect(joined.getByText(initialTitle).first()).toBeVisible({ timeout: 15_000 });
+      await joined.getByRole("button", { name: "Open", exact: true }).click();
+
+      await ownerBrowserContext.setOffline(true);
+      await saveSource(owner, htmlForTitle(offlineTitle));
+      await saveSource(joined, htmlForTitle(remoteTitle));
+      await expect(joined.getByRole("heading", { name: remoteTitle })).toBeVisible();
+
+      await ownerBrowserContext.setOffline(false);
+      await owner.evaluate(() => window.dispatchEvent(new Event("online")));
+
+      await expect(joined.getByRole("heading", { name: offlineTitle })).toBeVisible({ timeout: 15_000 });
+    } finally {
+      await ownerBrowserContext.setOffline(false);
+      await closePages(owner, joined);
+    }
+  });
+
   test("open shared app receives repeated live source updates without reloading", async () => {
     if (!firebaseProfile) throw new Error("Auth-capable Firebase E2E profile is required.");
 

@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { createMemoryCore } from "../../core/memoryCore";
-import { ensureRemoteAppRooms } from "../rooms/appRooms";
+import { ensureRemoteAppRooms, loadRemoteAppRooms, markRemoteAppDeleted, saveRemoteAppSource } from "../rooms/appRooms";
 import { decryptRoomSnapshot } from "../rooms/crypto";
 import { createMemorySyncProvider } from "../testing/memorySyncProvider";
 import { processSourceSyncQueue } from "./sourceSyncWorker";
-import { createMemorySyncQueueStore, enqueueSaveSource } from "./syncQueue";
+import { createMemorySyncQueueStore, enqueueSaveAppData, enqueueSaveSource } from "./syncQueue";
 import { configureTestStorageProfile } from "../testing/testStorageProfile";
 import type { RealtimeSyncProvider, SaveRoomInput } from "../rooms/types";
 import { createMemoryWorkspaceSyncStore, createWorkspaceSyncRegistry } from "../workspace/workspaceSync";
@@ -74,6 +74,105 @@ describe("source sync worker", () => {
       lastError: "Provider unavailable",
       status: "pending",
     });
+  });
+
+  it("uses latest-local-wins when the remote source room changed before a queued save flushes", async () => {
+    const core = createMemoryCore();
+    const provider = createMemorySyncProvider();
+    const queueStore = createMemorySyncQueueStore();
+    const syncRegistry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
+    await configureTestStorageProfile(syncRegistry);
+
+    const app = await core.createApp({
+      description: "Conflict test",
+      name: "Initial",
+      sourceCode: "<!doctype html><title>Initial</title>",
+    });
+    const initialRecord = await syncRegistry.ensureOwnedAppRooms(app.appId);
+    await ensureRemoteAppRooms({ app, appData: {}, provider, syncRecord: initialRecord });
+    const initialRemote = await loadRemoteAppRooms({ provider, syncRecord: initialRecord });
+    const currentRecord = await syncRegistry.rememberAppRoomVersions({
+      appId: app.appId,
+      dataRoom: initialRemote.dataRoom,
+      sourceRoom: initialRemote.sourceRoom,
+    });
+    const remoteSourceRoom = await saveRemoteAppSource({
+      app: {
+        ...app,
+        name: "Remote newer",
+        sourceCode: "<!doctype html><title>Remote newer</title>",
+        updatedAt: new Date().toISOString(),
+      },
+      provider,
+      syncRecord: currentRecord,
+    });
+    const localApp = await core.updateApp({
+      appId: app.appId,
+      name: "Local pending",
+      sourceCode: "<!doctype html><title>Local pending</title>",
+    });
+    await enqueueSaveSource(queueStore, localApp);
+
+    await processSourceSyncQueue({
+      core,
+      createProviderForSyncRecord: async () => provider,
+      queueStore,
+      syncRegistry,
+    });
+
+    await expect(queueStore.listItems()).resolves.toEqual([]);
+    const remembered = await syncRegistry.getAppSyncRecord(app.appId);
+    expect(remembered?.sourceRoom.lastSeenVersion).toBe(remoteSourceRoom.lastSeenVersion + 1);
+    await expect(loadRemoteAppRooms({ provider, syncRecord: remembered ?? currentRecord })).resolves.toMatchObject({
+      app: {
+        name: "Local pending",
+        sourceCode: "<!doctype html><title>Local pending</title>",
+      },
+    });
+  });
+
+  it("discards stale local writes instead of overwriting a remote deletion marker", async () => {
+    const core = createMemoryCore();
+    const provider = createMemorySyncProvider();
+    const queueStore = createMemorySyncQueueStore();
+    const syncRegistry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
+    await configureTestStorageProfile(syncRegistry);
+
+    const app = await core.createBlankApp();
+    const initialRecord = await syncRegistry.ensureOwnedAppRooms(app.appId);
+    await ensureRemoteAppRooms({ app, appData: {}, provider, syncRecord: initialRecord });
+    const initialRemote = await loadRemoteAppRooms({ provider, syncRecord: initialRecord });
+    const currentRecord = await syncRegistry.rememberAppRoomVersions({
+      appId: app.appId,
+      dataRoom: initialRemote.dataRoom,
+      sourceRoom: initialRemote.sourceRoom,
+    });
+    await markRemoteAppDeleted({ app, provider, syncRecord: currentRecord });
+    const localApp = await core.updateApp({
+      appId: app.appId,
+      sourceCode: "<!doctype html><title>Stale local edit</title>",
+    });
+    await enqueueSaveSource(queueStore, localApp);
+    await enqueueSaveAppData({
+      appId: app.appId,
+      baseData: {},
+      baseRemoteVersion: currentRecord.dataRoom.lastSeenVersion,
+      data: { stale: true },
+      roomId: currentRecord.dataRoom.roomId,
+      store: queueStore,
+    });
+
+    await processSourceSyncQueue({
+      core,
+      createProviderForSyncRecord: async () => provider,
+      queueStore,
+      syncRegistry,
+    });
+
+    await expect(queueStore.listItems()).resolves.toEqual([]);
+    await expect(core.getApp(app.appId)).resolves.toBeNull();
+    await expect(syncRegistry.getAppSyncRecord(app.appId)).resolves.toBeNull();
+    await expect(loadRemoteAppRooms({ provider, syncRecord: currentRecord })).rejects.toThrow(/deleted by its owner/i);
   });
 
   it("does not remove newer source work that arrives while an older source upload is in flight", async () => {
