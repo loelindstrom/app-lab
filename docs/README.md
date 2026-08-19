@@ -31,16 +31,16 @@ modules, then points to deeper documents only where the design needs more explan
 
 ### In The Workspace
 
-- **Host:** The App Lab interface surrounding the generated apps.
-- **Workspace:** The collection of apps kept together by App Lab.
 - **App / generated app:** The apps that the user creates or generates with AI in AppLab.
+- **Host:** The App Lab interface surrounding the generated apps.
+- **Workspace / workspace manifest:** The collection/tracking of apps kept together by App Lab.
 - **App source:** The complete HTML document that defines an app.
 - **App data:** The JSON an app saves through `window.AppLab`.
 
 ### Product Areas
 
 - **UI (`src/ui`):** The host interface and coordinator for user actions.
-- **Runtime (`src/runtime`):** The sandbox (iFrame) where generated source runs and communicates through `window.AppLab`.
+- **Runtime (`src/runtime`):** The sandbox (iFrame) where generated app's source code runs and communicates through `window.AppLab` with the core.
 - **Core (`src/core`):** The `AppLabCore` contract for local persistence (IndexedDB) implementation.
 - **Sync (`src/sync`):** Optional backup, sharing, and cross-device synchronization through `WorkspaceSyncActions`.
 - **AI (`src/ai`):** The agent, AI conversation, and connection to an LLM.
@@ -48,9 +48,9 @@ modules, then points to deeper documents only where the design needs more explan
 ### When Sync Is Enabled
 
 - **Storage profile (`StorageProfile`):** The browser's connection to the user's storage provider (e.g. Firebase).
-- **Sync room:** One encrypted remote unit containing a workspace manifest, app source, or app data.
-- **Owned app:** An app created in this workspace.
-- **Joined app:** An app imported from another person's invite.
+- **Room:** One encrypted remote (ie in the storage provider) unit containing a workspace manifest, app source, or app data.
+- **Owned app:** An app created in the user's workspace.
+- **Joined app:** An app imported from another user's invite.
 - **Workspace sync material (`WorkspaceRecoveryMaterial` in code):** Sensitive text that lets another browser restore and continue
   syncing the workspace.
 
@@ -58,10 +58,9 @@ modules, then points to deeper documents only where the design needs more explan
 
 Three choices shape App Lab's architecture:
 
-1. **The local workspace must be useful on its own.** Persistence belongs to the browser; sync and AI services extend it only
+1. **The local workspace must be useful on its own.** Persistence belongs to the browser and should work also when offline; sync and AI services extend it only
    when the user opts in.
-2. **Generated source must run without becoming trusted host code.** Apps need a narrow path to their own data while the rest of
-   the workspace and its configuration stay isolated.
+2. **Generated source must run without becoming trusted host code.** Apps need to stay isolated from the rest of the AppLab workspace, but they need a narrow path to their own data.
 3. **Optional integrations must not spread through the application.** Provider-specific details stay behind sync and AI
    contracts, and other modules interact with them only through those public boundaries.
 
@@ -136,7 +135,7 @@ Keeping that coordination in UI lets runtime remain callback-driven and makes re
 
 **Purpose:** Run generated source without giving it access to the host application.
 
-**Owns:** Sandbox document construction, iframe capabilities, the `window.AppLab` bridge (which lets the sandboxed app communicate with the host via `postMessage` to save and subscribe to data changes), console forwarding, and host-compiled
+**Owns:** Sandbox document construction, iframe capabilities, the `window.AppLab` bridge (which lets the sandboxed app communicate with the host/core via `postMessage` to save and subscribe to data changes), console forwarding, and host-compiled
 Tailwind support.
 
 The sandbox and narrow bridge are how generated code remains useful without becoming trusted host code.
