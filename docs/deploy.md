@@ -1,149 +1,93 @@
 # Deployment
 
-App Lab is a pure client-side Vite React app that needs only static hosting. This guide explains how committed source becomes a
-repeatable release without mixing generated output into normal development work.
+App Lab is a static Vite application published to GitHub Pages.
 
-## Why This Strategy
+## Summary
 
-App Lab needs only static hosting, but a deployment still needs to identify exactly which committed version is live. It should
-also support rollbacks without mixing generated files into `main` or disturbing uncommitted work in a shared checkout.
+| Concern | Answer |
+| --- | --- |
+| Source branch | `main` |
+| Published branch | `gh-pages` |
+| Local Pages worktree | ignored `dist/` directory |
+| Production URL | `https://loelindstrom.github.io/app-lab/` |
+| Release identity | committed source ref, optionally tagged `vX.Y.Z` |
+| Metadata | `deploy.json` in the published output |
 
-The deployment therefore builds a chosen Git ref in a temporary directory and publishes only the result to a separate Pages
-branch. The source commit remains the release identity, while the working tree remains development space.
+## Why
 
-## How It Works
+Deployments must identify the exact committed source that is live without mixing generated files into `main` or disturbing
+uncommitted work. The deploy script archives a chosen Git ref, builds it in a temporary directory, and publishes only the output
+through a separate `gh-pages` worktree.
 
-The current implementation publishes static build output to a separate `gh-pages` branch. GitHub Pages serves it at:
+## First-Time Setup
 
-```text
-https://loelindstrom.github.io/app-lab/
-```
+1. Open **GitHub Settings > Pages**.
+2. Choose **Deploy from a branch**.
+3. Select `gh-pages` and `/ (root)`.
 
-- `main` contains source, docs, tests, and deployment tooling.
-- `dist/` is ignored on `main`.
-- `dist/` is also used as a local Git worktree for the `gh-pages` branch.
-- The deploy script resolves a Git ref to a commit, archives that committed source tree into a temporary directory, builds there, then copies the finished static files into the `dist/` worktree.
-- Vite builds with `/app-lab/` as the base path so asset URLs work from the project Pages URL.
-- Each deployment writes `deploy.json` into the Pages output with the source ref, commit, version tag when present, deploy time, and base path.
+The script can create the branch on the first deployment.
 
-Each part answers a requirement from the strategy above: the resolved Git ref and `deploy.json` identify the live source, the
-temporary build and `gh-pages` worktree isolate generated output, and accepting an earlier ref provides the rollback path.
+## Deploy
 
-## First-Time GitHub Setup
-
-In the GitHub repository settings:
-
-1. Open **Settings > Pages**.
-2. Set **Build and deployment > Source** to **Deploy from a branch**.
-3. Select branch `gh-pages` and folder `/ (root)`.
-4. Save the settings.
-
-The `gh-pages` branch does not need to exist before the first deployment. The local deploy script can create it.
-
-## Deploy Command
-
-Run from the repository root:
+Deploy committed `HEAD`:
 
 ```bash
 pnpm deploy:pages
 ```
 
-The script will:
+The script then:
 
-1. Resolve the requested ref to a commit. By default this is `HEAD`.
-2. Build the committed source tree in a temporary directory.
-3. Replace any plain ignored `dist/` build output with a real `gh-pages` worktree.
-4. Replace the branch contents with the new build output.
-5. Add `.nojekyll` and `deploy.json`.
-6. Commit and push `gh-pages` to `origin`.
+1. Resolves the requested Git ref.
+2. Builds it with the `/app-lab/` base path in a temporary directory.
+3. Updates the `dist/` Pages worktree.
+4. Writes `.nojekyll` and `deploy.json`.
+5. Commits and pushes `gh-pages`.
 
-Optional environment overrides:
+### Versions And Rollback
+
+```bash
+# Tag HEAD and deploy it
+pnpm deploy:pages -- --version v0.3.0
+
+# Tag and deploy a specific commit
+pnpm deploy:pages -- --ref abc1234 --version v0.3.0
+
+# Redeploy an existing tag
+pnpm deploy:pages -- --ref v0.2.0
+
+# Deploy an earlier commit without tagging it
+pnpm deploy:pages -- --ref abc1234
+```
+
+Version tags must use `vX.Y.Z`. The script reuses a requested tag when it already points to the chosen commit and refuses a new
+tag lower than or equal to the highest local version. Set `ALLOW_VERSION_REGRESSION=1` only for an intentional correction.
+
+### Overrides
 
 ```bash
 DEPLOY_REMOTE=origin DEPLOY_BRANCH=gh-pages DEPLOY_WORKTREE=dist pnpm deploy:pages
 ```
 
-## Version Tags
+An older ref normally reuses this checkout's `node_modules`. Set `DEPLOY_INSTALL=1` when that ref needs its own dependency install.
 
-Release tags use the format `vX.Y.Z`, for example `v0.3.0`.
+## Safety Rules
 
-To create a version tag on `HEAD` and deploy it:
-
-```bash
-pnpm deploy:pages -- --version v0.3.0
-```
-
-To create a version tag on a specific commit and deploy it:
-
-```bash
-pnpm deploy:pages -- --ref abc1234 --version v0.3.0
-```
-
-The script will not create a second version tag on a commit that already has a `vX.Y.Z` tag. If the requested tag already exists and points at the requested commit, it is reused.
-
-To avoid confusing version history, the script refuses to create a new version tag lower than or equal to the highest local `vX.Y.Z` tag. Override only for an intentional correction:
-
-```bash
-ALLOW_VERSION_REGRESSION=1 pnpm deploy:pages -- --version v0.2.9
-```
-
-## Deploying Earlier Versions
-
-Deploy an existing version tag:
-
-```bash
-pnpm deploy:pages -- --ref v0.2.0
-```
-
-Deploy an earlier commit without creating a version tag:
-
-```bash
-pnpm deploy:pages -- --ref abc1234
-```
-
-Use this for rollback-style deployments. The `gh-pages` branch records the deployed source commit in both the deployment commit message and `deploy.json`.
-
-## Parallel Work Safety
-
-The deploy script is intentionally conservative because other agents or developers may be editing source files in the same checkout.
-
-- It deploys a committed Git ref, not the live working tree.
-- Uncommitted local source or docs edits are ignored by deployment.
-- It writes deployment files only inside the ignored `dist/` worktree.
-- It builds into a temporary directory first, so Vite never empties the deployment worktree directly.
-- It resets and cleans `dist/` automatically because the `gh-pages` branch is generated output owned by this script.
-
-If another agent is editing source files, deploy a known commit or tag. Do not use deployment as a way to publish unreviewed local changes; uncommitted work will not be included.
-
-By default the temp source tree reuses the current checkout's `node_modules`. If dependencies changed and an older ref needs its own install, run:
-
-```bash
-DEPLOY_INSTALL=1 pnpm deploy:pages -- --ref v0.2.0
-```
+- Only committed source is deployed; uncommitted changes are ignored.
+- Generated output stays in the temporary build directory and `dist/` Pages worktree.
+- The script may reset and clean `dist/` because that worktree contains generated deployment output.
+- `deploy.json` records the ref, commit, version, deploy time, and base path for verification.
 
 ## Verification
 
-Before deployment, the normal build checks are:
+Before deployment:
 
 ```bash
 pnpm check
 pnpm test:e2e
-```
-
-After deployment, open:
-
-```text
-https://loelindstrom.github.io/app-lab/
-```
-
-If the page loads but assets 404, confirm that the deployed build used the `/app-lab/` base path and that GitHub Pages is serving the `gh-pages` branch root.
-
-For a local validation without tagging or changing `gh-pages`:
-
-```bash
 pnpm deploy:pages -- --dry-run --ref HEAD
 ```
 
-## Routing Note
+After deployment, open the production URL and inspect `deploy.json`. Asset 404s normally mean the build did not use `/app-lab/`
+or Pages is not serving the `gh-pages` branch root.
 
-The app currently does not depend on browser deep-link routes. If route-based deep links are added later, update this deployment strategy with either hash routing or a GitHub Pages 404 fallback.
+App Lab currently has no route-based deep links. Add hash routing or a Pages 404 fallback before introducing them.

@@ -19,7 +19,7 @@ Need inspiration? Here is a quick walkthrough of what you can do. It is as easy 
 
 1. Open the settings wheel in the top-right corner and follow the instructions under **Storage** > **First-time setup** (don't forget those security steps!).
 2. On/in an app, select **Share** and send the link to a friend. You can both edit the source and update app data live. So better keep a backup if you don't trust your friends' coding skills ;).
-4. Since Firebase is connected, you can also restore and sync your whole workspace on another device from settings: **Storage > Sync
+3. Since Firebase is connected, you can also restore and sync your whole workspace on another device from settings: **Storage > Sync
    device**.
 
 ## 🛠️ Contribute To App Lab

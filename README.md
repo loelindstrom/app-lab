@@ -27,10 +27,10 @@ You decide which integrations to add:
 
 - **Firebase is available now.** Connect your own Firebase project for encrypted backup, device sync, app sharing, and live
   updates. App source and data are encrypted in the browser before they are stored remotely.
-- **OpenRouter is the next MVP feature.** It will bring the existing AI workflow into App Lab using your own API key. Until then,
-  the built-in prompt-and-source handoff works with an external AI chat and needs no setup.
+- **OpenRouter powers built-in AI editing.** Connect your own API key to ask App Lab's agent to update the active app directly.
+  The prompt-and-source handoff remains available for using an external AI chat without setup.
 
-Generated apps never receive your Firebase configuration, sync secrets, or future AI key. They run inside sandboxed frames and
+Generated apps never receive your Firebase configuration, sync secrets, or AI key. They run inside sandboxed frames and
 use a small App Lab bridge when they need to save JSON data.
 
 ## 👟 Choose Your Path

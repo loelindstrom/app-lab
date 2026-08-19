@@ -1,7 +1,7 @@
 # AI Integration Feature Brief
 
 This is a temporary working document for bringing BuilderAI back into App Lab. It can become a formal architecture document after
-the first implementation slice proves the shape. Start with the [developer guide](./README.md) for the surrounding module map and
+the first implementation slice proves the shape. Start with the [developer guide](../README.md) for the surrounding module map and
 shared terminology.
 
 ## Goal
