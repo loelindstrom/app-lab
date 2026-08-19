@@ -1,128 +1,218 @@
 # Sync
 
-App Lab is useful with only the browser: apps and their data are saved locally through `AppLabCore`. That local-first foundation
-keeps setup optional, but a browser alone cannot keep two devices updated or let friends work on the same app.
+Sync adds encrypted backup, sharing, and cross-device updates without replacing App Lab's local workspace.
 
-## Why Sync Exists
+## Problem And Approach
 
-Sync extends the local workspace with encrypted backup, sharing, and cross-device updates through a storage provider. It does not
-replace local persistence: local saves complete first, and `AppLabCore` remains the local source of truth. A durable queue lets
-remote work catch up later when the browser or provider was unavailable.
+Core already stores each app's complete source, metadata, compiled CSS, and JSON data in the browser. That is enough to create,
+open, and edit apps offline, but a local IndexedDB database cannot by itself restore the workspace on another device or exchange
+updates with a friend.
 
-That creates three design needs: preserve local saves when remote storage is unavailable, represent the encrypted relationships
-needed for restore and sharing, and keep provider-specific behavior out of the rest of App Lab.
+Sync is therefore a companion to core rather than a second source of truth. It adds:
 
-The sync facade is created even when no storage provider is configured, so UI can follow the same code paths. Without a storage
-profile, this workspace's own apps remain local-only: sync does not create their remote rooms or a remote workspace-manifest room.
-A joined app is different because its invite supplies the owner's provider reference and room capabilities; that app can sync
-without the recipient configuring a provider of their own. Local sync metadata can also remain after an earlier setup.
+1. **Remote rooms** that mirror app content and workspace relationships as encrypted payloads.
+2. **Local sync metadata** that remembers which local app maps to which remote rooms.
+3. **A durable queue** that lets local saves finish while remote work waits for connectivity.
+4. **Provider adapters** that translate the room model to a remote service such as Firebase Realtime Database.
 
-Start with the [developer map](./README.md) for the surrounding product areas and vocabulary.
+The division preserves the local-first rule: the browser copy in core remains usable on its own, and remote behavior is activated
+only when an app has a sync relationship.
 
-## Map
+## Architecture At A Glance
 
-```text
-src/sync/
-├── index.ts                 Public contract and browser setup
-├── workspaceSyncActions.ts  Facade coordinating complete sync workflows
-├── workspace/               Restores workspace relationships across devices
-├── rooms/                   Separates and encrypts remote payloads
-├── queue/                   Keeps local saves working through outages
-├── providers/               Isolates service-specific access
-├── sharing/                 Connects a recipient to one app's rooms
-└── testing/                 Reusable in-memory test support
-```
-
-Production code outside sync imports only `src/sync/index.ts`. UI therefore sees one `WorkspaceSyncActions` facade rather than
-the provider, queue, and encryption details underneath it.
-
-## Coordination
-
-The facade receives the same `AppLabCore` object used by UI. It ties the folders above together while UI decides when a user
-action should be saved locally and offered to sync.
+`App.tsx` creates one core object and injects that same object into sync before passing both contracts to UI:
 
 ```text
-User edit:     UI -> core -> sync facade -> queue -> provider
-Remote update: provider -> sync facade -> core -> UI callback
+core = createIndexedDbCore()
+syncActions = createBrowserWorkspaceSyncActions(core)
+WorkspaceShell(core, syncActions)
 ```
 
-The outgoing order is the local-first guarantee: core completes the save before queue or provider work. The incoming order keeps
-the origin visible, so a remote update written to core is not mistaken for a new local edit and sent back again. IndexedDB is
-therefore persistence rather than a general event bus.
+That construction explains why both of these statements are true:
 
-Generated apps remain outside the sync boundary. They receive only the runtime's `window.AppLab` API, never a storage profile,
-room capability, storage-provider client, or encryption key.
+- UI calls core directly when a user creates, edits, or deletes local app state.
+- Sync also calls core to read current state for an upload and to persist an accepted remote update.
 
-## `workspace/`
+```mermaid
+flowchart LR
+  subgraph browser["Browser"]
+    ui["UI\nUser actions and React state"]
+    core["AppLabCore\nApp source and data\nIndexedDB"]
+    actions["WorkspaceSyncActions\nSync facade"]
+    registry["Sync registry\nRelationships and capabilities\nlocalStorage"]
+    queue["Sync queue\nPending remote work\nIndexedDB"]
+  end
 
-Cross-device restore needs more than the apps stored in core: a new browser must also recover how this workspace relates to remote
-rooms. The workspace registry therefore keeps sync-only local state: the storage profile, workspace identity, app relationships,
-room capabilities, observed versions, and deletion tombstones.
+  provider["Storage provider\nEncrypted rooms"]
 
-The encrypted **workspace manifest room** mirrors the relationships needed to restore that registry on another device. Its merge
-works per app id: independent additions are retained, the highest observed room versions survive, and tombstones suppress stale
-app records.
+  ui -->|"local save"| core
+  ui -->|"optional sync command"| actions
+  actions <-->|"read local / write remote update"| core
+  actions <--> registry
+  actions <--> queue
+  actions <--> provider
+  actions -->|"accepted change callback"| ui
+```
 
-**Workspace sync material** is the sensitive text needed to locate and decrypt that manifest from a clean browser. Storage-
-provider configuration alone cannot restore a workspace because decrypt secrets are never stored by the provider.
+`WorkspaceSyncActions` is the facade around the registry, queue, rooms, and provider. Production code outside `src/sync` does not
+import those details directly.
 
-## `rooms/`
+## State Ownership
 
-Backup and sharing require remote payloads, but do not require trusting the provider with their content. App Lab encrypts and
-separates that content into three provider-neutral room types:
+Sync becomes easier to reason about when its state is separated by owner:
 
-| Room | Contains |
-| --- | --- |
-| `workspace-manifest` | Workspace relationships, room references, versions, and tombstones. |
-| `app-package` | App metadata, complete HTML source, and compiled CSS. |
-| `app-data` | JSON saved by the generated app. |
+| Owner | Location | Contains |
+| --- | --- | --- |
+| Core | IndexedDB `app-lab-v2` | Local app records and app-owned JSON data. |
+| Sync registry | `localStorage` key `app-lab-workspace-sync-v1` | Storage profile, workspace id, manifest capability, per-app room relationships, observed versions, and tombstones. |
+| Sync queue | IndexedDB `app-lab-sync-queue-v1` | Pending room creation, source/data writes, remote deletion, and workspace-manifest writes. |
+| Storage provider | Remote room records | Encrypted payloads, versions, timestamps, and access-token hashes. |
 
-A `RoomCapability` combines a room id with decryption and access material plus the last observed version. Payloads are encrypted
-in the browser; the provider sees encrypted content, token hashes, versions, and timestamps.
+Core's IndexedDB database is durable product state. The queue's separate IndexedDB database is durable transport state: it may be
+deleted after its work succeeds without deleting an app. The sync registry is relationship state; it explains how local records
+connect to remote records but does not contain the canonical app source or app data.
 
-Source and data use separate rooms because source changes reload the sandbox, while data changes can be delivered live through
-`AppLab.onDataChange`.
+## Remote Rooms
 
-## `queue/`
+The remote model mirrors the two kinds of state described above:
 
-To keep the local workspace useful through outages, the durable IndexedDB queue lets a local save succeed while the provider is
-offline. Workers later coalesce and retry the newest source, data, room-lifecycle, deletion, and manifest work. Interrupted
-`syncing` entries return to `pending` at startup.
+```text
+Remote sync state
+├── One workspace-manifest room per synced workspace
+│   ├── Sync registry information needed to reconstruct the workspace
+│   └── References to each app's room relationship
+└── One room pair for each synced app
+    ├── One app-package room
+    │   └── App metadata, complete HTML source, and compiled CSS
+    └── One app-data room
+        └── JSON saved by the generated app
+```
 
-Pending local work is also a conflict barrier: sync will not accept a remote source or data snapshot that would discard an
-unsent local edit.
+Owned app rooms use the workspace's configured provider. Joined app records can instead point to the owner's provider carried in
+the invite.
 
-The MVP conflict policies match each payload:
+The app-package and app-data rooms map to records owned locally by core. They are separate because a source update rebuilds the
+runtime iframe, while an app-data update can be delivered live through `AppLab.onDataChange`.
 
-- **App source:** the complete HTML document is one change; there is no line or CRDT merge.
-- **App data:** the reconnecting browser's pending JSON snapshot can overwrite a newer remote snapshot.
-- **Workspace manifest:** app records merge by id and deletion tombstones prevent stale resurrection.
+The workspace-manifest room maps to the **sync registry**, not to a core record. It contains the workspace identity, storage
+profile, per-app room relationships, observed versions, and deletion tombstones. Core is not involved in creating or merging this
+manifest. Sync owns it, but uses the resulting relationships to decide which app rooms should be loaded into or removed from core.
 
-## `providers/`
+Each room has a local `RoomCapability`: the room id, decryption secret, access material, and last observed version. Payloads are
+encrypted in the browser. The provider can store and version them without receiving plaintext app content or room decryption
+secrets.
 
-To keep optional integrations from spreading through App Lab, `RealtimeSyncProvider` defines the room-level contract implemented
-by storage-provider adapters. Firebase Realtime Database is the current production adapter; tests can use the in-memory provider
-under `testing/`.
+## How Changes Move
 
-Each adapter is responsible for its provider-specific connection and access model. For example, the current Firebase adapter uses
-Anonymous Authentication and generated database rules to limit rooms to the owner and members who claimed an invite. App Lab
-additionally checks token hashes and optimistic versions in its normal client. Those client checks are not protection against a
-deliberately modified provider client after it has become a room member.
+App Lab uses explicit commands and callbacks. IndexedDB is persistence, not a global event bus.
 
-The complete trust model and secret inventory live in [Security](../SECURITY.md).
+### Local Change
 
-## `sharing/`
+When a user saves source or a generated app saves data:
+
+1. UI writes the change through `AppLabCore`.
+2. After local success, UI calls `WorkspaceSyncActions.pushAppSource` or `pushAppData`.
+3. Sync finds or creates the app's local room relationship and records pending work in the sync queue.
+4. A queue worker encrypts the payload and writes it through the configured provider.
+5. Sync records the accepted room version and queues an updated workspace manifest.
+
+The local save does not depend on step 4 succeeding. If the browser or provider is offline, the queue survives the reload and a
+later wake-up retries it. Repeated source or data saves are coalesced so the latest relevant state is sent instead of every
+intermediate edit.
+
+### Remote App Change
+
+For the active app, sync subscribes to its source and data rooms:
+
+1. The provider reports a newer encrypted snapshot.
+2. Sync checks its version and whether unsent local work should take priority.
+3. Sync decrypts the accepted snapshot and writes it through the same `AppLabCore` object used by UI.
+4. Sync records the version and calls UI.
+5. UI either rebuilds the runtime with the new source or forwards new data to `AppLab.onDataChange`.
+
+Because the incoming write remains inside the sync flow, it is not observed as a new user edit and sent back to the provider.
+
+### Remote Workspace Change
+
+Sync also subscribes to the workspace-manifest room. A newer manifest is merged by app id. Sync then loads newly referenced app
+rooms into core, applies owner-deletion tombstones, and tells UI to refresh the launcher. This is how an app created on one synced
+browser appears on another.
+
+## When No Storage Profile Is Configured
+
+The sync facade still exists, which lets UI use one set of code paths, but owned apps remain local-only. No owned app rooms or
+workspace-manifest room are created until a storage profile is configured.
+
+A joined app is the exception. Its invite contains the owner's provider reference and the capabilities for that app's source and
+data rooms, so the recipient can continue syncing that shared app without configuring a storage project of their own.
+
+Sync metadata can also outlive a configuration. For example, a user can configure Firebase, back up apps, and later select
+**Remove profile**. That clears the provider connection but leaves the browser's per-app room relationships and pending
+queue records intact. Owned-app sync cannot resume until the profile is configured or restored again; joined apps still carry
+their provider references from their invites.
+
+## Workspace Recovery
+
+Another browser needs more than the same provider configuration: it must know the workspace-manifest room and possess its
+decryption capability. **Workspace sync material** packages that capability, the provider reference, owner setup material, and an
+embedded point-in-time manifest.
+
+During restore, sync loads and merges the workspace manifest, loads the referenced app rooms into core, and saves the
+reconstructed sync registry. Decryption secrets are not recoverable from the storage provider alone.
+
+## Sharing And App Relationships
 
 Sharing should connect a recipient to one app without exposing the owner's whole workspace. An invite therefore contains the
 provider reference and capabilities for only that app's source and data rooms. It is sensitive full-access bearer material:
 recipients can read and update both rooms.
 
-- **Owned app:** uses rooms created through this workspace's storage profile.
-- **Joined app:** remains connected to the owner's provider and rooms.
-- **Private copy:** receives new rooms owned by this workspace.
+- **Owned app:** Uses rooms created through this workspace's storage profile.
+- **Joined app:** Remains connected to the owner's provider and rooms from the invite.
+- **Private copy:** Uses new rooms owned by this workspace while retaining origin metadata.
 
-Previewing an invite does not import the app, but it does claim source-room membership so App Lab can decrypt the confirmation
-details. Deleting a joined app is local only; deleting an owned app writes a remote deletion marker and a workspace tombstone.
+Previewing an invite does not import the app into core, but it does claim source-room membership so App Lab can decrypt the
+confirmation details. Importing then loads both app rooms into core and records the joined relationship in the sync registry.
+
+Deleting a joined app removes only this browser's local app and relationship. Deleting an owned app queues remote room deletion
+and adds a workspace tombstone so another browser cannot restore the stale app.
+
+## Conflict Policy
+
+Pending local source or data work acts as a barrier: sync will not accept a remote snapshot that would discard the unsent local
+change. Beyond that, the MVP policy matches each payload:
+
+- **App source:** The complete HTML document is one change; there is no line or CRDT merge.
+- **App data:** A reconnecting browser's pending JSON snapshot can overwrite a newer remote snapshot.
+- **Workspace manifest:** Records merge by app id, highest observed room versions survive, and deletion tombstones prevent stale
+  resurrection.
+
+These policies differ because source, arbitrary app-owned JSON, and workspace relationships have different semantics.
+
+## Provider Boundary
+
+`RealtimeSyncProvider` is the room-level contract implemented by storage-provider adapters. Firebase Realtime Database is the
+current production adapter; tests use an in-memory implementation where a real provider is unnecessary.
+
+Each adapter owns its connection and access model. The Firebase adapter uses Anonymous Authentication and generated database
+rules to restrict rooms to owners and members who claimed an invite. App Lab additionally checks token hashes and optimistic
+versions in its normal client. Those client checks cannot make an authorized member's deliberately modified provider client
+read-only.
+
+The complete trust model and secret inventory are in [Security](../SECURITY.md).
+
+## Code Map
+
+```text
+src/sync/
+├── index.ts                 Public contract and browser composition
+├── workspaceSyncActions.ts  Facade coordinating complete sync workflows
+├── workspace/               Local sync registry, remote manifest, and recovery
+├── rooms/                   Encrypted room formats and app-room operations
+├── queue/                   Durable outgoing work and queue workers
+├── providers/               Storage-provider adapters and configuration
+├── sharing/                 Invite encoding and parsing
+└── testing/                 Reusable in-memory test support
+```
 
 ## Verification
 

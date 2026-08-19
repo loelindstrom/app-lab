@@ -1,134 +1,182 @@
 # Runtime
 
-Runtime is the boundary between a generated app and the trusted App Lab host around it.
+Runtime lets App Lab execute a generated app while continuing to treat its source as untrusted.
 
-## Why Runtime Exists
+## Problem And Approach
 
-Generated source must execute before it can become an interactive app. Running that source directly inside the App Lab page
-would also give it access to the host's running code and browser storage. That could expose other apps, workspace data,
-storage-provider setup, and future LLM keys to code produced by an AI tool or supplied by a collaborator.
+A generated app is a complete HTML document containing markup, styles, and scripts. It must be allowed to execute before it can
+be useful, but running it directly in the trusted React page would also give it access to App Lab's DOM, browser storage, other
+apps, sync configuration, and future LLM credentials.
 
-Runtime prevents that by running each generated app in an isolated sandbox iframe. The app may control its own document and data,
-but it cannot reach the host or the rest of the workspace.
+App Lab uses an **iframe** to separate those execution contexts. An iframe is a browser document embedded inside another page. Its
+`sandbox` attribute lets the parent allow scripts while withholding same-origin access, so the generated app can control its own
+document without being able to inspect the parent page or the host's storage.
 
-Isolation creates two further needs. The app requires a narrow, controlled way to save its own data, and it needs a useful
-execution environment without becoming a separate software project. Runtime therefore provides the `window.AppLab` bridge and
-keeps each app as one complete HTML document. It includes Alpine for state and interactions, while Tailwind gives AI tools a
-broad styling vocabulary that App Lab compiles without a per-app toolchain or external CDN.
+That isolation removes access the app legitimately needs too. App Lab restores only selected capabilities through two browser
+features:
 
-These needs shape the module below: isolate generated code, expose only deliberate host capabilities, and provide a consistent
-environment for running self-contained apps.
+1. The host injects a small `window.AppLab` API into the generated document.
+2. That API and the host exchange structured messages with `postMessage`.
 
-Start with the [developer map](./README.md) for the relationship between UI, runtime, and core. The canonical threat model remains
-in [Security](../SECURITY.md).
+The generated app sees friendly methods such as `AppLab.getData()` and `AppLab.saveData()`. It never receives `AppLabCore`, an app
+id chosen by its own code, or a reference to the React host. Trusted runtime code checks each internal message and invokes narrow
+callbacks supplied by UI.
 
-## Map
+Runtime also keeps a generated app convenient to write as one HTML document. It injects Alpine for interactions and inserts
+static Tailwind CSS compiled in a second isolated iframe. Neither library needs to run in the trusted host on behalf of generated
+code.
 
-```text
-src/runtime/
-├── index.ts              Exposes the public runtime contract
-├── SandboxFrame.tsx      Isolates the app and checks bridge messages
-├── sandboxDocument.ts    Builds the restricted, self-contained app environment
-└── tailwindCompiler.ts   Produces styles without executing generated code
-```
+## Execution Contexts
+
+There are two sandboxed iframes, supervised by trusted code in `src/runtime`:
 
 ```mermaid
 flowchart LR
   subgraph host["Trusted App Lab host"]
-    ui["UI\nApp state and callbacks"]
-    frame["SandboxFrame\nMessage checks"]
-    compiler["Tailwind compiler\nSanitizes source"]
+    ui["UI\nApp record and callbacks"]
+    frame["SandboxFrame.tsx\nReact host controller"]
+    document["sandboxDocument.ts\nBuilds restricted srcdoc"]
+    compiler["tailwindCompiler.ts\nHost compiler controller"]
   end
 
-  subgraph appBoundary["Generated-app sandbox iframe"]
-    app["App HTML + Alpine\nwindow.AppLab"]
+  subgraph appBoundary["Generated-app iframe (untrusted)"]
+    app["Generated HTML and scripts\nAppLab API + Alpine + static CSS"]
   end
 
-  subgraph compilerBoundary["Tailwind compiler sandbox iframe"]
-    tailwind["Pinned Tailwind runtime"]
+  subgraph compilerBoundary["Tailwind compiler iframe (isolated)"]
+    tailwind["Sanitized markup\nPinned Tailwind runtime"]
   end
 
-  ui <--> frame
-  frame <-->|"checked postMessage"| app
-  ui -->|"source"| compiler
-  compiler <--> tailwind
+  ui -->|"app record + callbacks"| frame
+  frame -->|"source + load capability"| document
+  document -->|"srcdoc"| app
+  app <-->|"checked postMessage"| frame
+  frame -->|"invoke host callbacks"| ui
+
+  ui -->|"source on save"| compiler
+  compiler <-->|"sanitized input / CSS"| tailwind
   compiler -->|"static CSS"| ui
 ```
 
-The visible generated-app sandbox iframe answers the primary isolation need. `SandboxFrame` gives it the narrow data path;
-`sandboxDocument` supplies the controlled one-document environment. The hidden Tailwind compiler sandbox iframe receives a
-sanitized copy of the app's markup and returns only CSS, preserving that environment without moving generated code into the host.
+`SandboxFrame` is **not** the iframe. It is a trusted React component that creates and owns the visible generated-app iframe,
+prepares its document, and handles its messages. Likewise, `tailwindCompiler.ts` is trusted host code that creates a separate,
+short-lived compiler iframe.
 
-## `SandboxFrame.tsx`
+## From Stored Source To A Running App
 
-`SandboxFrame` solves both isolation and controlled data access. The app iframe uses `sandbox="allow-scripts"` without
-`allow-same-origin`. The browser therefore gives it an opaque origin: its scripts can run inside the app document but cannot read
-the parent DOM, App Lab's browser storage, or JavaScript objects holding provider configuration.
+UI loads an `AppRecord` from core and gives it to `SandboxFrame` together with callbacks for loading data, saving data, reporting
+console output, and handling remote updates. Runtime never imports or receives `AppLabCore` itself.
 
-Every app load receives a new random capability. For a message from the app to be handled, `SandboxFrame` requires:
+For each app load:
 
-1. `event.source` is the currently mounted iframe window.
-2. The message carries the capability for the active load.
-3. The message type is one of the small supported bridge operations.
+1. `SandboxFrame` creates a new random load capability.
+2. `prepareSandboxDocument` parses the stored HTML as an inert document.
+3. It replaces any source-provided Content Security Policy with App Lab's policy.
+4. It injects the load capability, the `window.AppLab` implementation, Alpine, and previously compiled CSS.
+5. `SandboxFrame` assigns the resulting HTML to the iframe's `srcdoc` property.
+6. The browser creates an opaque-origin document and runs the generated scripts inside it.
 
-The generated app never supplies the app id used for persistence. The host binds accepted `GET_MY_DATA` and `SAVE_MY_DATA`
-requests to the active load's app id before calling UI-provided callbacks. This is what prevents one app from naming and reading
-another app's data.
+The host-defined Content Security Policy blocks network connections, remote frames, workers, forms, objects, and remote assets.
+The generated app can use inline scripts and styles inside its own document, but it cannot turn that permission into host access.
 
-The capability is replaced on every rebuild and revoked when the frame unloads or navigates unexpectedly. Because a sandboxed
-`srcdoc` frame has an opaque origin, its origin is `null`; using `postMessage(..., "*")` is expected here. Authentication comes
-from the exact source-window and per-load capability checks, not from an origin string.
+## The `window.AppLab` Bridge
 
-## `sandboxDocument.ts`
+`postMessage` lets separate browser windows exchange structured data even when the browser prevents them from directly reading
+each other's JavaScript objects or DOM. The injected `window.AppLab` object uses it as a transport; generated app authors normally
+use only the public methods and never deal with the internal message names.
 
-An isolated iframe still needs to become a useful app environment. Before source enters the frame, `sandboxDocument` constructs
-that environment without relaxing the boundary:
-
-- A host-defined Content Security Policy replaces any policy supplied in generated source.
-- Network connections, remote frames, workers, forms, objects, and remote assets are blocked.
-- The narrow `window.AppLab` API is injected before generated scripts.
-- A pinned Alpine runtime is injected into the sandbox, never into the host page.
-- Host-compiled CSS is inserted as static inline CSS.
-
-The bridge exposes `getData`, `saveData`, `onDataChange`, and `onError`. It also forwards the app's console output to App Lab.
-Unknown messages do not gain host behavior.
-
-Alpine expressions require `unsafe-eval`, but that permission exists only in the opaque generated-app iframe. Runtime controls
-Alpine startup so generated source can register components before Alpine initializes the document.
-
-## `tailwindCompiler.ts`
-
-Tailwind provides the styling part of the one-document workflow, but compiling generated markup in the host would weaken the
-isolation goal. `compileAppStyles` therefore follows this path:
-
-1. Parse the source as inert HTML and detect the App Lab Tailwind marker.
-2. Remove scripts, frames, embeds, links, metadata, styles, and every attribute except `class` from compiler markup.
-3. Send that markup and extracted class candidates to a hidden `sandbox="allow-scripts"` iframe with a network-blocking CSP.
-4. Run the pinned `@tailwindcss/browser` package inside that compiler iframe.
-5. Accept a result only from that iframe with its random compiler id, then persist the returned static CSS with the app source.
-
-Generated Tailwind CSS is still subject to the visible app sandbox's CSP, so a class cannot turn into a route for loading remote
-images, fonts, or other resources.
-
-## Boundary Summary
-
-The implementation maps back to the original needs:
-
-| Need | Mechanism | Result |
+| Generated-app API or event | Internal message | Host behavior |
 | --- | --- | --- |
-| Run generated source without trusting it | Opaque iframe, host-defined CSP, and a separate compiler sandbox | Generated code cannot access host DOM, browser storage, provider setup, LLM keys, or network APIs. |
-| Let an app persist its own data | Checked source window, per-load capability, and host-bound app id | The app can use `window.AppLab`, but it cannot choose another app's data. |
-| Keep apps self-contained and AI-friendly | Host-injected Alpine and static compiled Tailwind CSS | One HTML document can provide interactions and styling without a per-app build or trusted host execution. |
-| Keep runtime independent | Values and callbacks supplied by UI | Runtime has no direct dependency on core, sync, or UI internals. |
+| `AppLab.getData()` | `GET_MY_DATA` | Call UI's data-loading callback for the active app and return `MY_DATA`. |
+| `AppLab.saveData(data)` | `SAVE_MY_DATA` | Call UI's data-saving callback for the active app and return success or failure. |
+| `AppLab.onDataChange(handler)` | `APP_LAB_DATA_HANDLER_STATUS` and `APP_LAB_DATA_CHANGED` | Register interest and deliver accepted remote data changes. |
+| `console.*` and runtime errors | `APP_LAB_CONSOLE` | Forward formatted output to App Lab's Console tool. |
 
-Anyone who can edit a shared app's source can still change what that app displays and how it uses that app's own data. Sharing
-source is therefore trusted collaboration, even though the host and the rest of the workspace remain isolated.
+A data read follows this complete path:
+
+```text
+Generated app
+  -> window.AppLab.getData()
+  -> postMessage: GET_MY_DATA
+  -> SandboxFrame checks the message
+  -> UI callback receives the host-owned active app id
+  -> AppLabCore.getAppData(appId)
+  -> MY_DATA response travels back to the pending AppLab promise
+```
+
+The same separation applies to writes. UI's save callback persists app data through core first and then offers the change to
+sync. A remote data update takes the opposite route: sync writes it to core, calls UI, and UI passes it to `SandboxFrame`, which
+sends `APP_LAB_DATA_CHANGED` to registered generated-app handlers.
+
+### Message Checks
+
+The iframe has an opaque origin, so messages from it have origin `null`. Using `postMessage(..., "*")` is expected in this case;
+the origin string cannot identify the sender. `SandboxFrame` instead accepts an app request only when:
+
+1. `event.source` is the `Window` belonging to the currently mounted iframe.
+2. The message contains the random capability created for the active load.
+3. Its type is one of the supported bridge operations.
+
+`event.source` answers **which browser window sent this message**. The capability answers **whether it belongs to the current
+load of that window**. The capability is replaced on every rebuild and revoked when the frame unloads or navigates unexpectedly.
+
+The generated app never supplies the app id used for persistence. `SandboxFrame` binds accepted requests to the app id captured
+for the active load before it invokes UI. This prevents one generated app from naming another app's data.
+
+## Alpine And Tailwind
+
+Alpine is bundled with App Lab and injected into the generated-app iframe. It gives AI-generated HTML a compact way to express
+state and interactions without introducing a per-app build. Alpine expressions require `unsafe-eval`, but that permission exists
+only inside the opaque generated-app iframe. Runtime controls startup so app scripts can register Alpine components first.
+
+Tailwind needs a compilation step. When source is created or saved, UI calls `compileAppStyles` before it writes the `AppRecord`
+to core:
+
+1. Runtime parses the source and detects whether Tailwind is enabled.
+2. It removes scripts, frames, embeds, links, metadata, styles, and all attributes except `class` from the compiler markup.
+3. It sends sanitized markup and extracted class candidates to a hidden `sandbox="allow-scripts"` iframe.
+4. The pinned `@tailwindcss/browser` package runs inside that iframe with a network-blocking Content Security Policy.
+5. Runtime accepts CSS only from that exact iframe and compiler id, then returns it to UI.
+6. UI persists the static CSS beside the app source in core; the visible app iframe receives that CSS on its next build.
+
+Compiling in a second sandbox means the host never has to execute generated scripts to discover styles. The resulting CSS is
+still governed by the visible app iframe's Content Security Policy, so it cannot load remote images, fonts, or other resources.
+
+## How The Pieces Solve The Problem
+
+The original problem has two competing requirements: generated source must run, and it must not become trusted host code. The
+browser's sandboxed iframe provides that separation. The host-defined Content Security Policy narrows what code inside the
+sandbox can reach.
+
+Isolation alone would leave generated apps unable to persist useful state. The checked `window.AppLab` message bridge restores
+only app-owned JSON operations, with the app id selected by the host. Alpine and static compiled Tailwind CSS restore a productive
+one-document authoring environment without widening that bridge.
+
+The result is that generated code can control its own DOM and app data, while the React host retains control of app identity,
+IndexedDB, sync, provider configuration, and future LLM keys. Runtime itself remains independent of core and sync because UI
+supplies the only callbacks it can invoke.
+
+This boundary does not make a shared app's behavior trustworthy. Anyone who can edit its source can change what it displays and
+how it uses that app's own data. Sharing source is therefore trusted collaboration even though the surrounding workspace remains
+isolated.
+
+## Code Map
+
+```text
+src/runtime/
+├── index.ts              Public exports used by UI
+├── SandboxFrame.tsx      Trusted React controller for the generated-app iframe
+├── sandboxDocument.ts    Builds the generated iframe's restricted srcdoc and AppLab API
+└── tailwindCompiler.ts   Trusted controller for the isolated Tailwind compiler iframe
+```
 
 ## Verification
 
-`SandboxFrame.test.tsx`, `sandboxDocument.test.ts`, and `tailwindCompiler.test.ts` cover bridge lifecycle checks, CSP and runtime
-injection, Tailwind marker detection, and class-candidate extraction. Run them with the normal suite:
+`SandboxFrame.test.tsx`, `sandboxDocument.test.ts`, and `tailwindCompiler.test.ts` cover bridge lifecycle checks, Content Security
+Policy and runtime injection, Tailwind marker detection, and class-candidate extraction. Run them with the normal suite:
 
 ```bash
 pnpm test
 ```
+
+The canonical trust model and secret inventory are in [Security](../SECURITY.md).

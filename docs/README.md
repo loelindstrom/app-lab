@@ -1,11 +1,46 @@
 # Developer Guide
 
-This is the technical map of App Lab. It starts with shared vocabulary and architecture goals, maps those goals to top-level
-modules, then points to deeper documents only where the design needs more explanation than the code can provide.
+This guide introduces the codebase from the outside in: first the kind of application App Lab is, then its vocabulary and
+architecture, and finally the module details and engineering workflow.
+
+## Introduction
+
+App Lab is a React 18 and TypeScript application built with Vite and deployed as static files. There is no required App Lab
+backend: the browser runs the host and generated apps, and stores the workspace. Optional storage and LLM providers are called
+directly from the browser when the user configures them.
+
+The product is local-first. `src/core` stores app source, metadata, compiled CSS, and app-owned JSON data in IndexedDB, so the
+workspace remains useful offline and without an account. `src/sync` can mirror that state into encrypted remote rooms, but it does
+not replace core as the local source of truth.
+
+Generated apps are not React components or part of the Vite bundle. Each app is one stored HTML document, usually written or
+rewritten with AI. Trusted code in `src/runtime` prepares that document and runs it in a sandboxed iframe, where it receives a
+small `window.AppLab` API instead of direct access to the host or browser storage.
+
+At startup, `App.tsx` creates one `AppLabCore`, injects it into the sync facade, and passes both contracts to the React UI. This is
+the central relationship to keep in mind when reading the repository:
+
+```text
+Trusted React host
+├── UI                 Renders the workspace and coordinates user actions
+├── Core               Owns durable local app state in IndexedDB
+├── Runtime            Creates and supervises sandboxed execution contexts
+├── Sync (optional)    Adds encrypted remote rooms and a durable sync queue
+└── AI (planned)       Will add the agent and LLM integration
+
+Separate browser contexts
+├── Generated-app iframe
+└── Tailwind compiler iframe
+```
+
+This is an ownership map, not a call graph; the architecture diagram and coordination model below show how the branches
+communicate. A fuller working taxonomy, including browser storage and remote state, is in
+[App Lab Taxonomy (Draft)](./taxonomy-draft.md).
 
 ## Contents
 
 - [Developer Guide](#developer-guide)
+  - [Introduction](#introduction)
   - [Contents](#contents)
   - [Glossary](#glossary)
     - [In The Workspace](#in-the-workspace)
@@ -31,24 +66,25 @@ modules, then points to deeper documents only where the design needs more explan
 
 ### In The Workspace
 
-- **App / generated app:** The apps that the user creates or generates with AI in AppLab.
+- **App / generated app:** The apps that the user creates or generates with AI in App Lab.
 - **Host:** The App Lab interface surrounding the generated apps.
-- **Workspace / workspace manifest:** The collection/tracking of apps kept together by App Lab.
+- **Workspace:** The collection of apps kept together by App Lab in this browser.
 - **App source:** The complete HTML document that defines an app.
 - **App data:** The JSON an app saves through `window.AppLab`.
 
 ### Product Areas
 
 - **UI (`src/ui`):** The host interface and coordinator for user actions.
-- **Runtime (`src/runtime`):** The sandbox (iFrame) where generated app's source code runs and communicates through `window.AppLab` with the core.
-- **Core (`src/core`):** The `AppLabCore` contract for local persistence (IndexedDB) implementation.
+- **Runtime (`src/runtime`):** Trusted host code that creates the sandboxed iframes and the generated-app bridge.
+- **Core (`src/core`):** The `AppLabCore` contract and its local IndexedDB persistence implementation.
 - **Sync (`src/sync`):** Optional backup, sharing, and cross-device synchronization through `WorkspaceSyncActions`.
 - **AI (`src/ai`):** The agent, AI conversation, and connection to an LLM.
 
 ### When Sync Is Enabled
 
 - **Storage profile (`StorageProfile`):** The browser's connection to the user's storage provider (e.g. Firebase).
-- **Room:** One encrypted remote (ie in the storage provider) unit containing a workspace manifest, app source, or app data.
+- **Room:** One encrypted remote unit containing a workspace manifest, app source, or app data.
+- **Workspace manifest:** Sync metadata that relates a workspace to its remote app rooms and records deletions.
 - **Owned app:** An app created in the user's workspace.
 - **Joined app:** An app imported from another user's invite.
 - **Workspace sync material (`WorkspaceRecoveryMaterial` in code):** Sensitive text that lets another browser restore and continue
@@ -58,9 +94,10 @@ modules, then points to deeper documents only where the design needs more explan
 
 Three choices shape App Lab's architecture:
 
-1. **The local workspace must be useful on its own.** Persistence belongs to the browser and should work also when offline; sync and AI services extend it only
-   when the user opts in.
-2. **Generated source must run without becoming trusted host code.** Apps need to stay isolated from the rest of the AppLab workspace, but they need a narrow path to their own data.
+1. **The local workspace must be useful on its own.** Persistence belongs to the browser and should also work offline; sync and
+   AI services extend it only when the user opts in.
+2. **Generated source must run without becoming trusted host code.** Apps stay isolated from the rest of the App Lab workspace,
+   but receive a narrow path to their own data.
 3. **Optional integrations must not spread through the application.** Provider-specific details stay behind sync and AI
    contracts, and other modules interact with them only through those public boundaries.
 
@@ -135,8 +172,8 @@ Keeping that coordination in UI lets runtime remain callback-driven and makes re
 
 **Purpose:** Run generated source without giving it access to the host application.
 
-**Owns:** Sandbox document construction, iframe capabilities, the `window.AppLab` bridge (which lets the sandboxed app communicate with the host/core via `postMessage` to save and subscribe to data changes), console forwarding, and host-compiled
-Tailwind support.
+**Owns:** Sandbox document construction, iframe capabilities, the `window.AppLab` bridge, console forwarding, and host-compiled
+Tailwind support. The bridge reaches UI-provided callbacks through `postMessage`; runtime does not call core directly.
 
 The sandbox and narrow bridge are how generated code remains useful without becoming trusted host code.
 
@@ -175,8 +212,16 @@ Keeping the agent behind its own contract will make AI optional and keep model c
 
 The architecture map explains what each product area owns. The flows below explain where a workflow is coordinated.
 
-`App.tsx` is the composition root: it creates one `AppLabCore`, uses it to create `WorkspaceSyncActions`, and passes both
-`AppLabCore` and `WorkspaceSyncActions` to UI. App Lab then uses explicit commands and callbacks rather than a global event bus:
+`App.tsx` is the composition root:
+
+```text
+core = createIndexedDbCore()
+syncActions = createBrowserWorkspaceSyncActions(core)
+WorkspaceShell(core, syncActions)
+```
+
+UI therefore calls core directly for local user actions, while sync receives the same core object for queued reads and accepted
+remote writes. App Lab uses explicit commands and callbacks rather than a global event bus:
 
 ```text
 Manual source edit (user clicks "Save" in source code view):
