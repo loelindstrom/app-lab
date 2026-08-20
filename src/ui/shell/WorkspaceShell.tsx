@@ -62,8 +62,10 @@ export function WorkspaceShell({ core, syncActions }: WorkspaceShellProps) {
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
   const [syncStatusOpen, setSyncStatusOpen] = useState(false);
   const [sandboxReloadKey, setSandboxReloadKey] = useState(0);
+  const activeAppIdRef = useRef<string | null>(null);
   const browserOnlineRef = useRef(navigator.onLine);
   const providerOnlineRef = useRef<boolean | null>(null);
+  activeAppIdRef.current = activeApp?.appId ?? null;
 
   function isSyncReachable() {
     return browserOnlineRef.current && providerOnlineRef.current !== false;
@@ -277,6 +279,38 @@ export function WorkspaceShell({ core, syncActions }: WorkspaceShellProps) {
     await createAppFromInput(createAlpineExampleAppInput());
   }
 
+  async function saveAppSource(appId: string, sourceCode: string): Promise<AppRecord> {
+    assertCompleteAppSource(sourceCode);
+
+    let compiledStyles: Pick<AppRecord, "compiledCss" | "compiledCssSourceHash">;
+    let compileWarning: string | null = null;
+    try {
+      compiledStyles = await compileAppStyles(sourceCode);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "Unknown Tailwind compile error.";
+      compiledStyles = { compiledCss: undefined, compiledCssSourceHash: undefined };
+      compileWarning = `Source saved without compiled Tailwind CSS: ${detail}`;
+    }
+
+    const updated = await core.updateApp({ appId, sourceCode, ...compiledStyles });
+    let syncWarning: string | null = null;
+    try {
+      await syncActions.pushAppSource(updated);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "Unknown sync error.";
+      syncWarning = `Source saved locally. Remote source sync failed: ${detail}`;
+    }
+
+    refreshWhenSettled(syncActions.flushSourceSyncQueue());
+    if (activeAppIdRef.current === appId) {
+      setActiveApp(updated);
+      setConsoleEntries([]);
+      setSyncStatus([compileWarning, syncWarning].filter(Boolean).join(" ") || null);
+    }
+    await refreshApps();
+    return updated;
+  }
+
   function openLauncher() {
     setMode("launcher");
     setActiveTool(null);
@@ -439,24 +473,7 @@ export function WorkspaceShell({ core, syncActions }: WorkspaceShellProps) {
             onClearConsole={() => setConsoleEntries([])}
             onClose={() => setActiveTool(null)}
             onLoadAppData={core.getAppData}
-            onSaveSource={async (sourceCode) => {
-              let compiledStyles: Pick<AppRecord, "compiledCss" | "compiledCssSourceHash">;
-              let compileWarning: string | null = null;
-              try {
-                compiledStyles = await compileAppStyles(sourceCode);
-              } catch (error) {
-                const detail = error instanceof Error ? error.message : "Unknown Tailwind compile error.";
-                compiledStyles = { compiledCss: undefined, compiledCssSourceHash: undefined };
-                compileWarning = `Source saved without compiled Tailwind CSS: ${detail}`;
-              }
-              const updated = await core.updateApp({ appId: activeApp.appId, sourceCode, ...compiledStyles });
-              const syncWarning = await trySync("Source saved locally. Remote source sync failed", () => syncActions.pushAppSource(updated));
-              if (compileWarning || syncWarning) setSyncStatus([compileWarning, syncWarning].filter(Boolean).join(" "));
-              refreshWhenSettled(syncActions.flushSourceSyncQueue());
-              setActiveApp(updated);
-              setConsoleEntries([]);
-              await refreshApps();
-            }}
+            onSaveSource={(sourceCode) => saveAppSource(activeApp.appId, sourceCode)}
           />
         </>
       ) : mode === "launcher" ? (
@@ -552,6 +569,13 @@ export function WorkspaceShell({ core, syncActions }: WorkspaceShellProps) {
     });
   }
 
+}
+
+function assertCompleteAppSource(sourceCode: string): void {
+  const start = sourceCode.trimStart().toLowerCase();
+  if (!/^<!doctype\s+html(?:\s[^>]*)?>/.test(start) && !/^<html(?:\s|>)/.test(start)) {
+    throw new Error("Source must be a complete HTML document starting with <!doctype html> or <html>.");
+  }
 }
 
 interface LauncherViewProps {

@@ -255,6 +255,38 @@ describe("WorkspaceShell sync wake-ups", () => {
     expect(await screen.findByText("Saved launcher description")).toBeTruthy();
   });
 
+  it("rejects source that is not a complete HTML document", async () => {
+    const syncActions = createSyncActionsStub();
+    const core = createMemoryCore();
+    const app = await core.createApp({
+      description: "Initial description",
+      name: "Initial app",
+      sourceCode: "<!doctype html><html><head><title>Initial app</title></head><body></body></html>",
+    });
+
+    render(
+      <WorkspaceShell
+        core={core}
+        syncActions={syncActions}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open" }));
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "Toggle source" }).length).toBeGreaterThan(0));
+    fireEvent.click(screen.getAllByRole("button", { name: "Toggle source" })[0]);
+
+    const sourcePanel = await screen.findByRole("complementary", { name: "Source" });
+    const sourceInput = sourcePanel.querySelector("textarea");
+    if (!(sourceInput instanceof HTMLTextAreaElement)) throw new Error("Expected source textarea.");
+
+    fireEvent.change(sourceInput, { target: { value: "This is not an HTML document." } });
+    fireEvent.click(within(sourcePanel).getByRole("button", { name: "Save" }));
+
+    expect(await within(sourcePanel).findByText("Source must be a complete HTML document starting with <!doctype html> or <html>.")).toBeTruthy();
+    expect((await core.getApp(app.appId))?.sourceCode).toBe(app.sourceCode);
+    expect(syncActions.pushAppSource).not.toHaveBeenCalled();
+  });
+
   it("saves source locally when Tailwind compilation is unavailable", async () => {
     vi.spyOn(window.navigator, "onLine", "get").mockReturnValue(false);
     const syncActions = createSyncActionsStub();

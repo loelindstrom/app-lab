@@ -12,7 +12,7 @@ interface WorkspaceToolPanelProps {
   onClearConsole: () => void;
   onClose: () => void;
   onLoadAppData: (appId: string) => Promise<JsonValue>;
-  onSaveSource: (sourceCode: string) => Promise<void>;
+  onSaveSource: (sourceCode: string) => Promise<AppRecord>;
 }
 
 export function WorkspaceToolPanel({ activeApp, consoleEntries, mode, onClearConsole, onClose, onLoadAppData, onSaveSource }: WorkspaceToolPanelProps) {
@@ -60,7 +60,7 @@ function SourceView({
 }: {
   app: AppRecord;
   onLoadAppData: (appId: string) => Promise<JsonValue>;
-  onSaveSource: (sourceCode: string) => Promise<void>;
+  onSaveSource: (sourceCode: string) => Promise<AppRecord>;
 }) {
   const [sourceCode, setSourceCode] = useState(app.sourceCode);
   const [exportOpen, setExportOpen] = useState(false);
