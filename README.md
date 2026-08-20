@@ -1,40 +1,33 @@
-# 🧪 App Lab
+# App Lab 🧪
 
 [![Live Demo](https://img.shields.io/badge/app-Open%20App%20Lab-brightgreen?style=for-the-badge)](https://loelindstrom.github.io/app-lab/) 
 [![Local-First](https://img.shields.io/badge/Architecture-Local--First-blue?style=for-the-badge)](https://en.wikipedia.org/wiki/Local-first_software) 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](./LICENSE)
 
-> **The home for your AI-made apps**  
-  
-Create, run and edit your apps in seconds. ❤️‍🔥  
-Share your creations with your friends. 🤝  
-Stored locally and securely in your browser or encrypted remote - just one click away: [AppLab](https://loelindstrom.github.io/app-lab/) 🧪  
+> **The home for your AI-made apps**
 
-**_No SaaS subscriptions. No backend overhead. No vendor lock-in._**
+Create, run, and edit small apps in seconds. ❤️‍🔥<br>
+Keep them in your browser, or connect your own providers for AI, encrypted sync, and sharing with friends. 🤝<br>
+Open your workspace here: [App Lab](https://loelindstrom.github.io/app-lab/) 🧪
 
----
+**_No App Lab account. No required cloud setup. Local-first._**
 
-### ⚡ Why App Lab?
 
-* **🔒 100% Local-First & Private:** App source and data stay inside your browser’s `IndexedDB`. Works completely offline with zero tracking.
-* **🤖 BYOAK (Bring Your Own API Key):** Hook up OpenRouter for inline AI code generation, or copy prompts to Claude/ChatGPT—no platform markups or artificial token limits.
-* **🛡️ Sandboxed Iframe Isolation:** Executed code runs inside strict browser sandboxes with custom `postMessage` storage APIs—untrusted AI code can *never* access your host secrets or external storage keys.
-* **🔄 End-to-End Encrypted Sync:** Optional zero-knowledge backup via Firebase RTDB. Sync your workspace across devices or share specific micro-apps with friends like a Google Doc.
-* **💸 Zero Hosting Overhead:** Execution happens 100% client-side. Run dozens of custom micro-apps (gym loggers, pomodoros, scratchpads) without paying a single cent for server infrastructure.
 
----
+## ⚡ Why App Lab?
 
-### 🪛 Two Ways to Work
+* **🏠 Local by Default:** App source and data live in your browser's `IndexedDB`. Create, run, and edit apps without an App Lab account or storage provider.
+* **🛡️ Sandboxed Execution:** Generated code runs in an isolated iframe under a restrictive policy.
+* **🤖 Bring Your Own AI:** Optionally connect your AI provider (currently via [OpenRouter](https://openrouter.ai/)) for built-in AI editing. Or copy prompt to external AI and paste code into App Lab.
+* **🔄 Bring Your Own Storage:** Optionally connect your storage provider (currently [Firebase Realtime Database](https://firebase.google.com/)). Enables:
+   * **🤝 Live Sharing:** Share apps with friends and let them update app source or data live.
+   * **↔️ Cross-device sync:** Restore and sync your workspace across browsers and devices.
+   * **🔒 End-to-End encryption:** Synced content is encrypted in your browser before it reaches the storage provider.
 
-| Mode | Setup | Features |
-| :--- | :--- | :--- |
-| **Out-of-the-Box** | Zero Setup | Create & run apps locally, manual prompt + code handoff with any external LLM, full offline persistence via `IndexedDB`, JSON export. |
-| **Connected (BYOAK)** | Optional Keys | Inline OpenRouter AI agent for direct code editing, live E2E encrypted cross-device workspace sync, and 1-click app sharing. |
 
-> 💡 **Tip:** No need to clone this repo. Just go to the app which is hosted on this github's static page:  
-> https://loelindstrom.github.io/app-lab/
+> 💡 **Tip:** No need to clone this repo. App Lab already runs directly from its [GitHub Pages site](https://loelindstrom.github.io/app-lab/).
 
----
+
 
 ## 👟 Choose Your Path
 
@@ -43,7 +36,7 @@ Stored locally and securely in your browser or encrypted remote - just one click
 * 🛠️ **[Developer Architecture Guide](./docs/README.md)**
 * 🔐 **[Security Model & Threat Brief](./SECURITY.md)**
 
----
+
 
 ## 📄 License
 
