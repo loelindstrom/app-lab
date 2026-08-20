@@ -267,19 +267,64 @@ so apply, undo, sync status, remote updates, and sandbox reload all follow the s
 - Source-code merge algorithms or CRDT collaboration.
 - Read-only sharing enforcement.
 
-## First Implementation Slice
+## Implementation Order
 
-The order below proves the native local editing loop first, then extends its conversation state through the existing sync model:
+The six slices below are the working implementation plan. Each slice should be reviewed, tested, and committed independently.
 
-1. Extract the current manual source-save sequence into one reusable host operation with focused tests.
-2. Add a local AI config store and wire it into Settings with a basic OpenRouter setup path.
-3. Port the useful parts of the old V1 OpenRouter client to TypeScript.
-4. Add host-owned per-app chat storage, initially local-first.
-5. Add a V2 BuilderAI agent module with the bounded tool loop, bounded model context, and injected tool callbacks.
-6. Replace the placeholder Builder panel with chat, progress, errors, copy-prompt fallback, clear chat, and undo-last-edit.
-7. Add synced chat rooms for configured workspaces.
-8. Add focused unit tests for config, client parsing, agent behavior, shared source saving, Builder panel states, chat persistence,
-   and undo behavior.
+1. **Prepare the host boundary — complete**
+
+   - Extract the inline source-save workflow from `WorkspaceShell`.
+   - Let both the Source editor and BuilderAI invoke it.
+   - Accept an explicit app id so an old AI request cannot overwrite whichever app happens to be open later.
+   - Add basic complete-HTML validation.
+   - Add no visible AI behavior yet.
+
+2. **Add the headless `src/ai` module — complete**
+
+   - Expose its production contract through `index.ts`.
+   - Add OpenRouter configuration and the client.
+   - Add the bounded agent loop, App Lab system prompt, and tool definitions.
+   - Add dependency-cruiser rules protecting the module boundary.
+   - Give `src/ai` host callbacks; it must not import UI, core, runtime, or sync.
+
+3. **Build the first in-memory vertical slice — next**
+
+   - Store conversations in React memory, keyed by app id.
+   - Configure OpenRouter in Settings.
+   - Send a message.
+   - Read current source and console output.
+   - Replace source through the shared save operation.
+   - Display assistant text, progress, and errors.
+   - Clear the in-memory conversation.
+   - Allow page reloads to erase chat at this stage.
+
+   Messages should already have stable `messageId`, `appId`, `role`, `content`, and `createdAt` fields. This avoids changing the data
+   model when persistence and merging arrive.
+
+4. **Harden the integration**
+
+   - Bound tool rounds and context size.
+   - Reject malformed tool arguments and invalid HTML.
+   - Cancel or invalidate a request when its app session changes.
+   - Test text-only answers, tool calls, provider failures, stale requests, and malformed responses.
+   - Start non-streaming if that gets the vertical slice working sooner. Streaming can then be added without changing the agent
+     contract.
+
+5. **Add local conversation persistence**
+
+   - Give `src/ai` its own IndexedDB-backed chat store rather than putting AI history into app-owned data.
+   - Hydrate per-app conversations when apps are opened.
+   - Keep the hardcoded introductory message derived rather than storing it.
+   - Persist only user-visible user/assistant messages; internal tool transcripts can remain request-local.
+
+6. **Add private conversation sync**
+
+   - Introduce the encrypted chat room and queue behavior.
+   - Merge messages by stable id.
+   - Add explicit clear/reset semantics so old messages cannot be resurrected.
+   - Keep chat out of app invites.
+   - Give invite recipients their own independent conversations.
+   - Then decide whether undo availability itself must follow the owner across devices.
 
 ## Open Questions
 
