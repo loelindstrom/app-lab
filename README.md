@@ -4,7 +4,7 @@
 [![Local-First](https://img.shields.io/badge/Architecture-Local--First-blue?style=for-the-badge)](https://en.wikipedia.org/wiki/Local-first_software) 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](./LICENSE)
 
-> **The home for all your AI-made apps**  
+> **The home for your AI-made apps**  
   
 Create, run and edit your apps in seconds. ❤️‍🔥  
 Share your creations with your friends. 🤝  
