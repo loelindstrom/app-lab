@@ -72,34 +72,59 @@ module.exports = {
     {
       name: 'core-is-independent',
       severity: 'error',
-      comment: 'Core owns local app state and must not depend on UI, runtime, or sync.',
+      comment: 'Core owns local app state and must not depend on UI, runtime, sync, or AI.',
       from: {
         path: '^src/core/'
       },
       to: {
-        path: '^src/(?:ui|runtime|sync)/'
+        path: '^src/(?:ui|runtime|sync|ai)/'
       }
     },
     {
-      name: 'runtime-does-not-depend-on-ui-or-sync',
+      name: 'runtime-does-not-depend-on-ui-sync-or-ai',
       severity: 'error',
       comment: 'Runtime owns the sandbox boundary and communicates through UI-provided callbacks.',
       from: {
         path: '^src/runtime/'
       },
       to: {
-        path: '^src/(?:ui|sync)/'
+        path: '^src/(?:ui|sync|ai)/'
       }
     },
     {
-      name: 'sync-does-not-depend-on-ui-or-runtime',
+      name: 'sync-does-not-depend-on-ui-runtime-or-ai',
       severity: 'error',
-      comment: 'Sync is headless and must not import UI or sandbox runtime code.',
+      comment: 'Sync is headless and must not import UI, sandbox runtime, or AI code.',
       from: {
         path: '^src/sync/'
       },
       to: {
-        path: '^src/(?:ui|runtime)/'
+        path: '^src/(?:ui|runtime|ai)/'
+      }
+    },
+    {
+      name: 'ai-is-headless',
+      severity: 'error',
+      comment: 'AI receives active-app tools from the host and must not import persistence, runtime, sync, or UI code.',
+      from: {
+        path: '^src/ai/'
+      },
+      to: {
+        path: '^src/(?:core|runtime|sync|ui)/'
+      }
+    },
+    {
+      name: 'use-ai-public-api',
+      severity: 'error',
+      comment: 'Production code outside AI must import its public entry point.',
+      from: {
+        pathNot: [
+          '^src/ai/',
+          '[.](?:spec|test)[.](?:ts|tsx)$'
+        ]
+      },
+      to: {
+        path: '^src/ai/(?!index[.]ts$)'
       }
     },
     {

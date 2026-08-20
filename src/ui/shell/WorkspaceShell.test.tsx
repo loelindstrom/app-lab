@@ -1,5 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { AiActions, AiConfig } from "../../ai";
+import type { AppLabCore } from "../../core";
 import { createMemoryCore } from "../../core/memoryCore";
 import { createMemorySyncQueueStore, enqueueSaveSource, resetSyncingQueueItems, type SyncQueueStore } from "../../sync/queue/syncQueue";
 import { createRoomCapability } from "../../sync/rooms/crypto";
@@ -7,7 +9,11 @@ import { encodeAppInvite } from "../../sync/sharing/invites";
 import { configureTestStorageProfile } from "../../sync/testing/testStorageProfile";
 import { createMemoryWorkspaceSyncStore, createWorkspaceSyncRegistry, type WorkspaceSyncRegistry } from "../../sync/workspace/workspaceSync";
 import type { WorkspaceSyncActions } from "../../sync";
-import { WorkspaceShell } from "./WorkspaceShell";
+import { WorkspaceShell as ProductionWorkspaceShell } from "./WorkspaceShell";
+
+function WorkspaceShell({ aiActions = createAiActionsStub(), core, syncActions }: { aiActions?: AiActions; core: AppLabCore; syncActions: WorkspaceSyncActions }) {
+  return <ProductionWorkspaceShell aiActions={aiActions} core={core} syncActions={syncActions} />;
+}
 
 describe("WorkspaceShell sync wake-ups", () => {
   afterEach(() => {
@@ -399,6 +405,41 @@ describe("WorkspaceShell sync wake-ups", () => {
     expect(await screen.findByText(/apiKey/)).toBeTruthy();
   });
 
+  it("saves and tests browser-local OpenRouter configuration", async () => {
+    const aiActions = createAiActionsStub();
+    vi.mocked(aiActions.testConnection).mockResolvedValue({
+      keyLabel: "App Lab key",
+      model: "provider/model",
+      modelName: "Useful Model",
+    });
+
+    render(
+      <WorkspaceShell
+        aiActions={aiActions}
+        core={createMemoryCore()}
+        syncActions={createSyncActionsStub()}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open settings" }));
+    fireEvent.click(await screen.findByRole("button", { name: "AI" }));
+    fireEvent.change(screen.getByLabelText("OpenRouter API key"), { target: { value: "sk-test" } });
+    fireEvent.change(screen.getByLabelText("Model id"), { target: { value: "provider/model" } });
+    fireEvent.click(screen.getByRole("button", { name: "Test connection" }));
+
+    expect(await screen.findByText("Connected to Useful Model using App Lab key.")).toBeTruthy();
+    expect(aiActions.testConnection).toHaveBeenCalledWith({ apiKey: "sk-test", model: "provider/model" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save AI configuration" }));
+    expect(await screen.findByText("AI configuration saved in this browser.")).toBeTruthy();
+    expect(aiActions.saveConfig).toHaveBeenCalledWith({ apiKey: "sk-test", model: "provider/model" });
+
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    fireEvent.click(await screen.findByRole("button", { name: "Remove" }));
+    expect(await screen.findByText("AI configuration removed from this browser.")).toBeTruthy();
+    expect(aiActions.clearConfig).toHaveBeenCalledTimes(1);
+  });
+
   it("closes settings from the full-page back button", async () => {
     const syncActions = createSyncActionsStub();
 
@@ -545,6 +586,19 @@ describe("WorkspaceShell sync wake-ups", () => {
     expect(screen.getByText("Enable Anonymous Auth").className).toContain("line-through");
   });
 });
+
+function createAiActionsStub(config: AiConfig = { apiKey: "", model: "" }): AiActions {
+  return {
+    clearConfig: vi.fn().mockResolvedValue(undefined),
+    getConfig: vi.fn().mockResolvedValue(config),
+    runBuilderTurn: vi.fn().mockResolvedValue({ content: "Done.", toolRounds: 0 }),
+    saveConfig: vi.fn(async (nextConfig) => ({
+      apiKey: nextConfig.apiKey.trim(),
+      model: nextConfig.model.trim(),
+    })),
+    testConnection: vi.fn(),
+  };
+}
 
 function createSyncActionsStub(
   input: { queueStore?: SyncQueueStore; syncRegistry?: WorkspaceSyncRegistry } = {},

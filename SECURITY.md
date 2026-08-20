@@ -49,7 +49,7 @@ chooses whether to import.
 | Firebase owner setup secret | Settings UI, local sync metadata, workspace sync material | Lets another browser owned by the user claim owner setup in that Firebase project. |
 | Room decrypt secret | Local sync metadata, invite links, and workspace sync material | Decrypts one encrypted room payload. Firebase does not store this secret in plaintext. |
 | Room access token | Local sync metadata, invite links, and workspace sync material | Authorizes normal App Lab client reads/writes for one room and is used as the Firebase room membership claim token. |
-| OpenRouter API key | Local AI configuration | Remains local to the browser. It is not synced, exported in workspace sync material, or exposed to generated apps. |
+| OpenRouter API key | Local AI configuration | Stored only in this browser and sent to OpenRouter as an authorization credential. It is not synced, exported in workspace sync material, or exposed to generated apps. |
 
 ## Reporting Vulnerabilities
 

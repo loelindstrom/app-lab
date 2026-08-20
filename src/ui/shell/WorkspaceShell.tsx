@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { AiActions, AiConfig } from "../../ai";
 import {
   createAlpineExampleAppInput,
   type AppLabCore,
@@ -39,11 +40,13 @@ interface AppSyncHealth {
 }
 
 interface WorkspaceShellProps {
+  aiActions: AiActions;
   core: AppLabCore;
   syncActions: WorkspaceSyncActions;
 }
 
-export function WorkspaceShell({ core, syncActions }: WorkspaceShellProps) {
+export function WorkspaceShell({ aiActions, core, syncActions }: WorkspaceShellProps) {
+  const [aiConfig, setAiConfig] = useState<AiConfig>({ apiKey: "", model: "" });
   const [apps, setApps] = useState<AppSummary[]>([]);
   const [syncBadges, setSyncBadges] = useState<Record<string, AppSyncBadge>>({});
   const [syncHealth, setSyncHealth] = useState<Record<string, AppSyncHealth>>({});
@@ -74,6 +77,10 @@ export function WorkspaceShell({ core, syncActions }: WorkspaceShellProps) {
   useEffect(() => {
     void refreshApps(isSyncReachable());
   }, []);
+
+  useEffect(() => {
+    void aiActions.getConfig().then(setAiConfig);
+  }, [aiActions]);
 
   useEffect(() => {
     let cancelled = false;
@@ -490,8 +497,13 @@ export function WorkspaceShell({ core, syncActions }: WorkspaceShellProps) {
       ) : null}
 
       <SettingsDialog
+        aiConfig={aiConfig}
         isOpen={settingsOpen}
         storageProfile={storageProfile}
+        onClearAiConfig={async () => {
+          await aiActions.clearConfig();
+          setAiConfig({ apiKey: "", model: "" });
+        }}
         onClearStorageProfile={async () => {
           await syncActions.clearStorageProfile();
           await refreshApps();
@@ -502,6 +514,12 @@ export function WorkspaceShell({ core, syncActions }: WorkspaceShellProps) {
           await trySync("Storage configured locally. Remote backup failed", () => syncActions.backUpLocalApps());
           await refreshApps();
         }}
+        onSaveAiConfig={async (config) => {
+          const saved = await aiActions.saveConfig(config);
+          setAiConfig(saved);
+          return saved;
+        }}
+        onTestAiConnection={aiActions.testConnection}
         onExportWorkspaceRecovery={async () => {
           return syncActions.exportWorkspaceRecovery();
         }}

@@ -1,14 +1,19 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import type { AiConfig, AiConnectionResult } from "../../ai";
 import { createAuthFirebaseRules, createFirebaseOwnerSetupSecret, type ConfigureStorageProfileInput, type StorageProfile } from "../../sync";
 
 interface SettingsDialogProps {
+  aiConfig: AiConfig;
   isOpen: boolean;
+  onClearAiConfig: () => Promise<void>;
   onClose: () => void;
   storageProfile: StorageProfile | null;
   onConfigureStorageProfile: (input: ConfigureStorageProfileInput) => Promise<void>;
   onClearStorageProfile: () => Promise<void>;
   onExportWorkspaceRecovery: () => Promise<string>;
   onRestoreWorkspaceRecovery: (recoveryText: string) => Promise<void>;
+  onSaveAiConfig: (config: AiConfig) => Promise<AiConfig>;
+  onTestAiConnection: (config: AiConfig) => Promise<AiConnectionResult>;
 }
 
 type SettingsSection = "ai" | "storage";
@@ -25,14 +30,20 @@ type SetupStepId =
   | "sync";
 
 export function SettingsDialog({
+  aiConfig,
   isOpen,
+  onClearAiConfig,
   onClearStorageProfile,
   onClose,
   onConfigureStorageProfile,
   onExportWorkspaceRecovery,
   onRestoreWorkspaceRecovery,
+  onSaveAiConfig,
+  onTestAiConnection,
   storageProfile,
 }: SettingsDialogProps) {
+  const [aiApiKey, setAiApiKey] = useState("");
+  const [aiModel, setAiModel] = useState("");
   const [section, setSection] = useState<SettingsSection>("storage");
   const [storageTab, setStorageTab] = useState<StorageTab>("setup");
   const [displayName, setDisplayName] = useState("");
@@ -45,6 +56,11 @@ export function SettingsDialog({
   const [openSetupSection, setOpenSetupSection] = useState<SetupGuideSectionId | null>("firebase");
   const [setupSteps, setSetupSteps] = useState<Record<SetupStepId, boolean>>(() => createSetupStepState());
   const wasOpenRef = useRef(false);
+
+  useEffect(() => {
+    setAiApiKey(aiConfig.apiKey);
+    setAiModel(aiConfig.model);
+  }, [aiConfig]);
 
   useEffect(() => {
     setDisplayName(storageProfile?.displayName ?? "");
@@ -84,6 +100,42 @@ export function SettingsDialog({
       setStatus("Storage profile saved. Existing owned apps now have stable sync rooms.");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Could not save storage profile.");
+    }
+  }
+
+  async function saveAiConfig() {
+    setStatus("Saving AI configuration...");
+    try {
+      const saved = await onSaveAiConfig({ apiKey: aiApiKey, model: aiModel });
+      setAiApiKey(saved.apiKey);
+      setAiModel(saved.model);
+      setStatus("AI configuration saved in this browser.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Could not save AI configuration.");
+    }
+  }
+
+  async function testAiConnection() {
+    setStatus("Testing OpenRouter key and model...");
+    try {
+      const result = await onTestAiConnection({ apiKey: aiApiKey, model: aiModel });
+      const keyDetail = result.keyLabel ? ` using ${result.keyLabel}` : "";
+      setStatus(`Connected to ${result.modelName}${keyDetail}.`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Could not connect to OpenRouter.");
+    }
+  }
+
+  async function clearAiConfig() {
+    if (!window.confirm("Remove the OpenRouter API key and model from this browser?")) return;
+    setStatus("Removing AI configuration...");
+    try {
+      await onClearAiConfig();
+      setAiApiKey("");
+      setAiModel("");
+      setStatus("AI configuration removed from this browser.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Could not remove AI configuration.");
     }
   }
 
@@ -159,7 +211,7 @@ export function SettingsDialog({
           </div>
         </header>
         <div className="min-h-0 overflow-auto">
-          <div className="mx-auto grid min-h-full w-full max-w-5xl grid-cols-1 gap-4 px-4 py-4 md:grid-cols-[190px_minmax(0,1fr)]">
+          <div className="mx-auto grid w-full max-w-5xl grid-cols-1 gap-4 px-4 py-4 md:min-h-full md:grid-cols-[190px_minmax(0,1fr)]">
             <nav className="flex gap-2 rounded-lg border border-app-line bg-white p-2 md:grid md:content-start" aria-label="Settings sections">
               <SettingsNavButton active={section === "storage"} label="Storage" onClick={() => setSection("storage")} />
               <SettingsNavButton active={section === "ai"} label="AI" onClick={() => setSection("ai")} />
@@ -167,27 +219,95 @@ export function SettingsDialog({
 
             <div className="min-w-0">
               {section === "ai" ? (
-                <form className="grid gap-4">
-                  <p className="text-sm leading-relaxed text-app-muted">
-                    BuilderAI configuration will live here. It stays separate from storage so sync setup does not get mixed with
-                    model/API-key setup.
-                  </p>
+                <form
+                  className="grid gap-5"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void saveAiConfig();
+                  }}
+                >
+                  <div className="grid gap-2 text-sm leading-relaxed text-app-muted">
+                    <p>
+                      Connect OpenRouter to use BuilderAI. The API key is stored only in this browser and sent to OpenRouter to
+                      authenticate requests. It is never included in workspace sync or app invites.
+                    </p>
+                    <p>App source and conversation context are sent to the selected model only when you submit a BuilderAI request.</p>
+                  </div>
+
+                  <ol className="grid gap-3 text-sm leading-relaxed text-app-muted">
+                    <li className="grid grid-cols-[2rem_minmax(0,1fr)] gap-3">
+                      <span className="grid h-7 min-h-7 w-7 place-items-center rounded-full bg-app-accent font-extrabold text-white">1</span>
+                      <span>
+                        Create an API key in{" "}
+                        <a className="font-extrabold text-app-accent underline" href="https://openrouter.ai/settings/keys" target="_blank" rel="noreferrer">
+                          OpenRouter
+                        </a>
+                        .
+                      </span>
+                    </li>
+                    <li className="grid grid-cols-[2rem_minmax(0,1fr)] gap-3">
+                      <span className="grid h-7 min-h-7 w-7 place-items-center rounded-full bg-app-accent font-extrabold text-white">2</span>
+                      <span>
+                        Choose a model id from the{" "}
+                        <a className="font-extrabold text-app-accent underline" href="https://openrouter.ai/models?supported_parameters=tools" target="_blank" rel="noreferrer">
+                          tool-capable models
+                        </a>
+                        .
+                      </span>
+                    </li>
+                    <li className="grid grid-cols-[2rem_minmax(0,1fr)] gap-3">
+                      <span className="grid h-7 min-h-7 w-7 place-items-center rounded-full bg-app-accent font-extrabold text-white">3</span>
+                      <span>Paste both values below, test the connection, and save them locally.</span>
+                    </li>
+                  </ol>
+
                   <label className="grid gap-2 text-sm font-extrabold text-app-muted">
-                    API key
+                    OpenRouter API key
                     <input
-                      className="rounded-md border border-app-line px-3 py-2 text-app-ink"
-                      type="password"
                       autoComplete="off"
-                      placeholder="Stored by the future core config service"
+                      className="min-h-10 rounded-md border border-app-line bg-white px-3 font-mono text-sm text-app-ink outline-none focus:border-app-accent"
+                      onChange={(event) => setAiApiKey(event.target.value)}
+                      placeholder="sk-or-v1-..."
+                      type="password"
+                      value={aiApiKey}
                     />
                   </label>
                   <label className="grid gap-2 text-sm font-extrabold text-app-muted">
                     Model id
-                    <input className="rounded-md border border-app-line px-3 py-2 text-app-ink" type="text" placeholder="inclusionai/ling-2.6-flash" />
+                    <input
+                      className="min-h-10 rounded-md border border-app-line bg-white px-3 font-mono text-sm text-app-ink outline-none focus:border-app-accent"
+                      onChange={(event) => setAiModel(event.target.value)}
+                      placeholder="provider/model-name"
+                      type="text"
+                      value={aiModel}
+                    />
                   </label>
-                  <button className="min-h-9 justify-self-end rounded-md border border-app-line bg-slate-100 px-4 font-bold text-app-muted" type="button" disabled>
-                    Save later
-                  </button>
+
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <span className="text-xs font-bold text-app-muted">{status}</span>
+                    <div className="flex flex-wrap gap-2">
+                      {aiConfig.apiKey || aiConfig.model ? (
+                        <button className="min-h-9 rounded-md border border-app-line bg-white px-3 text-sm font-bold text-app-ink hover:border-app-accent" type="button" onClick={() => void clearAiConfig()}>
+                          Remove
+                        </button>
+                      ) : null}
+                      <button
+                        className="min-h-9 rounded-md border border-app-line bg-white px-3 text-sm font-bold text-app-ink hover:border-app-accent disabled:opacity-50"
+                        disabled={!aiApiKey.trim() || !aiModel.trim()}
+                        type="button"
+                        onClick={() => void testAiConnection()}
+                      >
+                        Test connection
+                      </button>
+                      <button
+                        className="min-h-9 rounded-md border border-app-accent bg-app-accent px-4 text-sm font-bold text-white hover:bg-app-strong disabled:opacity-50"
+                        disabled={!aiApiKey.trim() || !aiModel.trim()}
+                        type="submit"
+                      >
+                        Save AI configuration
+                      </button>
+                    </div>
+                  </div>
                 </form>
               ) : (
                 <div className="grid gap-4">
