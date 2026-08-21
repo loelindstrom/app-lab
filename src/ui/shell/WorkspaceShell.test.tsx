@@ -440,6 +440,122 @@ describe("WorkspaceShell sync wake-ups", () => {
     expect(aiActions.clearConfig).toHaveBeenCalledTimes(1);
   });
 
+  it("runs the in-memory BuilderAI loop through app-bound host tools", async () => {
+    const core = createMemoryCore();
+    const originalApp = await core.createApp({
+      description: "Original description",
+      name: "Original App",
+      sourceCode: "<!doctype html><html><head><title>Original App</title></head><body><h1>Original</h1></body></html>",
+    });
+    const syncActions = createSyncActionsStub();
+    const aiActions = createAiActionsStub({ apiKey: "sk-test", model: "provider/model" });
+    vi.mocked(aiActions.runBuilderTurn).mockImplementation(async (input) => {
+      input.onActivity?.("Reading current app...");
+      await expect(input.tools.readCurrentAppSource()).resolves.toMatchObject({
+        name: "Original App",
+        sourceCode: expect.stringContaining("<h1>Original</h1>"),
+      });
+      await expect(input.tools.readRecentConsoleOutput()).resolves.toBe("No recent console output.");
+      input.onActivity?.("Applying app source...");
+      await input.tools.replaceCurrentAppSource(
+        "<!doctype html><html><head><title>AI Updated</title><meta name=\"description\" content=\"Updated by AI\"></head><body><h1>AI Updated</h1></body></html>",
+      );
+      return { content: "I rebuilt the active app.", toolRounds: 2 };
+    });
+
+    render(<WorkspaceShell aiActions={aiActions} core={core} syncActions={syncActions} />);
+    fireEvent.click(await screen.findByRole("button", { name: /^Open$/ }));
+    fireEvent.click((await screen.findAllByRole("button", { name: "Toggle BuilderAI" }))[0]);
+    fireEvent.change(await screen.findByLabelText("Message"), { target: { value: "Rebuild this app" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+
+    expect(await screen.findByText("I rebuilt the active app.")).toBeTruthy();
+    await expect(core.getApp(originalApp.appId)).resolves.toMatchObject({
+      description: "Updated by AI",
+      name: "AI Updated",
+      sourceCode: expect.stringContaining("<h1>AI Updated</h1>"),
+    });
+    expect(syncActions.pushAppSource).toHaveBeenCalledWith(expect.objectContaining({ appId: originalApp.appId, name: "AI Updated" }));
+
+    const turn = vi.mocked(aiActions.runBuilderTurn).mock.calls[0][0];
+    expect(turn.appId).toBe(originalApp.appId);
+    expect(turn.messages).toHaveLength(1);
+    expect(turn.messages[0]).toMatchObject({
+      appId: originalApp.appId,
+      content: "Rebuild this app",
+      role: "user",
+    });
+    expect(turn.messages[0].messageId).toBeTruthy();
+    expect(Number.isNaN(Date.parse(turn.messages[0].createdAt))).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: "‹ Apps" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^Open$/ }));
+    fireEvent.click((await screen.findAllByRole("button", { name: "Toggle BuilderAI" }))[0]);
+    expect(screen.getByText("I rebuilt the active app.")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear chat" }));
+    expect(screen.queryByText("Rebuild this app")).toBeNull();
+    expect(screen.queryByText("I rebuilt the active app.")).toBeNull();
+  });
+
+  it("shows BuilderAI provider failures in the conversation", async () => {
+    const core = createMemoryCore();
+    await core.createApp({
+      description: "Failure test",
+      name: "Failure App",
+      sourceCode: "<!doctype html><html><head><title>Failure App</title></head><body></body></html>",
+    });
+    const aiActions = createAiActionsStub({ apiKey: "sk-test", model: "provider/model" });
+    vi.mocked(aiActions.runBuilderTurn).mockRejectedValue(new Error("OpenRouter rate limit reached."));
+
+    render(<WorkspaceShell aiActions={aiActions} core={core} syncActions={createSyncActionsStub()} />);
+    fireEvent.click(await screen.findByRole("button", { name: /^Open$/ }));
+    fireEvent.click((await screen.findAllByRole("button", { name: "Toggle BuilderAI" }))[0]);
+    fireEvent.change(await screen.findByLabelText("Message"), { target: { value: "Change it" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+
+    expect((await screen.findByRole("alert")).textContent).toContain("OpenRouter rate limit reached.");
+    expect(screen.getByText("Change it")).toBeTruthy();
+  });
+
+  it("keeps in-memory BuilderAI conversations separate per app", async () => {
+    const core = createMemoryCore();
+    await core.createApp({
+      description: "First description",
+      name: "First App",
+      sourceCode: "<!doctype html><html><head><title>First App</title></head><body></body></html>",
+    });
+    await core.createApp({
+      description: "Second description",
+      name: "Second App",
+      sourceCode: "<!doctype html><html><head><title>Second App</title></head><body></body></html>",
+    });
+    const aiActions = createAiActionsStub({ apiKey: "sk-test", model: "provider/model" });
+    vi.mocked(aiActions.runBuilderTurn).mockImplementation(async (input) => ({
+      content: `Reply for ${input.appName}`,
+      toolRounds: 0,
+    }));
+
+    render(<WorkspaceShell aiActions={aiActions} core={core} syncActions={createSyncActionsStub()} />);
+    fireEvent.click(await screen.findByRole("button", { name: /^First App First description$/ }));
+    fireEvent.click((await screen.findAllByRole("button", { name: "Toggle BuilderAI" }))[0]);
+    fireEvent.change(await screen.findByLabelText("Message"), { target: { value: "First request" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    expect(await screen.findByText("Reply for First App")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "‹ Apps" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^Second App Second description$/ }));
+    fireEvent.click((await screen.findAllByRole("button", { name: "Toggle BuilderAI" }))[0]);
+    expect(screen.queryByText("First request")).toBeNull();
+    expect(screen.queryByText("Reply for First App")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "‹ Apps" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^First App First description$/ }));
+    fireEvent.click((await screen.findAllByRole("button", { name: "Toggle BuilderAI" }))[0]);
+    expect(screen.getByText("First request")).toBeTruthy();
+    expect(screen.getByText("Reply for First App")).toBeTruthy();
+  });
+
   it("closes settings from the full-page back button", async () => {
     const syncActions = createSyncActionsStub();
 

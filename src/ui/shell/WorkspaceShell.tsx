@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { AiActions, AiConfig } from "../../ai";
+import type { AiActions, AiChatMessage, AiConfig } from "../../ai";
 import {
   createAlpineExampleAppInput,
   type AppLabCore,
@@ -39,6 +39,13 @@ interface AppSyncHealth {
   tone: "attention" | "good" | "neutral" | "working";
 }
 
+interface BuilderSessionState {
+  activity: string | null;
+  error: string | null;
+  isRunning: boolean;
+  messages: AiChatMessage[];
+}
+
 interface WorkspaceShellProps {
   aiActions: AiActions;
   core: AppLabCore;
@@ -47,6 +54,7 @@ interface WorkspaceShellProps {
 
 export function WorkspaceShell({ aiActions, core, syncActions }: WorkspaceShellProps) {
   const [aiConfig, setAiConfig] = useState<AiConfig>({ apiKey: "", model: "" });
+  const [builderSessions, setBuilderSessions] = useState<Record<string, BuilderSessionState>>({});
   const [apps, setApps] = useState<AppSummary[]>([]);
   const [syncBadges, setSyncBadges] = useState<Record<string, AppSyncBadge>>({});
   const [syncHealth, setSyncHealth] = useState<Record<string, AppSyncHealth>>({});
@@ -56,6 +64,7 @@ export function WorkspaceShell({ aiActions, core, syncActions }: WorkspaceShellP
   const [mode, setMode] = useState<WorkspaceMode>("launcher");
   const [activeTool, setActiveTool] = useState<ToolPanelMode | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsInitialSection, setSettingsInitialSection] = useState<"ai" | "storage" | undefined>();
   const [sharingApp, setSharingApp] = useState<AppSummary | null>(null);
   const [pendingInvite, setPendingInvite] = useState<AppInvitePayload | null>(null);
   const [remoteDataChange, setRemoteDataChange] = useState<RemoteDataChange | null>(null);
@@ -66,9 +75,12 @@ export function WorkspaceShell({ aiActions, core, syncActions }: WorkspaceShellP
   const [syncStatusOpen, setSyncStatusOpen] = useState(false);
   const [sandboxReloadKey, setSandboxReloadKey] = useState(0);
   const activeAppIdRef = useRef<string | null>(null);
+  const builderRunningAppIdsRef = useRef(new Set<string>());
   const browserOnlineRef = useRef(navigator.onLine);
+  const consoleEntriesRef = useRef<SandboxConsoleEntry[]>([]);
   const providerOnlineRef = useRef<boolean | null>(null);
   activeAppIdRef.current = activeApp?.appId ?? null;
+  consoleEntriesRef.current = consoleEntries;
 
   function isSyncReachable() {
     return browserOnlineRef.current && providerOnlineRef.current !== false;
@@ -318,6 +330,76 @@ export function WorkspaceShell({ aiActions, core, syncActions }: WorkspaceShellP
     return updated;
   }
 
+  async function sendBuilderMessage(app: AppRecord, content: string): Promise<void> {
+    const message = content.trim();
+    if (!message || builderRunningAppIdsRef.current.has(app.appId)) return;
+
+    const currentMessages = builderSessions[app.appId]?.messages ?? [];
+    const userMessage = createAiChatMessage(app.appId, "user", message);
+    const requestMessages = [...currentMessages, userMessage];
+    builderRunningAppIdsRef.current.add(app.appId);
+    updateBuilderSession(app.appId, (session) => ({
+      ...session,
+      activity: "Thinking...",
+      error: null,
+      isRunning: true,
+      messages: requestMessages,
+    }));
+
+    try {
+      const result = await aiActions.runBuilderTurn({
+        appId: app.appId,
+        appName: app.name,
+        messages: requestMessages,
+        onActivity: (activity) => {
+          updateBuilderSession(app.appId, (session) => ({ ...session, activity }));
+        },
+        tools: {
+          readCurrentAppSource: async () => {
+            const currentApp = await core.getApp(app.appId);
+            if (!currentApp) throw new Error("The app no longer exists.");
+            return toBuilderAppSource(currentApp);
+          },
+          readRecentConsoleOutput: async () => {
+            if (activeAppIdRef.current !== app.appId) return "The app is no longer active, so recent console output is unavailable.";
+            return formatConsoleForBuilder(consoleEntriesRef.current);
+          },
+          replaceCurrentAppSource: async (sourceCode) => {
+            return toBuilderAppSource(await saveAppSource(app.appId, sourceCode));
+          },
+        },
+      });
+      updateBuilderSession(app.appId, (session) => ({
+        ...session,
+        messages: [...session.messages, createAiChatMessage(app.appId, "assistant", result.content)],
+      }));
+    } catch (error) {
+      updateBuilderSession(app.appId, (session) => ({
+        ...session,
+        error: error instanceof Error ? error.message : "BuilderAI could not complete the request.",
+      }));
+    } finally {
+      builderRunningAppIdsRef.current.delete(app.appId);
+      updateBuilderSession(app.appId, (session) => ({ ...session, activity: null, isRunning: false }));
+    }
+  }
+
+  function clearBuilderConversation(appId: string) {
+    if (builderRunningAppIdsRef.current.has(appId)) return;
+    setBuilderSessions((sessions) => {
+      const nextSessions = { ...sessions };
+      delete nextSessions[appId];
+      return nextSessions;
+    });
+  }
+
+  function updateBuilderSession(appId: string, update: (session: BuilderSessionState) => BuilderSessionState) {
+    setBuilderSessions((sessions) => ({
+      ...sessions,
+      [appId]: update(sessions[appId] ?? createEmptyBuilderSession()),
+    }));
+  }
+
   function openLauncher() {
     setMode("launcher");
     setActiveTool(null);
@@ -402,7 +484,10 @@ export function WorkspaceShell({ aiActions, core, syncActions }: WorkspaceShellP
             className="grid h-9 min-h-9 w-9 place-items-center rounded-md border border-transparent bg-transparent text-lg text-app-muted hover:bg-app-accent/10 hover:text-app-accent"
             type="button"
             aria-label="Open settings"
-            onClick={() => setSettingsOpen(true)}
+            onClick={() => {
+              setSettingsInitialSection(undefined);
+              setSettingsOpen(true);
+            }}
           >
             ⚙
           </button>
@@ -475,12 +560,23 @@ export function WorkspaceShell({ aiActions, core, syncActions }: WorkspaceShellP
           </footer>
           <WorkspaceToolPanel
             activeApp={activeApp}
+            aiConfigured={Boolean(aiConfig.apiKey && aiConfig.model)}
+            builderActivity={builderSessions[activeApp.appId]?.activity ?? null}
+            builderError={builderSessions[activeApp.appId]?.error ?? null}
+            builderIsRunning={builderSessions[activeApp.appId]?.isRunning ?? false}
+            builderMessages={builderSessions[activeApp.appId]?.messages ?? []}
             consoleEntries={consoleEntries}
             mode={activeTool}
+            onClearBuilderConversation={() => clearBuilderConversation(activeApp.appId)}
             onClearConsole={() => setConsoleEntries([])}
             onClose={() => setActiveTool(null)}
             onLoadAppData={core.getAppData}
+            onOpenAiSettings={() => {
+              setSettingsInitialSection("ai");
+              setSettingsOpen(true);
+            }}
             onSaveSource={(sourceCode) => saveAppSource(activeApp.appId, sourceCode)}
+            onSendBuilderMessage={(content) => sendBuilderMessage(activeApp, content)}
           />
         </>
       ) : mode === "launcher" ? (
@@ -498,6 +594,7 @@ export function WorkspaceShell({ aiActions, core, syncActions }: WorkspaceShellP
 
       <SettingsDialog
         aiConfig={aiConfig}
+        initialSection={settingsInitialSection}
         isOpen={settingsOpen}
         storageProfile={storageProfile}
         onClearAiConfig={async () => {
@@ -533,6 +630,7 @@ export function WorkspaceShell({ aiActions, core, syncActions }: WorkspaceShellP
         onClose={() => setSharingApp(null)}
         onOpenStorageSettings={() => {
           setSharingApp(null);
+          setSettingsInitialSection("storage");
           setSettingsOpen(true);
         }}
         onCreateInvite={async (appId) => {
@@ -1381,6 +1479,36 @@ function AppView({
       />
     </section>
   );
+}
+
+function createEmptyBuilderSession(): BuilderSessionState {
+  return { activity: null, error: null, isRunning: false, messages: [] };
+}
+
+function createAiChatMessage(appId: string, role: AiChatMessage["role"], content: string): AiChatMessage {
+  return {
+    appId,
+    content,
+    createdAt: new Date().toISOString(),
+    messageId: crypto.randomUUID(),
+    role,
+  };
+}
+
+function toBuilderAppSource(app: AppRecord) {
+  return {
+    description: app.description,
+    name: app.name,
+    sourceCode: app.sourceCode,
+  };
+}
+
+function formatConsoleForBuilder(entries: SandboxConsoleEntry[]): string {
+  if (!entries.length) return "No recent console output.";
+  return entries
+    .slice(-50)
+    .map((entry) => `[${entry.timestamp}] ${entry.level.toUpperCase()} ${entry.args.join(" ") || "(empty)"}`)
+    .join("\n");
 }
 
 function formatDate(value: string): string {

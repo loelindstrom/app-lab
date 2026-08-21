@@ -125,5 +125,12 @@ pnpm test:firebase-smoke
 pnpm test:firebase-e2e
 ```
 
+The paid OpenRouter browser check is also opt-in. It loads the capped test key from `.env.test.local`, while the test chooses its
+model in code. It is excluded from `pnpm check` and `pnpm test:e2e`:
+
+```bash
+pnpm test:openrouter-e2e
+```
+
 Treat IndexedDB schemas, `window.AppLab`, invites, workspace sync material, encrypted rooms, and manifest payloads as compatibility
 contracts. Prefer additive parsing or an explicit migration when a stored or shared shape changes.

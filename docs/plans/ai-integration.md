@@ -287,7 +287,7 @@ The six slices below are the working implementation plan. Each slice should be r
    - Add dependency-cruiser rules protecting the module boundary.
    - Give `src/ai` host callbacks; it must not import UI, core, runtime, or sync.
 
-3. **Build the first in-memory vertical slice — next**
+3. **Build the first in-memory vertical slice — complete**
 
    - Store conversations in React memory, keyed by app id.
    - Configure OpenRouter in Settings.
@@ -301,7 +301,7 @@ The six slices below are the working implementation plan. Each slice should be r
    Messages should already have stable `messageId`, `appId`, `role`, `content`, and `createdAt` fields. This avoids changing the data
    model when persistence and merging arrive.
 
-4. **Harden the integration**
+4. **Harden the integration — next**
 
    - Bound tool rounds and context size.
    - Reject malformed tool arguments and invalid HTML.

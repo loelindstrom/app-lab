@@ -1,4 +1,5 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, type RenderResult } from "@testing-library/react";
+import type { ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AppRecord } from "../../core/types";
 import { WorkspaceToolPanel } from "./WorkspaceToolPanel";
@@ -31,17 +32,7 @@ describe("WorkspaceToolPanel", () => {
     Object.defineProperty(window.URL, "revokeObjectURL", { configurable: true, value: revokeObjectURL });
     vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
 
-    render(
-      <WorkspaceToolPanel
-        activeApp={app}
-        consoleEntries={[]}
-        mode="source"
-        onClearConsole={vi.fn()}
-        onClose={vi.fn()}
-        onLoadAppData={onLoadAppData}
-        onSaveSource={vi.fn()}
-      />,
-    );
+    renderToolPanel({ mode: "source", onLoadAppData });
 
     fireEvent.click(screen.getByRole("button", { name: "Export ↑" }));
     expect(screen.queryByRole("tab", { name: "Prompt" })).toBeNull();
@@ -58,29 +49,87 @@ describe("WorkspaceToolPanel", () => {
     expect(HTMLAnchorElement.prototype.click).toHaveBeenCalledTimes(2);
   });
 
-  it("keeps the prompt and code helper in the BuilderAI chat panel", () => {
-    render(
-      <WorkspaceToolPanel
-        activeApp={app}
-        consoleEntries={[]}
-        mode="builder"
-        onClearConsole={vi.fn()}
-        onClose={vi.fn()}
-        onLoadAppData={vi.fn()}
-        onSaveSource={vi.fn()}
-      />,
-    );
+  it("offers copy-prompt and AI setup paths when OpenRouter is not configured", () => {
+    const onOpenAiSettings = vi.fn();
+    renderToolPanel({ mode: "builder", onOpenAiSettings });
 
-    expect(screen.getByText("The AI bot is still being built, but use the button below to copy prompt + code and use it in another AI.")).toBeTruthy();
+    expect(screen.getByText(/Start with any AI chat/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Export/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Set up OpenRouter" }));
+    expect(onOpenAiSettings).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(screen.getByRole("button", { name: "Copy prompt + code ↑" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Copy prompt \+ code$/ }));
 
     expect(screen.getByRole("button", { name: "Copy prompt + code ↓" })).toBeTruthy();
     expect(getTextarea("Prompt and code").value).toContain('You are helping me edit an App Lab sandbox app named "Exportable App".');
     expect(getTextarea("Prompt and code").value).toContain(app.sourceCode);
   });
+
+  it("submits configured chat messages and renders conversation state", async () => {
+    const onClearBuilderConversation = vi.fn();
+    const onSendBuilderMessage = vi.fn().mockResolvedValue(undefined);
+    renderToolPanel({
+      aiConfigured: true,
+      builderActivity: "Applying app source...",
+      builderError: "The model could not finish.",
+      builderMessages: [
+        {
+          appId: app.appId,
+          content: "Make it blue",
+          createdAt: "2026-01-01T00:00:01.000Z",
+          messageId: "user-1",
+          role: "user",
+        },
+        {
+          appId: app.appId,
+          content: "I updated the colors.",
+          createdAt: "2026-01-01T00:00:02.000Z",
+          messageId: "assistant-1",
+          role: "assistant",
+        },
+      ],
+      mode: "builder",
+      onClearBuilderConversation,
+      onSendBuilderMessage,
+    });
+
+    expect(screen.getByText(/I can edit/)).toBeTruthy();
+    expect(screen.getByText("Make it blue")).toBeTruthy();
+    expect(screen.getByText("I updated the colors.")).toBeTruthy();
+    expect(screen.getByText("Applying app source...")).toBeTruthy();
+    expect(screen.getByRole("alert").textContent).toContain("The model could not finish.");
+
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: "  Add a dashboard  " } });
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    await waitFor(() => expect(onSendBuilderMessage).toHaveBeenCalledWith("Add a dashboard"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear chat" }));
+    expect(onClearBuilderConversation).toHaveBeenCalledTimes(1);
+  });
 });
+
+function renderToolPanel(overrides: Partial<ComponentProps<typeof WorkspaceToolPanel>> = {}): RenderResult {
+  return render(
+    <WorkspaceToolPanel
+      activeApp={app}
+      aiConfigured={false}
+      builderActivity={null}
+      builderError={null}
+      builderIsRunning={false}
+      builderMessages={[]}
+      consoleEntries={[]}
+      mode="builder"
+      onClearBuilderConversation={vi.fn()}
+      onClearConsole={vi.fn()}
+      onClose={vi.fn()}
+      onLoadAppData={vi.fn()}
+      onOpenAiSettings={vi.fn()}
+      onSaveSource={vi.fn().mockResolvedValue(app)}
+      onSendBuilderMessage={vi.fn().mockResolvedValue(undefined)}
+      {...overrides}
+    />,
+  );
+}
 
 function getTextarea(label: string): HTMLTextAreaElement {
   const textarea = screen.getByLabelText(label);

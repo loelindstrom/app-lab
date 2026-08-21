@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { createPromptWithCode } from "../../ai";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPromptWithCode, type AiChatMessage } from "../../ai";
 import type { AppRecord, JsonValue } from "../../core";
 import type { SandboxConsoleEntry } from "../../runtime";
 
@@ -8,15 +8,39 @@ type SourceExportKind = "data" | "source";
 
 interface WorkspaceToolPanelProps {
   activeApp: AppRecord;
+  aiConfigured: boolean;
+  builderActivity: string | null;
+  builderError: string | null;
+  builderIsRunning: boolean;
+  builderMessages: AiChatMessage[];
   consoleEntries: SandboxConsoleEntry[];
   mode: ToolPanelMode | null;
+  onClearBuilderConversation: () => void;
   onClearConsole: () => void;
   onClose: () => void;
   onLoadAppData: (appId: string) => Promise<JsonValue>;
+  onOpenAiSettings: () => void;
   onSaveSource: (sourceCode: string) => Promise<AppRecord>;
+  onSendBuilderMessage: (content: string) => Promise<void>;
 }
 
-export function WorkspaceToolPanel({ activeApp, consoleEntries, mode, onClearConsole, onClose, onLoadAppData, onSaveSource }: WorkspaceToolPanelProps) {
+export function WorkspaceToolPanel({
+  activeApp,
+  aiConfigured,
+  builderActivity,
+  builderError,
+  builderIsRunning,
+  builderMessages,
+  consoleEntries,
+  mode,
+  onClearBuilderConversation,
+  onClearConsole,
+  onClose,
+  onLoadAppData,
+  onOpenAiSettings,
+  onSaveSource,
+  onSendBuilderMessage,
+}: WorkspaceToolPanelProps) {
   const isOpen = mode !== null;
   const title = mode === "source" ? "Source" : mode === "builder" ? "BuilderAI" : mode === "console" ? "Console" : "App tools";
 
@@ -48,7 +72,17 @@ export function WorkspaceToolPanel({ activeApp, consoleEntries, mode, onClearCon
       ) : mode === "console" ? (
         <ConsoleView entries={consoleEntries} onClear={onClearConsole} />
       ) : (
-        <BuilderView app={activeApp} />
+        <BuilderView
+          activity={builderActivity}
+          app={activeApp}
+          configured={aiConfigured}
+          error={builderError}
+          isRunning={builderIsRunning}
+          messages={builderMessages}
+          onClear={onClearBuilderConversation}
+          onOpenAiSettings={onOpenAiSettings}
+          onSendMessage={onSendBuilderMessage}
+        />
       )}
     </aside>
   );
@@ -285,16 +319,52 @@ function downloadTextFile(contents: string, filename: string, mimeType: string):
   return true;
 }
 
-function BuilderView({ app }: { app: AppRecord }) {
+function BuilderView({
+  activity,
+  app,
+  configured,
+  error,
+  isRunning,
+  messages,
+  onClear,
+  onOpenAiSettings,
+  onSendMessage,
+}: {
+  activity: string | null;
+  app: AppRecord;
+  configured: boolean;
+  error: string | null;
+  isRunning: boolean;
+  messages: AiChatMessage[];
+  onClear: () => void;
+  onOpenAiSettings: () => void;
+  onSendMessage: (content: string) => Promise<void>;
+}) {
+  const conversationEndRef = useRef<HTMLLIElement>(null);
+  const [draft, setDraft] = useState("");
   const [promptOpen, setPromptOpen] = useState(false);
   const [status, setStatus] = useState("Ready");
   const promptText = useMemo(() => createPromptWithCode(app.name, app.sourceCode), [app.name, app.sourceCode]);
   const promptPanelId = "builder-prompt-code";
 
   useEffect(() => {
+    setDraft("");
     setPromptOpen(false);
     setStatus("Ready");
   }, [app.appId]);
+
+  useEffect(() => {
+    if (typeof conversationEndRef.current?.scrollIntoView === "function") {
+      conversationEndRef.current.scrollIntoView({ block: "nearest" });
+    }
+  }, [activity, error, messages.length]);
+
+  async function sendMessage() {
+    const message = draft.trim();
+    if (!configured || isRunning || !message) return;
+    setDraft("");
+    await onSendMessage(message);
+  }
 
   async function copyPromptText() {
     try {
@@ -310,31 +380,93 @@ function BuilderView({ app }: { app: AppRecord }) {
     <div className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto]">
       <div className="min-h-0 overflow-auto">
         <ol className="flex flex-col gap-3 p-3" aria-live="polite">
-          <li className="rounded-lg border border-app-line bg-app-accent/10 px-3 py-2 text-sm leading-relaxed text-app-muted">
-            The AI bot is still being built, but use the button below to copy prompt + code and use it in another AI.
-          </li>
+          {configured ? (
+            <li className="mr-auto max-w-[92%] rounded-lg border border-app-line bg-white px-3 py-2 text-sm leading-relaxed text-app-muted">
+              I can edit <strong className="text-app-ink">{app.name}</strong>. Describe what you want to create or change, and I can read this app's source and recent console output before applying an update.
+            </li>
+          ) : (
+            <li className="grid gap-3 rounded-lg border border-app-line bg-white px-3 py-3 text-sm leading-relaxed text-app-muted">
+              <p>Start with any AI chat by copying App Lab's prompt and current source, or connect OpenRouter to work here.</p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  className="min-h-9 rounded-md border border-app-accent bg-app-accent px-3 text-sm font-bold text-white hover:bg-app-strong"
+                  type="button"
+                  onClick={() => setPromptOpen(true)}
+                >
+                  Copy prompt + code
+                </button>
+                <button
+                  className="min-h-9 rounded-md border border-app-line bg-white px-3 text-sm font-bold text-app-ink hover:border-app-accent"
+                  type="button"
+                  onClick={onOpenAiSettings}
+                >
+                  Set up OpenRouter
+                </button>
+              </div>
+            </li>
+          )}
+          {messages.map((message) => (
+            <li
+              className={`max-w-[92%] whitespace-pre-wrap break-words rounded-lg px-3 py-2 text-sm leading-relaxed ${
+                message.role === "user"
+                  ? "ml-auto bg-app-accent text-white"
+                  : "mr-auto border border-app-line bg-white text-app-muted"
+              }`}
+              key={message.messageId}
+            >
+              {message.content}
+            </li>
+          ))}
+          {activity ? (
+            <li className="mr-auto max-w-[92%] rounded-lg border border-app-line bg-app-accent/10 px-3 py-2 text-sm font-bold text-app-muted">
+              {activity}
+            </li>
+          ) : null}
+          {error ? (
+            <li className="mr-auto max-w-[92%] rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm leading-relaxed text-red-700" role="alert">
+              {error}
+            </li>
+          ) : null}
+          <li aria-hidden="true" className="h-px" ref={conversationEndRef} />
         </ol>
       </div>
 
-      <form className="grid gap-2 border-t border-app-line p-3">
-        <div className="grid grid-cols-[minmax(0,1fr)_40px] items-end gap-2">
-          <label className="sr-only" htmlFor="builder-message">
-            Message
-          </label>
-          <textarea
-            className="max-h-36 min-h-11 resize-y rounded-md border border-app-line px-3 py-2 text-app-ink"
-            id="builder-message"
-            rows={2}
-            placeholder="Ask BuilderAI to change this app"
-          />
-          <button
-            className="grid h-10 min-h-10 w-10 place-items-center rounded-full border border-app-accent bg-app-accent p-0 text-xl font-bold text-white hover:bg-app-strong"
-            type="button"
-            aria-label="Send message"
-          >
-            ↑
-          </button>
-        </div>
+      <form
+        className="grid gap-2 border-t border-app-line p-3"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void sendMessage();
+        }}
+      >
+        {configured ? (
+          <div className="grid grid-cols-[minmax(0,1fr)_40px] items-end gap-2">
+            <label className="sr-only" htmlFor="builder-message">
+              Message
+            </label>
+            <textarea
+              className="max-h-36 min-h-11 resize-y rounded-md border border-app-line px-3 py-2 text-app-ink outline-none focus:border-app-accent disabled:bg-slate-100"
+              disabled={isRunning}
+              id="builder-message"
+              rows={2}
+              placeholder="Ask BuilderAI to change this app"
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
+                event.preventDefault();
+                event.currentTarget.form?.requestSubmit();
+              }}
+            />
+            <button
+              className="grid h-10 min-h-10 w-10 place-items-center rounded-full border border-app-accent bg-app-accent p-0 text-xl font-bold text-white hover:bg-app-strong disabled:opacity-50"
+              disabled={isRunning || !draft.trim()}
+              type="submit"
+              aria-label="Send message"
+            >
+              ↑
+            </button>
+          </div>
+        ) : null}
         {promptOpen ? (
           <div className="grid gap-2 rounded-md border border-app-line bg-app-panel p-2" id={promptPanelId}>
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -356,18 +488,32 @@ function BuilderView({ app }: { app: AppRecord }) {
             />
           </div>
         ) : null}
-        <button
-          aria-controls={promptPanelId}
-          aria-expanded={promptOpen}
-          className="min-h-9 rounded-md border border-app-line bg-white px-3 text-sm font-bold text-app-ink hover:border-app-accent"
-          type="button"
-          onClick={() => {
-            setPromptOpen((isOpen) => !isOpen);
-            setStatus("Ready");
-          }}
-        >
-          Copy prompt + code {promptOpen ? "↓" : "↑"}
-        </button>
+        <div className="flex flex-wrap justify-between gap-2">
+          {messages.length || error ? (
+            <button
+              className="min-h-9 rounded-md border border-app-line bg-white px-3 text-sm font-bold text-app-muted hover:border-red-300 hover:text-red-700 disabled:opacity-50"
+              disabled={isRunning}
+              type="button"
+              onClick={onClear}
+            >
+              Clear chat
+            </button>
+          ) : (
+            <span />
+          )}
+          <button
+            aria-controls={promptPanelId}
+            aria-expanded={promptOpen}
+            className="min-h-9 rounded-md border border-app-line bg-white px-3 text-sm font-bold text-app-ink hover:border-app-accent"
+            type="button"
+            onClick={() => {
+              setPromptOpen((isOpen) => !isOpen);
+              setStatus("Ready");
+            }}
+          >
+            Copy prompt + code {promptOpen ? "↓" : "↑"}
+          </button>
+        </div>
       </form>
     </div>
   );

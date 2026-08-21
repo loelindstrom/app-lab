@@ -4,6 +4,7 @@ import { createAuthFirebaseRules, createFirebaseOwnerSetupSecret, type Configure
 
 interface SettingsDialogProps {
   aiConfig: AiConfig;
+  initialSection?: SettingsSection;
   isOpen: boolean;
   onClearAiConfig: () => Promise<void>;
   onClose: () => void;
@@ -31,6 +32,7 @@ type SetupStepId =
 
 export function SettingsDialog({
   aiConfig,
+  initialSection,
   isOpen,
   onClearAiConfig,
   onClearStorageProfile,
@@ -76,12 +78,13 @@ export function SettingsDialog({
     }
     if (wasOpenRef.current) return;
     wasOpenRef.current = true;
+    if (initialSection) setSection(initialSection);
     setRecoveryText("");
     setRestoreText("");
     setStatus("Ready");
     setOpenSetupSection(storageProfile ? "connect" : "firebase");
     setSetupSteps(createSetupStepState());
-  }, [isOpen, storageProfile]);
+  }, [initialSection, isOpen, storageProfile]);
 
   const firebaseRules = createAuthFirebaseRules(ownerSetupSecret);
 
