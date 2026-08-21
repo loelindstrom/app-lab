@@ -271,7 +271,7 @@ so apply, undo, sync status, remote updates, and sandbox reload all follow the s
 
 The six slices below are the working implementation plan. Each slice should be reviewed, tested, and committed independently.
 
-1. **Prepare the host boundary — complete**
+1. **✅ Prepare the host boundary — complete**
 
    - Extract the inline source-save workflow from `WorkspaceShell`.
    - Let both the Source editor and BuilderAI invoke it.
@@ -279,7 +279,7 @@ The six slices below are the working implementation plan. Each slice should be r
    - Add basic complete-HTML validation.
    - Add no visible AI behavior yet.
 
-2. **Add the headless `src/ai` module — complete**
+2. **✅ Add the headless `src/ai` module — complete**
 
    - Expose its production contract through `index.ts`.
    - Add OpenRouter configuration and the client.
@@ -287,7 +287,7 @@ The six slices below are the working implementation plan. Each slice should be r
    - Add dependency-cruiser rules protecting the module boundary.
    - Give `src/ai` host callbacks; it must not import UI, core, runtime, or sync.
 
-3. **Build the first in-memory vertical slice — complete**
+3. **✅ Build the first in-memory vertical slice — complete**
 
    - Store conversations in React memory, keyed by app id.
    - Configure OpenRouter in Settings.

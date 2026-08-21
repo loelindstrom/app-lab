@@ -20,20 +20,34 @@ describe("OpenRouter client", () => {
             },
           },
         ],
+        usage: {
+          completion_tokens: 25,
+          completion_tokens_details: { reasoning_tokens: 5 },
+          cost: 0.0025,
+          prompt_tokens: 100,
+          total_tokens: 125,
+        },
       }),
     ) as unknown as typeof fetch;
     const client = createOpenRouterClient({ fetchImpl, referer: "https://example.test" });
 
-    const message = await client.sendChat({
+    const result = await client.sendChat({
       config: { apiKey: "sk-secret", model: "provider/model" },
       messages: [{ content: "Change the app", role: "user" }],
       tools: [],
     });
 
-    expect(message.tool_calls?.[0]).toEqual({
+    expect(result.message.tool_calls?.[0]).toEqual({
       function: { arguments: "{}", name: "read_current_app_source" },
       id: "call-1",
       type: "function",
+    });
+    expect(result.usage).toEqual({
+      completionTokens: 25,
+      costUsd: 0.0025,
+      promptTokens: 100,
+      reasoningTokens: 5,
+      totalTokens: 125,
     });
     const [url, request] = vi.mocked(fetchImpl).mock.calls[0];
     expect(url).toBe("https://openrouter.ai/api/v1/chat/completions");

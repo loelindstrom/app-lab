@@ -88,6 +88,13 @@ describe("WorkspaceToolPanel", () => {
           role: "assistant",
         },
       ],
+      builderUsage: {
+        completionTokens: 6_000,
+        costUsd: 0.0165795,
+        promptTokens: 14_000,
+        reasoningTokens: 640,
+        totalTokens: 20_640,
+      },
       mode: "builder",
       onClearBuilderConversation,
       onSendBuilderMessage,
@@ -98,6 +105,7 @@ describe("WorkspaceToolPanel", () => {
     expect(screen.getByText("I updated the colors.")).toBeTruthy();
     expect(screen.getByText("Applying app source...")).toBeTruthy();
     expect(screen.getByRole("alert").textContent).toContain("The model could not finish.");
+    expect(screen.getByLabelText("Builder session usage").textContent).toBe("Session: $0.0166 · 20.6k tokens");
 
     fireEvent.change(screen.getByLabelText("Message"), { target: { value: "  Add a dashboard  " } });
     fireEvent.click(screen.getByRole("button", { name: "Send message" }));
@@ -117,6 +125,7 @@ function renderToolPanel(overrides: Partial<ComponentProps<typeof WorkspaceToolP
       builderError={null}
       builderIsRunning={false}
       builderMessages={[]}
+      builderUsage={{ completionTokens: 0, costUsd: 0, promptTokens: 0, reasoningTokens: 0, totalTokens: 0 }}
       consoleEntries={[]}
       mode="builder"
       onClearBuilderConversation={vi.fn()}

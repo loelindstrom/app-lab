@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { AiActions, AiChatMessage, AiConfig } from "../../ai";
+import { addAiUsage, createEmptyAiUsage, type AiActions, type AiChatMessage, type AiConfig, type AiUsage } from "../../ai";
 import {
   createAlpineExampleAppInput,
   type AppLabCore,
@@ -44,6 +44,7 @@ interface BuilderSessionState {
   error: string | null;
   isRunning: boolean;
   messages: AiChatMessage[];
+  usage: AiUsage;
 }
 
 interface WorkspaceShellProps {
@@ -354,6 +355,9 @@ export function WorkspaceShell({ aiActions, core, syncActions }: WorkspaceShellP
         onActivity: (activity) => {
           updateBuilderSession(app.appId, (session) => ({ ...session, activity }));
         },
+        onUsage: (usage) => {
+          updateBuilderSession(app.appId, (session) => ({ ...session, usage: addAiUsage(session.usage, usage) }));
+        },
         tools: {
           readCurrentAppSource: async () => {
             const currentApp = await core.getApp(app.appId);
@@ -365,7 +369,12 @@ export function WorkspaceShell({ aiActions, core, syncActions }: WorkspaceShellP
             return formatConsoleForBuilder(consoleEntriesRef.current);
           },
           replaceCurrentAppSource: async (sourceCode) => {
-            return toBuilderAppSource(await saveAppSource(app.appId, sourceCode));
+            const updated = await saveAppSource(app.appId, sourceCode);
+            return {
+              name: updated.name,
+              sourceChars: updated.sourceCode.length,
+              success: true,
+            };
           },
         },
       });
@@ -565,6 +574,7 @@ export function WorkspaceShell({ aiActions, core, syncActions }: WorkspaceShellP
             builderError={builderSessions[activeApp.appId]?.error ?? null}
             builderIsRunning={builderSessions[activeApp.appId]?.isRunning ?? false}
             builderMessages={builderSessions[activeApp.appId]?.messages ?? []}
+            builderUsage={builderSessions[activeApp.appId]?.usage ?? createEmptyAiUsage()}
             consoleEntries={consoleEntries}
             mode={activeTool}
             onClearBuilderConversation={() => clearBuilderConversation(activeApp.appId)}
@@ -1482,7 +1492,7 @@ function AppView({
 }
 
 function createEmptyBuilderSession(): BuilderSessionState {
-  return { activity: null, error: null, isRunning: false, messages: [] };
+  return { activity: null, error: null, isRunning: false, messages: [], usage: createEmptyAiUsage() };
 }
 
 function createAiChatMessage(appId: string, role: AiChatMessage["role"], content: string): AiChatMessage {

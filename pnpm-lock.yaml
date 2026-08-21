@@ -63,6 +63,9 @@ importers:
       vite:
         specifier: 5.4.11
         version: 5.4.11(@types/node@25.9.2)
+      vite-node:
+        specifier: 2.1.8
+        version: 2.1.8(@types/node@25.9.2)
       vitest:
         specifier: 2.1.8
         version: 2.1.8(@types/node@25.9.2)(jsdom@25.0.1)

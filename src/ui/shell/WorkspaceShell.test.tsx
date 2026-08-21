@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AiActions, AiConfig } from "../../ai";
+import type { AiActions, AiConfig, AiUsage } from "../../ai";
 import type { AppLabCore } from "../../core";
 import { createMemoryCore } from "../../core/memoryCore";
 import { createMemorySyncQueueStore, enqueueSaveSource, resetSyncingQueueItems, type SyncQueueStore } from "../../sync/queue/syncQueue";
@@ -10,6 +10,14 @@ import { configureTestStorageProfile } from "../../sync/testing/testStorageProfi
 import { createMemoryWorkspaceSyncStore, createWorkspaceSyncRegistry, type WorkspaceSyncRegistry } from "../../sync/workspace/workspaceSync";
 import type { WorkspaceSyncActions } from "../../sync";
 import { WorkspaceShell as ProductionWorkspaceShell } from "./WorkspaceShell";
+
+const TEST_AI_USAGE: AiUsage = {
+  completionTokens: 600,
+  costUsd: 0.0042,
+  promptTokens: 1_400,
+  reasoningTokens: 100,
+  totalTokens: 2_000,
+};
 
 function WorkspaceShell({ aiActions = createAiActionsStub(), core, syncActions }: { aiActions?: AiActions; core: AppLabCore; syncActions: WorkspaceSyncActions }) {
   return <ProductionWorkspaceShell aiActions={aiActions} core={core} syncActions={syncActions} />;
@@ -460,7 +468,8 @@ describe("WorkspaceShell sync wake-ups", () => {
       await input.tools.replaceCurrentAppSource(
         "<!doctype html><html><head><title>AI Updated</title><meta name=\"description\" content=\"Updated by AI\"></head><body><h1>AI Updated</h1></body></html>",
       );
-      return { content: "I rebuilt the active app.", toolRounds: 2 };
+      input.onUsage?.(TEST_AI_USAGE);
+      return { content: "I rebuilt the active app.", toolRounds: 2, usage: TEST_AI_USAGE };
     });
 
     render(<WorkspaceShell aiActions={aiActions} core={core} syncActions={syncActions} />);
@@ -476,6 +485,7 @@ describe("WorkspaceShell sync wake-ups", () => {
       sourceCode: expect.stringContaining("<h1>AI Updated</h1>"),
     });
     expect(syncActions.pushAppSource).toHaveBeenCalledWith(expect.objectContaining({ appId: originalApp.appId, name: "AI Updated" }));
+    expect(screen.getByLabelText("Builder session usage").textContent).toBe("Session: $0.0042 · 2.0k tokens");
 
     const turn = vi.mocked(aiActions.runBuilderTurn).mock.calls[0][0];
     expect(turn.appId).toBe(originalApp.appId);
@@ -534,6 +544,7 @@ describe("WorkspaceShell sync wake-ups", () => {
     vi.mocked(aiActions.runBuilderTurn).mockImplementation(async (input) => ({
       content: `Reply for ${input.appName}`,
       toolRounds: 0,
+      usage: TEST_AI_USAGE,
     }));
 
     render(<WorkspaceShell aiActions={aiActions} core={core} syncActions={createSyncActionsStub()} />);
@@ -707,7 +718,7 @@ function createAiActionsStub(config: AiConfig = { apiKey: "", model: "" }): AiAc
   return {
     clearConfig: vi.fn().mockResolvedValue(undefined),
     getConfig: vi.fn().mockResolvedValue(config),
-    runBuilderTurn: vi.fn().mockResolvedValue({ content: "Done.", toolRounds: 0 }),
+    runBuilderTurn: vi.fn().mockResolvedValue({ content: "Done.", toolRounds: 0, usage: TEST_AI_USAGE }),
     saveConfig: vi.fn(async (nextConfig) => ({
       apiKey: nextConfig.apiKey.trim(),
       model: nextConfig.model.trim(),

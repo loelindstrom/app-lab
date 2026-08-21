@@ -4,5 +4,6 @@ These files contain implementation plans, drafts, and backlog notes. They preser
 current code as authoritatively as the published documentation one level above.
 
 - [AI integration brief](./ai-integration.md)
+- [BuilderAI evaluation](./ai-evaluation.md)
 - [Architecture taxonomy draft](./taxonomy-draft.md)
 - [Backlog](./backlog.md)

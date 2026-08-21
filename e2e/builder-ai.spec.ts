@@ -48,6 +48,14 @@ test.describe("BuilderAI browser workflow", () => {
     expect(readMessages(requests[2])).toEqual(
       expect.arrayContaining([expect.objectContaining({ role: "tool", tool_call_id: "replace-source" })]),
     );
+    const writeReceipt = readMessages(requests[2]).find((message) => message.tool_call_id === "replace-source");
+    expect(JSON.parse(String(writeReceipt?.content))).toEqual({
+      name: "AI Browser Test",
+      sourceChars: UPDATED_SOURCE.length,
+      success: true,
+    });
+    expect(String(writeReceipt?.content)).not.toContain("<!doctype html>");
+    await expect(page.getByLabel("Builder session usage")).toHaveText("Session: $0.0030 · 360 tokens");
 
     await page.getByRole("button", { name: "‹ Apps" }).click();
     await page.getByRole("button", { name: "Open", exact: true }).click();
@@ -104,7 +112,16 @@ function toolCall(id: string, name: string, args: Record<string, unknown>) {
 
 async function fulfillAssistant(route: Route, message: Record<string, unknown>) {
   await route.fulfill({
-    body: JSON.stringify({ choices: [{ message }] }),
+    body: JSON.stringify({
+      choices: [{ message }],
+      usage: {
+        completion_tokens: 20,
+        completion_tokens_details: { reasoning_tokens: 5 },
+        cost: 0.001,
+        prompt_tokens: 100,
+        total_tokens: 120,
+      },
+    }),
     contentType: "application/json",
     status: 200,
   });

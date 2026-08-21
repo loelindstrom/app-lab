@@ -9,4 +9,5 @@ vite.config.d.ts
 .env.*.local
 playwright-report/
 test-results/
+artifacts/
 dependency-*.mmd

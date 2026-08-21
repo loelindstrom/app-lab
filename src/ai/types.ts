@@ -17,16 +17,30 @@ export interface AiChatMessage {
   role: "assistant" | "user";
 }
 
+export interface AiUsage {
+  completionTokens: number;
+  costUsd: number | null;
+  promptTokens: number;
+  reasoningTokens: number;
+  totalTokens: number;
+}
+
 export interface BuilderAppSource {
   description: string;
   name: string;
   sourceCode: string;
 }
 
+export interface BuilderSourceWriteReceipt {
+  name: string;
+  sourceChars: number;
+  success: true;
+}
+
 export interface BuilderAgentTools {
   readCurrentAppSource: () => Promise<BuilderAppSource>;
   readRecentConsoleOutput: () => Promise<string>;
-  replaceCurrentAppSource: (sourceCode: string) => Promise<BuilderAppSource>;
+  replaceCurrentAppSource: (sourceCode: string) => Promise<BuilderSourceWriteReceipt>;
 }
 
 export interface RunBuilderTurnInput {
@@ -34,6 +48,7 @@ export interface RunBuilderTurnInput {
   appName: string;
   messages: AiChatMessage[];
   onActivity?: (message: string) => void;
+  onUsage?: (usage: AiUsage) => void;
   signal?: AbortSignal;
   tools: BuilderAgentTools;
 }
@@ -41,6 +56,7 @@ export interface RunBuilderTurnInput {
 export interface BuilderTurnResult {
   content: string;
   toolRounds: number;
+  usage: AiUsage;
 }
 
 export interface AiActions {

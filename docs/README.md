@@ -132,5 +132,12 @@ model in code. It is excluded from `pnpm check` and `pnpm test:e2e`:
 pnpm test:openrouter-e2e
 ```
 
+BuilderAI prompt and context research uses a separate paid, opt-in headless suite. It writes generated apps and raw measurements only
+to ignored `artifacts`; see [`experiments/ai`](../experiments/ai/README.md):
+
+```bash
+pnpm experiment:ai
+```
+
 Treat IndexedDB schemas, `window.AppLab`, invites, workspace sync material, encrypted rooms, and manifest payloads as compatibility
 contracts. Prefer additive parsing or an explicit migration when a stored or shared shape changes.

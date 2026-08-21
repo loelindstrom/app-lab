@@ -1,5 +1,5 @@
 import { normalizeAiConfig } from "./config";
-import type { AiConfig, AiConnectionResult } from "./types";
+import type { AiConfig, AiConnectionResult, AiUsage } from "./types";
 
 const OPENROUTER_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions";
 const OPENROUTER_KEY_URL = "https://openrouter.ai/api/v1/key";
@@ -39,8 +39,13 @@ export interface SendOpenRouterChatInput {
 }
 
 export interface OpenRouterClient {
-  sendChat(input: SendOpenRouterChatInput): Promise<OpenRouterMessage>;
+  sendChat(input: SendOpenRouterChatInput): Promise<OpenRouterChatResult>;
   testConnection(config: AiConfig, signal?: AbortSignal): Promise<AiConnectionResult>;
+}
+
+export interface OpenRouterChatResult {
+  message: OpenRouterMessage;
+  usage: AiUsage;
 }
 
 interface CreateOpenRouterClientOptions {
@@ -71,7 +76,10 @@ export function createOpenRouterClient(options: CreateOpenRouterClientOptions = 
       assertSuccessfulResponse(response, payload);
 
       const rawMessage = readRecord(readArray(payload.choices)[0])?.message;
-      return parseAssistantMessage(rawMessage);
+      return {
+        message: parseAssistantMessage(rawMessage),
+        usage: parseUsage(payload.usage),
+      };
     },
 
     async testConnection(input, signal) {
@@ -148,6 +156,27 @@ function parseToolCall(value: unknown): OpenRouterToolCall {
     id: toolCall.id,
     type: "function",
   };
+}
+
+function parseUsage(value: unknown): AiUsage {
+  const usage = readRecord(value);
+  const completionDetails = readRecord(usage?.completion_tokens_details);
+  return {
+    completionTokens: readNumber(usage?.completion_tokens),
+    costUsd: readNullableNumber(usage?.cost),
+    promptTokens: readNumber(usage?.prompt_tokens),
+    reasoningTokens: readNumber(completionDetails?.reasoning_tokens),
+    totalTokens: readNumber(usage?.total_tokens),
+  };
+}
+
+function readNumber(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function readNullableNumber(value: unknown): number | null {
+  const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function readArray(value: unknown): unknown[] {

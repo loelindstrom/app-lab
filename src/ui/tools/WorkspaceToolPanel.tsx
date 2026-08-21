@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createPromptWithCode, type AiChatMessage } from "../../ai";
+import { createPromptWithCode, type AiChatMessage, type AiUsage } from "../../ai";
 import type { AppRecord, JsonValue } from "../../core";
 import type { SandboxConsoleEntry } from "../../runtime";
 
@@ -13,6 +13,7 @@ interface WorkspaceToolPanelProps {
   builderError: string | null;
   builderIsRunning: boolean;
   builderMessages: AiChatMessage[];
+  builderUsage: AiUsage;
   consoleEntries: SandboxConsoleEntry[];
   mode: ToolPanelMode | null;
   onClearBuilderConversation: () => void;
@@ -31,6 +32,7 @@ export function WorkspaceToolPanel({
   builderError,
   builderIsRunning,
   builderMessages,
+  builderUsage,
   consoleEntries,
   mode,
   onClearBuilderConversation,
@@ -79,6 +81,7 @@ export function WorkspaceToolPanel({
           error={builderError}
           isRunning={builderIsRunning}
           messages={builderMessages}
+          usage={builderUsage}
           onClear={onClearBuilderConversation}
           onOpenAiSettings={onOpenAiSettings}
           onSendMessage={onSendBuilderMessage}
@@ -326,6 +329,7 @@ function BuilderView({
   error,
   isRunning,
   messages,
+  usage,
   onClear,
   onOpenAiSettings,
   onSendMessage,
@@ -339,6 +343,7 @@ function BuilderView({
   onClear: () => void;
   onOpenAiSettings: () => void;
   onSendMessage: (content: string) => Promise<void>;
+  usage: AiUsage;
 }) {
   const conversationEndRef = useRef<HTMLLIElement>(null);
   const [draft, setDraft] = useState("");
@@ -438,6 +443,11 @@ function BuilderView({
           void sendMessage();
         }}
       >
+        {usage.totalTokens > 0 ? (
+          <p aria-label="Builder session usage" className="text-right text-xs font-bold text-app-muted">
+            Session: {formatBuilderUsage(usage)}
+          </p>
+        ) : null}
         {configured ? (
           <div className="grid grid-cols-[minmax(0,1fr)_40px] items-end gap-2">
             <label className="sr-only" htmlFor="builder-message">
@@ -517,6 +527,12 @@ function BuilderView({
       </form>
     </div>
   );
+}
+
+function formatBuilderUsage(usage: AiUsage): string {
+  const tokens = usage.totalTokens < 1_000 ? String(usage.totalTokens) : `${(usage.totalTokens / 1_000).toFixed(1)}k`;
+  const cost = usage.costUsd === null ? null : `$${usage.costUsd.toFixed(usage.costUsd < 0.1 ? 4 : 2)}`;
+  return [cost, `${tokens} tokens`].filter(Boolean).join(" · ");
 }
 
 function ConsoleView({ entries, onClear }: { entries: SandboxConsoleEntry[]; onClear: () => void }) {

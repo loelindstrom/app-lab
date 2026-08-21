@@ -1,4 +1,4 @@
-const APP_LAB_RUNTIME_GUIDANCE = `App Lab provides the runtime:
+export const APP_LAB_RUNTIME_GUIDANCE = `App Lab provides the runtime:
 - Alpine.js 3.14.9 is injected before app code runs. Alpine directives and the global Alpine object are available without adding a script tag.
 - Tailwind utilities are compiled by App Lab when the document includes <meta name="app-lab-tailwind" content="enabled">.
 - App-owned JSON data is stored through the injected AppLab helper.
