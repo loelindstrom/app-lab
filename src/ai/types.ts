@@ -25,6 +25,35 @@ export interface AiUsage {
   totalTokens: number;
 }
 
+export type BuilderConversationMemory = "long" | "medium" | "short";
+
+export interface BuilderPreferences {
+  conversationMemory: BuilderConversationMemory;
+}
+
+export interface BuilderProfile {
+  builtIn: boolean;
+  name: string;
+  profileId: string;
+  promptTemplate: string;
+  starterSource: string;
+}
+
+export interface BuilderProfileInput {
+  name: string;
+  promptTemplate: string;
+  starterSource: string;
+}
+
+export interface BuilderToolSummary {
+  description: string;
+  name: string;
+}
+
+export interface UpdateBuilderProfileInput extends BuilderProfileInput {
+  profileId: string;
+}
+
 export interface BuilderAppSource {
   description: string;
   name: string;
@@ -61,8 +90,14 @@ export interface BuilderTurnResult {
 
 export interface AiActions {
   clearConfig(): Promise<void>;
+  createBuilderProfile(input: BuilderProfileInput): Promise<BuilderProfile>;
+  deleteBuilderProfile(profileId: string): Promise<void>;
+  getBuilderPreferences(): Promise<BuilderPreferences>;
   getConfig(): Promise<AiConfig>;
+  listBuilderProfiles(): Promise<BuilderProfile[]>;
   runBuilderTurn(input: RunBuilderTurnInput): Promise<BuilderTurnResult>;
   saveConfig(config: AiConfig): Promise<AiConfig>;
+  saveBuilderPreferences(preferences: BuilderPreferences): Promise<BuilderPreferences>;
   testConnection(config: AiConfig): Promise<AiConnectionResult>;
+  updateBuilderProfile(input: UpdateBuilderProfileInput): Promise<BuilderProfile>;
 }

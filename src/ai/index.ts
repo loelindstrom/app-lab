@@ -1,5 +1,8 @@
 export { createBrowserAiActions } from "./actions";
+export { BUILDER_TOOL_SUMMARIES } from "./agent";
+export { BUILDER_MEMORY_MESSAGE_LIMITS, DEFAULT_BUILDER_PREFERENCES } from "./preferences";
 export { createBuilderSystemPrompt, createPromptWithCode } from "./prompt";
+export { BUILDER_APP_NAME_PLACEHOLDER } from "./profiles";
 export { addAiUsage, createEmptyAiUsage } from "./usage";
 export type {
   AiActions,
@@ -9,7 +12,13 @@ export type {
   AiUsage,
   BuilderAgentTools,
   BuilderAppSource,
+  BuilderConversationMemory,
+  BuilderProfile,
+  BuilderProfileInput,
+  BuilderPreferences,
   BuilderSourceWriteReceipt,
+  BuilderToolSummary,
   BuilderTurnResult,
   RunBuilderTurnInput,
+  UpdateBuilderProfileInput,
 } from "./types";

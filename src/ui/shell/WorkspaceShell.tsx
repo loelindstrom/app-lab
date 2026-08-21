@@ -1,5 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { addAiUsage, createEmptyAiUsage, type AiActions, type AiChatMessage, type AiConfig, type AiUsage } from "../../ai";
+import {
+  addAiUsage,
+  createEmptyAiUsage,
+  DEFAULT_BUILDER_PREFERENCES,
+  type AiActions,
+  type AiChatMessage,
+  type AiConfig,
+  type AiUsage,
+  type BuilderPreferences,
+  type BuilderProfile,
+} from "../../ai";
 import {
   createAlpineExampleAppInput,
   type AppLabCore,
@@ -55,6 +65,8 @@ interface WorkspaceShellProps {
 
 export function WorkspaceShell({ aiActions, core, syncActions }: WorkspaceShellProps) {
   const [aiConfig, setAiConfig] = useState<AiConfig>({ apiKey: "", model: "" });
+  const [builderPreferences, setBuilderPreferences] = useState<BuilderPreferences>({ ...DEFAULT_BUILDER_PREFERENCES });
+  const [builderProfiles, setBuilderProfiles] = useState<BuilderProfile[]>([]);
   const [builderSessions, setBuilderSessions] = useState<Record<string, BuilderSessionState>>({});
   const [apps, setApps] = useState<AppSummary[]>([]);
   const [syncBadges, setSyncBadges] = useState<Record<string, AppSyncBadge>>({});
@@ -93,6 +105,14 @@ export function WorkspaceShell({ aiActions, core, syncActions }: WorkspaceShellP
 
   useEffect(() => {
     void aiActions.getConfig().then(setAiConfig);
+  }, [aiActions]);
+
+  useEffect(() => {
+    void aiActions.listBuilderProfiles().then(setBuilderProfiles);
+  }, [aiActions]);
+
+  useEffect(() => {
+    void aiActions.getBuilderPreferences().then(setBuilderPreferences);
   }, [aiActions]);
 
   useEffect(() => {
@@ -604,6 +624,8 @@ export function WorkspaceShell({ aiActions, core, syncActions }: WorkspaceShellP
 
       <SettingsDialog
         aiConfig={aiConfig}
+        builderPreferences={builderPreferences}
+        builderProfiles={builderProfiles}
         initialSection={settingsInitialSection}
         isOpen={settingsOpen}
         storageProfile={storageProfile}
@@ -621,12 +643,33 @@ export function WorkspaceShell({ aiActions, core, syncActions }: WorkspaceShellP
           await trySync("Storage configured locally. Remote backup failed", () => syncActions.backUpLocalApps());
           await refreshApps();
         }}
+        onCreateBuilderProfile={async (input) => {
+          const created = await aiActions.createBuilderProfile(input);
+          setBuilderProfiles((profiles) => [...profiles, created]);
+          return created;
+        }}
+        onDeleteBuilderProfile={async (profileId) => {
+          await aiActions.deleteBuilderProfile(profileId);
+          setBuilderProfiles((profiles) => profiles.filter((profile) => profile.profileId !== profileId));
+        }}
         onSaveAiConfig={async (config) => {
           const saved = await aiActions.saveConfig(config);
           setAiConfig(saved);
           return saved;
         }}
+        onSaveBuilderPreferences={async (preferences) => {
+          const saved = await aiActions.saveBuilderPreferences(preferences);
+          setBuilderPreferences(saved);
+          return saved;
+        }}
         onTestAiConnection={aiActions.testConnection}
+        onUpdateBuilderProfile={async (input) => {
+          const updated = await aiActions.updateBuilderProfile(input);
+          setBuilderProfiles((profiles) =>
+            profiles.map((profile) => (profile.profileId === updated.profileId ? updated : profile)),
+          );
+          return updated;
+        }}
         onExportWorkspaceRecovery={async () => {
           return syncActions.exportWorkspaceRecovery();
         }}

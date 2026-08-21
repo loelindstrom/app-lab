@@ -301,12 +301,17 @@ The six slices below are the working implementation plan. Each slice should be r
    Messages should already have stable `messageId`, `appId`, `role`, `content`, and `createdAt` fields. This avoids changing the data
    model when persistence and merging arrive.
 
-4. **Harden the integration — next**
+4. **Harden the integration — in progress**
 
-   - Bound tool rounds and context size.
-   - Reject malformed tool arguments and invalid HTML.
+   - ✅ Bound tool rounds.
+   - ✅ Reject malformed tool arguments, invalid HTML, forms, and submit controls.
+   - ✅ Return compact write receipts and track session usage.
+   - ✅ Store Builder profiles and the global conversation-memory preference locally. Profile selection and memory limits are not yet
+     applied to agent requests.
+   - ✅ Test text-only answers, tool calls, provider failures, and malformed responses.
+   - Apply the selected profile and conversation-memory limit to agent requests.
    - Cancel or invalidate a request when its app session changes.
-   - Test text-only answers, tool calls, provider failures, stale requests, and malformed responses.
+   - Test stale requests after cancellation is implemented.
    - Start non-streaming if that gets the vertical slice working sooner. Streaming can then be added without changing the agent
      contract.
 

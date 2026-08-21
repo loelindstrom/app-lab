@@ -1,7 +1,7 @@
 import { createBuilderSystemPrompt } from "./prompt";
 import { validateBuilderSource } from "./sourceValidation";
 import type { OpenRouterClient, OpenRouterMessage, OpenRouterTool, OpenRouterToolCall } from "./openrouter";
-import type { AiConfig, BuilderAgentTools, BuilderTurnResult, RunBuilderTurnInput } from "./types";
+import type { AiConfig, BuilderAgentTools, BuilderToolSummary, BuilderTurnResult, RunBuilderTurnInput } from "./types";
 import { addAiUsage, createEmptyAiUsage } from "./usage";
 
 export const MAX_BUILDER_TOOL_ROUNDS = 4;
@@ -42,6 +42,11 @@ export const BUILDER_TOOLS: OpenRouterTool[] = [
     type: "function",
   },
 ];
+
+export const BUILDER_TOOL_SUMMARIES: BuilderToolSummary[] = BUILDER_TOOLS.map(({ function: tool }) => ({
+  description: tool.description,
+  name: tool.name,
+}));
 
 export interface BuilderAgent {
   runTurn(input: RunBuilderTurnInput): Promise<BuilderTurnResult>;

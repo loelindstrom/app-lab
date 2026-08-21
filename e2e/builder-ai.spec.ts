@@ -69,8 +69,53 @@ test.describe("BuilderAI browser workflow", () => {
     await page.getByRole("button", { name: "Toggle BuilderAI" }).click();
     await page.getByRole("button", { name: "Set up OpenRouter" }).click();
 
-    await expect(page.getByRole("dialog", { name: "AI config" })).toBeVisible();
+    await expect(page.getByRole("dialog", { name: "Settings" })).toBeVisible();
     await expect(page.getByLabel("OpenRouter API key")).toBeVisible();
+  });
+
+  test("stores custom Builder profiles in this browser", async ({ page }) => {
+    await page.setViewportSize({ height: 844, width: 390 });
+    await page.goto("/");
+    await page.getByRole("button", { name: "Open settings" }).click();
+    await page.getByRole("button", { name: /^AI/ }).click();
+    await page.getByRole("button", { name: "AI Agent" }).click();
+    await page.getByLabel("Conversation memory").selectOption("long");
+    await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+
+    await expect(page.getByLabel("Selected profile")).toHaveValue("builtin-minimal-v1");
+    await expect(page.getByLabel("Builder instructions")).not.toBeEditable();
+    await page.getByRole("button", { name: "Duplicate" }).click();
+    await expect(page.getByLabel("Name", { exact: true })).toHaveValue("Minimal copy");
+
+    await page.getByLabel("Name", { exact: true }).fill("Mobile Builder");
+    await page.getByLabel("Builder instructions").fill("Build one focused app.");
+    await page.getByRole("button", { name: "Save profile" }).click();
+    await expect(page.getByText("Profile saved.")).toBeVisible();
+
+    const storedProfiles = await page.evaluate(() => localStorage.getItem("app-lab-builder-profiles-v1"));
+    expect(JSON.parse(storedProfiles ?? "null")).toMatchObject({
+      profiles: [
+        {
+          builtIn: false,
+          name: "Mobile Builder",
+          promptTemplate: "Build one focused app.",
+        },
+      ],
+      version: 1,
+    });
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem("app-lab-builder-preferences-v1") ?? "null"))).toEqual({
+      conversationMemory: "long",
+      version: 1,
+    });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+
+    await page.reload();
+    await page.getByRole("button", { name: "Open settings" }).click();
+    await page.getByRole("button", { name: /^AI/ }).click();
+    await page.getByRole("button", { name: "AI Agent" }).click();
+    await expect(page.getByLabel("Conversation memory")).toHaveValue("long");
+    await page.getByLabel("Selected profile").selectOption({ label: "Mobile Builder" });
+    await expect(page.getByLabel("Builder instructions")).toHaveValue("Build one focused app.");
   });
 });
 

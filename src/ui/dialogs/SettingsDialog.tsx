@@ -1,9 +1,22 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import type { AiConfig, AiConnectionResult } from "../../ai";
+import {
+  BUILDER_MEMORY_MESSAGE_LIMITS,
+  type AiConfig,
+  type AiConnectionResult,
+  type BuilderConversationMemory,
+  type BuilderPreferences,
+  type BuilderProfile,
+  type BuilderProfileInput,
+  type UpdateBuilderProfileInput,
+} from "../../ai";
 import { createAuthFirebaseRules, createFirebaseOwnerSetupSecret, type ConfigureStorageProfileInput, type StorageProfile } from "../../sync";
+import { BuilderProfilesSettings } from "./BuilderProfilesSettings";
+import { SettingsActionBar, SettingsSnackbar } from "./SettingsActions";
 
 interface SettingsDialogProps {
   aiConfig: AiConfig;
+  builderPreferences: BuilderPreferences;
+  builderProfiles: BuilderProfile[];
   initialSection?: SettingsSection;
   isOpen: boolean;
   onClearAiConfig: () => Promise<void>;
@@ -13,10 +26,15 @@ interface SettingsDialogProps {
   onClearStorageProfile: () => Promise<void>;
   onExportWorkspaceRecovery: () => Promise<string>;
   onRestoreWorkspaceRecovery: (recoveryText: string) => Promise<void>;
+  onCreateBuilderProfile: (input: BuilderProfileInput) => Promise<BuilderProfile>;
+  onDeleteBuilderProfile: (profileId: string) => Promise<void>;
   onSaveAiConfig: (config: AiConfig) => Promise<AiConfig>;
+  onSaveBuilderPreferences: (preferences: BuilderPreferences) => Promise<BuilderPreferences>;
   onTestAiConnection: (config: AiConfig) => Promise<AiConnectionResult>;
+  onUpdateBuilderProfile: (input: UpdateBuilderProfileInput) => Promise<BuilderProfile>;
 }
 
+type AiTab = "agent" | "connection";
 type SettingsSection = "ai" | "storage";
 type StorageTab = "setup" | "sync";
 type SetupGuideSectionId = "firebase" | "security" | "connect";
@@ -32,26 +50,37 @@ type SetupStepId =
 
 export function SettingsDialog({
   aiConfig,
+  builderPreferences,
+  builderProfiles,
   initialSection,
   isOpen,
   onClearAiConfig,
   onClearStorageProfile,
   onClose,
   onConfigureStorageProfile,
+  onCreateBuilderProfile,
+  onDeleteBuilderProfile,
   onExportWorkspaceRecovery,
   onRestoreWorkspaceRecovery,
   onSaveAiConfig,
+  onSaveBuilderPreferences,
   onTestAiConnection,
+  onUpdateBuilderProfile,
   storageProfile,
 }: SettingsDialogProps) {
   const [aiApiKey, setAiApiKey] = useState("");
   const [aiModel, setAiModel] = useState("");
+  const [aiTab, setAiTab] = useState<AiTab>("connection");
+  const [memoryStatus, setMemoryStatus] = useState("Ready");
   const [section, setSection] = useState<SettingsSection>("storage");
   const [storageTab, setStorageTab] = useState<StorageTab>("setup");
   const [displayName, setDisplayName] = useState("");
   const [ownerSetupSecret, setOwnerSetupSecret] = useState(() => createFirebaseOwnerSetupSecret());
   const [firebaseConfigText, setFirebaseConfigText] = useState("");
   const [databaseUrl, setDatabaseUrl] = useState("");
+  const [isCompactViewport, setIsCompactViewport] = useState(isCompactSettingsViewport);
+  const [mobileSectionOpen, setMobileSectionOpen] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
   const [recoveryText, setRecoveryText] = useState("");
   const [restoreText, setRestoreText] = useState("");
   const [status, setStatus] = useState("Ready");
@@ -72,6 +101,21 @@ export function SettingsDialog({
   }, [storageProfile]);
 
   useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const mediaQuery = window.matchMedia("(max-width: 767px)");
+    const handleChange = (event: MediaQueryListEvent) => setIsCompactViewport(event.matches);
+    setIsCompactViewport(mediaQuery.matches);
+    mediaQuery.addEventListener("change", handleChange);
+    return () => mediaQuery.removeEventListener("change", handleChange);
+  }, []);
+
+  useEffect(() => {
+    if (!notice) return;
+    const timeoutId = window.setTimeout(() => setNotice(null), 3000);
+    return () => window.clearTimeout(timeoutId);
+  }, [notice]);
+
+  useEffect(() => {
     if (!isOpen) {
       wasOpenRef.current = false;
       return;
@@ -79,9 +123,12 @@ export function SettingsDialog({
     if (wasOpenRef.current) return;
     wasOpenRef.current = true;
     if (initialSection) setSection(initialSection);
+    setMobileSectionOpen(Boolean(initialSection));
+    setNotice(null);
     setRecoveryText("");
     setRestoreText("");
     setStatus("Ready");
+    setMemoryStatus("Ready");
     setOpenSetupSection(storageProfile ? "connect" : "firebase");
     setSetupSteps(createSetupStepState());
   }, [initialSection, isOpen, storageProfile]);
@@ -100,7 +147,8 @@ export function SettingsDialog({
         firebaseConfigText,
         ownerSetupSecret,
       });
-      setStatus("Storage profile saved. Existing owned apps now have stable sync rooms.");
+      setStatus("Ready");
+      setNotice("Storage profile saved. Existing owned apps now have stable sync rooms.");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Could not save storage profile.");
     }
@@ -112,7 +160,8 @@ export function SettingsDialog({
       const saved = await onSaveAiConfig({ apiKey: aiApiKey, model: aiModel });
       setAiApiKey(saved.apiKey);
       setAiModel(saved.model);
-      setStatus("AI configuration saved in this browser.");
+      setStatus("Ready");
+      setNotice("AI configuration saved in this browser.");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Could not save AI configuration.");
     }
@@ -129,6 +178,16 @@ export function SettingsDialog({
     }
   }
 
+  async function saveConversationMemory(conversationMemory: BuilderConversationMemory) {
+    setMemoryStatus("Saving...");
+    try {
+      await onSaveBuilderPreferences({ conversationMemory });
+      setMemoryStatus("Saved");
+    } catch (error) {
+      setMemoryStatus(error instanceof Error ? error.message : "Could not save.");
+    }
+  }
+
   async function clearAiConfig() {
     if (!window.confirm("Remove the OpenRouter API key and model from this browser?")) return;
     setStatus("Removing AI configuration...");
@@ -136,7 +195,8 @@ export function SettingsDialog({
       await onClearAiConfig();
       setAiApiKey("");
       setAiModel("");
-      setStatus("AI configuration removed from this browser.");
+      setStatus("Ready");
+      setNotice("AI configuration removed from this browser.");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Could not remove AI configuration.");
     }
@@ -145,7 +205,8 @@ export function SettingsDialog({
   async function copyFirebaseRules() {
     try {
       await navigator.clipboard?.writeText(firebaseRules);
-      setStatus("Firebase rules copied.");
+      setStatus("Ready");
+      setNotice("Firebase rules copied.");
     } catch (_) {
       setStatus("Could not copy rules. Select the rules text and copy it manually.");
     }
@@ -155,12 +216,31 @@ export function SettingsDialog({
     setSetupSteps((steps) => ({ ...steps, [stepId]: !steps[stepId] }));
   }
 
+  function selectSettingsSection(nextSection: SettingsSection) {
+    setSection(nextSection);
+    setNotice(null);
+    setStatus("Ready");
+  }
+
+  function selectAiTab(nextTab: AiTab) {
+    setAiTab(nextTab);
+    setNotice(null);
+    setStatus("Ready");
+  }
+
+  function selectStorageTab(nextTab: StorageTab) {
+    setStorageTab(nextTab);
+    setNotice(null);
+    setStatus("Ready");
+  }
+
   async function clearStorageProfile() {
     if (!window.confirm("Remove this storage profile from this browser? Existing app sync room references stay in the workspace metadata.")) return;
     setStatus("Removing storage profile...");
     try {
       await onClearStorageProfile();
-      setStatus("Storage profile removed from this browser.");
+      setStatus("Ready");
+      setNotice("Storage profile removed from this browser.");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Could not remove storage profile.");
     }
@@ -199,132 +279,208 @@ export function SettingsDialog({
         <header className="border-b border-app-line bg-white/90">
           <div className="mx-auto flex w-full max-w-5xl items-center gap-4 px-4 py-3">
             <button
-              className="min-h-9 rounded-md border border-app-line bg-white px-3 text-sm font-extrabold text-app-ink hover:border-app-accent"
+              aria-label={isCompactViewport && mobileSectionOpen ? "Back to Settings" : undefined}
+              className={`min-h-9 rounded-md border border-app-line bg-white text-sm font-extrabold text-app-ink hover:border-app-accent ${
+                isCompactViewport && mobileSectionOpen ? "w-9 px-0 text-lg" : "px-3"
+              }`}
               type="button"
-              onClick={onClose}
+              onClick={() => {
+                if (isCompactViewport && mobileSectionOpen) {
+                  setMobileSectionOpen(false);
+                  setNotice(null);
+                  setStatus("Ready");
+                  return;
+                }
+                onClose();
+              }}
             >
-              ← Back
+              {isCompactViewport && mobileSectionOpen ? "←" : "← Back"}
             </button>
-            <div className="min-w-0">
-              <p className="mb-1 text-xs font-extrabold uppercase text-app-muted">Settings</p>
-              <h2 className="truncate text-xl font-extrabold leading-tight" id="settings-title">
-                {section === "ai" ? "AI config" : "Storage and sync"}
-              </h2>
-            </div>
+            <h2 className="truncate text-xl font-bold leading-tight text-app-ink" id="settings-title">Settings</h2>
           </div>
         </header>
-        <div className="min-h-0 overflow-auto">
-          <div className="mx-auto grid w-full max-w-5xl grid-cols-1 gap-4 px-4 py-4 md:min-h-full md:grid-cols-[190px_minmax(0,1fr)]">
-            <nav className="flex gap-2 rounded-lg border border-app-line bg-white p-2 md:grid md:content-start" aria-label="Settings sections">
-              <SettingsNavButton active={section === "storage"} label="Storage" onClick={() => setSection("storage")} />
-              <SettingsNavButton active={section === "ai"} label="AI" onClick={() => setSection("ai")} />
-            </nav>
+        <div className="min-h-0 overflow-auto pb-24">
+          {isCompactViewport && !mobileSectionOpen ? (
+            <MobileSettingsMenu
+              onOpen={(nextSection) => {
+                selectSettingsSection(nextSection);
+                setMobileSectionOpen(true);
+              }}
+            />
+          ) : (
+            <div
+              className={`mx-auto grid w-full max-w-5xl px-4 py-5 ${
+                isCompactViewport ? "grid-cols-1" : "min-h-full grid-cols-[180px_minmax(0,1fr)] gap-8"
+              }`}
+            >
+            {!isCompactViewport ? (
+              <nav className="grid content-start border-r border-app-line pr-4" aria-label="Settings sections">
+                <SettingsSectionButton active={section === "storage"} label="Storage" onClick={() => selectSettingsSection("storage")} />
+                <SettingsSectionButton active={section === "ai"} label="AI" onClick={() => selectSettingsSection("ai")} />
+              </nav>
+            ) : null}
 
             <div className="min-w-0">
               {section === "ai" ? (
-                <form
-                  className="grid gap-5"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    void saveAiConfig();
-                  }}
-                >
-                  <div className="grid gap-2 text-sm leading-relaxed text-app-muted">
-                    <p>
-                      Connect OpenRouter to use BuilderAI. The API key is stored only in this browser and sent to OpenRouter to
-                      authenticate requests. It is never included in workspace sync or app invites.
-                    </p>
-                    <p>App source and conversation context are sent to the selected model only when you submit a BuilderAI request.</p>
-                  </div>
+                <div className="grid gap-8">
+                  <header className="grid gap-1">
+                    <h2 className="text-2xl font-bold text-app-ink">AI</h2>
+                    <p className="text-sm text-app-muted">Connect a model and configure how BuilderAI works.</p>
+                  </header>
 
-                  <ol className="grid gap-3 text-sm leading-relaxed text-app-muted">
-                    <li className="grid grid-cols-[2rem_minmax(0,1fr)] gap-3">
-                      <span className="grid h-7 min-h-7 w-7 place-items-center rounded-full bg-app-accent font-extrabold text-white">1</span>
-                      <span>
-                        Create an API key in{" "}
-                        <a className="font-extrabold text-app-accent underline" href="https://openrouter.ai/settings/keys" target="_blank" rel="noreferrer">
-                          OpenRouter
-                        </a>
-                        .
-                      </span>
-                    </li>
-                    <li className="grid grid-cols-[2rem_minmax(0,1fr)] gap-3">
-                      <span className="grid h-7 min-h-7 w-7 place-items-center rounded-full bg-app-accent font-extrabold text-white">2</span>
-                      <span>
-                        Choose a model id from the{" "}
-                        <a className="font-extrabold text-app-accent underline" href="https://openrouter.ai/models?supported_parameters=tools" target="_blank" rel="noreferrer">
-                          tool-capable models
-                        </a>
-                        .
-                      </span>
-                    </li>
-                    <li className="grid grid-cols-[2rem_minmax(0,1fr)] gap-3">
-                      <span className="grid h-7 min-h-7 w-7 place-items-center rounded-full bg-app-accent font-extrabold text-white">3</span>
-                      <span>Paste both values below, test the connection, and save them locally.</span>
-                    </li>
-                  </ol>
+                  <nav className="flex gap-6 border-b border-app-line" aria-label="AI settings">
+                    <SettingsTabButton active={aiTab === "connection"} label="Connection" onClick={() => selectAiTab("connection")} />
+                    <SettingsTabButton active={aiTab === "agent"} label="AI Agent" onClick={() => selectAiTab("agent")} />
+                  </nav>
 
-                  <label className="grid gap-2 text-sm font-extrabold text-app-muted">
-                    OpenRouter API key
-                    <input
-                      autoComplete="off"
-                      className="min-h-10 rounded-md border border-app-line bg-white px-3 font-mono text-sm text-app-ink outline-none focus:border-app-accent"
-                      onChange={(event) => setAiApiKey(event.target.value)}
-                      placeholder="sk-or-v1-..."
-                      type="password"
-                      value={aiApiKey}
-                    />
-                  </label>
-                  <label className="grid gap-2 text-sm font-extrabold text-app-muted">
-                    Model id
-                    <input
-                      className="min-h-10 rounded-md border border-app-line bg-white px-3 font-mono text-sm text-app-ink outline-none focus:border-app-accent"
-                      onChange={(event) => setAiModel(event.target.value)}
-                      placeholder="provider/model-name"
-                      type="text"
-                      value={aiModel}
-                    />
-                  </label>
+                  {aiTab === "connection" ? (
+                    <form
+                      className="grid max-w-3xl gap-5"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        void saveAiConfig();
+                      }}
+                    >
+                      <div className="grid gap-2 text-sm leading-relaxed text-app-muted">
+                        <p>
+                          Connect OpenRouter to use BuilderAI. The API key is stored only in this browser and sent to OpenRouter to
+                          authenticate requests. It is never included in workspace sync or app invites.
+                        </p>
+                        <p>App source and conversation context are sent to the selected model only when you submit a BuilderAI request.</p>
+                      </div>
 
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <span className="text-xs font-bold text-app-muted">{status}</span>
-                    <div className="flex flex-wrap gap-2">
-                      {aiConfig.apiKey || aiConfig.model ? (
-                        <button className="min-h-9 rounded-md border border-app-line bg-white px-3 text-sm font-bold text-app-ink hover:border-app-accent" type="button" onClick={() => void clearAiConfig()}>
-                          Remove
+                      <ol className="grid gap-3 text-sm leading-relaxed text-app-muted">
+                        <li className="grid grid-cols-[2rem_minmax(0,1fr)] gap-3">
+                          <span className="grid h-7 min-h-7 w-7 place-items-center rounded-full bg-app-accent font-extrabold text-white">1</span>
+                          <span>
+                            Create an API key in{" "}
+                            <a className="font-extrabold text-app-accent underline" href="https://openrouter.ai/settings/keys" target="_blank" rel="noreferrer">
+                              OpenRouter
+                            </a>
+                            .
+                          </span>
+                        </li>
+                        <li className="grid grid-cols-[2rem_minmax(0,1fr)] gap-3">
+                          <span className="grid h-7 min-h-7 w-7 place-items-center rounded-full bg-app-accent font-extrabold text-white">2</span>
+                          <span>
+                            Choose a model id from the{" "}
+                            <a className="font-extrabold text-app-accent underline" href="https://openrouter.ai/models?supported_parameters=tools" target="_blank" rel="noreferrer">
+                              tool-capable models
+                            </a>
+                            .
+                          </span>
+                        </li>
+                        <li className="grid grid-cols-[2rem_minmax(0,1fr)] gap-3">
+                          <span className="grid h-7 min-h-7 w-7 place-items-center rounded-full bg-app-accent font-extrabold text-white">3</span>
+                          <span>Paste both values below, test the connection, and save them locally.</span>
+                        </li>
+                      </ol>
+
+                      <label className="grid gap-2 text-sm font-normal text-app-muted">
+                        OpenRouter API key
+                        <input
+                          autoComplete="off"
+                          className="min-h-10 rounded-md border border-app-line bg-white px-3 font-mono text-sm text-app-ink outline-none focus:border-app-accent"
+                          onChange={(event) => setAiApiKey(event.target.value)}
+                          placeholder="sk-or-v1-..."
+                          type="password"
+                          value={aiApiKey}
+                        />
+                      </label>
+                      <label className="grid gap-2 text-sm font-normal text-app-muted">
+                        Model id
+                        <input
+                          className="min-h-10 rounded-md border border-app-line bg-white px-3 font-mono text-sm text-app-ink outline-none focus:border-app-accent"
+                          onChange={(event) => setAiModel(event.target.value)}
+                          placeholder="provider/model-name"
+                          type="text"
+                          value={aiModel}
+                        />
+                      </label>
+
+                      <SettingsActionBar status={status}>
+                        {aiConfig.apiKey || aiConfig.model ? (
+                          <button
+                            className="min-h-9 rounded-md border border-app-line bg-white px-3 text-sm font-bold text-app-ink hover:border-app-accent"
+                            type="button"
+                            onClick={() => void clearAiConfig()}
+                          >
+                            Remove
+                          </button>
+                        ) : null}
+                        <button
+                          className="min-h-9 rounded-md border border-app-line bg-white px-3 text-sm font-bold text-app-ink hover:border-app-accent disabled:opacity-50"
+                          disabled={!aiApiKey.trim() || !aiModel.trim()}
+                          type="button"
+                          onClick={() => void testAiConnection()}
+                        >
+                          Test connection
                         </button>
-                      ) : null}
-                      <button
-                        className="min-h-9 rounded-md border border-app-line bg-white px-3 text-sm font-bold text-app-ink hover:border-app-accent disabled:opacity-50"
-                        disabled={!aiApiKey.trim() || !aiModel.trim()}
-                        type="button"
-                        onClick={() => void testAiConnection()}
-                      >
-                        Test connection
-                      </button>
-                      <button
-                        className="min-h-9 rounded-md border border-app-accent bg-app-accent px-4 text-sm font-bold text-white hover:bg-app-strong disabled:opacity-50"
-                        disabled={!aiApiKey.trim() || !aiModel.trim()}
-                        type="submit"
-                      >
-                        Save AI configuration
-                      </button>
+                        <button
+                          className="min-h-9 rounded-md border border-app-accent bg-app-accent px-4 text-sm font-bold text-white hover:bg-app-strong disabled:opacity-50"
+                          disabled={!aiApiKey.trim() || !aiModel.trim()}
+                          type="submit"
+                        >
+                          Save AI configuration
+                        </button>
+                      </SettingsActionBar>
+                    </form>
+                  ) : (
+                    <div className="grid max-w-3xl gap-8">
+                      <section className="grid gap-4 border-b border-app-line pb-6" aria-labelledby="global-ai-settings-title">
+                        <h3 className="text-xl font-bold text-app-ink" id="global-ai-settings-title">Global settings</h3>
+                        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4">
+                          <div className="grid gap-1">
+                            <h4 className="text-base font-bold text-app-ink">Conversation memory</h4>
+                            <p className="text-sm text-app-muted">Recent messages sent with each request.</p>
+                          </div>
+                          <div className="grid justify-items-end gap-1">
+                            <select
+                              aria-label="Conversation memory"
+                              className="min-h-9 rounded-md border border-app-line bg-white px-3 text-sm font-normal text-app-ink outline-none focus:border-app-accent"
+                              value={builderPreferences.conversationMemory}
+                              onChange={(event) => void saveConversationMemory(event.target.value as BuilderConversationMemory)}
+                            >
+                              {(["short", "medium", "long"] as const).map((memory) => (
+                                <option key={memory} value={memory}>
+                                  {formatMemoryOption(memory)}
+                                </option>
+                              ))}
+                            </select>
+                            <span className="min-h-4 text-xs font-normal text-app-muted" aria-live="polite">
+                              {memoryStatus === "Ready" ? "" : memoryStatus}
+                            </span>
+                          </div>
+                        </div>
+                      </section>
+
+                      <BuilderProfilesSettings
+                        profiles={builderProfiles}
+                        onCreate={onCreateBuilderProfile}
+                        onDelete={onDeleteBuilderProfile}
+                        onUpdate={onUpdateBuilderProfile}
+                      />
                     </div>
-                  </div>
-                </form>
+                  )}
+                </div>
               ) : (
-                <div className="grid gap-4">
-                  <div className="flex flex-wrap gap-2 rounded-lg bg-white p-1">
-                    <SettingsNavButton active={storageTab === "setup"} label="First-time setup" onClick={() => setStorageTab("setup")} />
-                    <SettingsNavButton active={storageTab === "sync"} label="Sync device" onClick={() => setStorageTab("sync")} />
-                  </div>
+                <div className="grid gap-8">
+                  <header className="grid gap-1">
+                    <h2 className="text-2xl font-bold text-app-ink">Storage and sync</h2>
+                    <p className="text-sm text-app-muted">Connect storage for backup, sharing, and cross-device sync.</p>
+                  </header>
+
+                  <nav className="flex gap-6 border-b border-app-line" aria-label="Storage settings">
+                    <SettingsTabButton active={storageTab === "setup"} label="First-time setup" onClick={() => selectStorageTab("setup")} />
+                    <SettingsTabButton active={storageTab === "sync"} label="Sync device" onClick={() => selectStorageTab("sync")} />
+                  </nav>
 
                   {storageTab === "setup" ? (
                     <div className="grid gap-4">
                       <div className="grid gap-2 text-sm leading-relaxed text-app-muted">
                         <p>
                           Connect your own Firebase Realtime Database to back up this browser's apps, restore them on another
-                          device, and create app invite links. Set up security before saving the profile here.
+                          device, and create app invite links. Complete the security setup in step 2 to protect your storage.
                         </p>
                         {storageProfile ? (
                           <p className="break-all rounded-md bg-emerald-50 px-3 py-2 font-mono text-xs font-bold text-emerald-800">
@@ -424,16 +580,16 @@ export function SettingsDialog({
                             detail="Use the config object from Project settings. Authenticated setup requires the apiKey field."
                             onChange={() => toggleSetupStep("copy-config")}
                           >
-                            <label className="grid gap-2 text-sm font-extrabold text-app-muted">
+                            <label className="grid gap-2 text-sm font-normal text-app-muted">
                               Display name
                               <input
-                                className="min-h-10 rounded-md border border-app-line bg-white px-3 text-base font-semibold text-app-ink outline-none focus:border-app-accent"
+                                className="min-h-10 rounded-md border border-app-line bg-white px-3 text-sm font-normal text-app-ink outline-none focus:border-app-accent"
                                 value={displayName}
                                 onChange={(event) => setDisplayName(event.target.value)}
                                 placeholder="My Firebase project"
                               />
                             </label>
-                            <label className="grid gap-2 text-sm font-extrabold text-app-muted">
+                            <label className="grid gap-2 text-sm font-normal text-app-muted">
                               Firebase web app config
                               <textarea
                                 className="min-h-28 resize-y rounded-md border border-app-line bg-white px-3 py-2 font-mono text-xs text-app-ink outline-none focus:border-app-accent"
@@ -450,7 +606,7 @@ export function SettingsDialog({
                             detail="Use the database URL from Realtime Database, not a Storage bucket URL."
                             onChange={() => toggleSetupStep("copy-url")}
                           >
-                            <label className="grid gap-2 text-sm font-extrabold text-app-muted">
+                            <label className="grid gap-2 text-sm font-normal text-app-muted">
                               Firebase Realtime Database URL
                               <input
                                 className="min-h-10 rounded-md border border-app-line bg-white px-3 font-mono text-sm text-app-ink outline-none focus:border-app-accent"
@@ -470,9 +626,7 @@ export function SettingsDialog({
                         </SetupGuideSection>
                       </div>
 
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <span className="text-xs font-bold text-app-muted">{status}</span>
-                        <div className="flex gap-2">
+                      <SettingsActionBar status={status}>
                           {storageProfile ? (
                             <button className="min-h-9 rounded-md border border-app-line bg-white px-3 text-sm font-bold text-app-ink hover:border-app-accent" type="button" onClick={clearStorageProfile}>
                               Remove profile
@@ -486,8 +640,7 @@ export function SettingsDialog({
                           >
                             Save storage profile
                           </button>
-                        </div>
-                      </div>
+                      </SettingsActionBar>
                     </div>
                   ) : (
                     <div className="grid gap-4">
@@ -496,7 +649,7 @@ export function SettingsDialog({
                         device that already has this workspace, then paste it on the device you want to sync with.
                       </p>
 
-                      <div className="divide-y divide-app-line overflow-hidden rounded-lg border border-app-line bg-white">
+                      <div className="divide-y divide-app-line">
                         <SyncMaterialStep
                           number="1"
                           title="Generate sync material"
@@ -540,24 +693,58 @@ export function SettingsDialog({
                         </SyncMaterialStep>
                       </div>
 
-                      <span className="text-xs font-bold text-app-muted">{status}</span>
+                      {status !== "Ready" ? <span className="text-xs font-normal text-app-muted">{status}</span> : null}
                     </div>
                   )}
                 </div>
               )}
             </div>
           </div>
+          )}
         </div>
+        <SettingsSnackbar message={notice} />
       </section>
     </div>
   );
 }
 
-function SettingsNavButton({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
+function MobileSettingsMenu({ onOpen }: { onOpen: (section: SettingsSection) => void }) {
+  return (
+    <nav className="mx-auto w-full max-w-5xl divide-y divide-app-line border-y border-app-line" aria-label="Settings sections">
+      <MobileSettingsSection
+        description="Back up apps, share them, and sync this workspace."
+        label="Storage and sync"
+        onClick={() => onOpen("storage")}
+      />
+      <MobileSettingsSection
+        description="Connect a model and configure how BuilderAI works."
+        label="AI"
+        onClick={() => onOpen("ai")}
+      />
+    </nav>
+  );
+}
+
+function MobileSettingsSection({ description, label, onClick }: { description: string; label: string; onClick: () => void }) {
+  return (
+    <button className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-4 bg-white px-4 py-4 text-left hover:bg-slate-50" type="button" onClick={onClick}>
+      <span className="grid gap-1">
+        <span className="text-base font-bold text-app-ink">{label}</span>
+        <span className="text-sm text-app-muted">{description}</span>
+      </span>
+      <span className="text-xl text-app-muted" aria-hidden="true">›</span>
+    </button>
+  );
+}
+
+function SettingsSectionButton({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
   return (
     <button
-      className={`min-h-9 rounded-md px-3 text-sm font-extrabold ${
-        active ? "bg-app-accent text-white" : "bg-transparent text-app-muted hover:bg-app-accent/10 hover:text-app-accent"
+      aria-current={active ? "page" : undefined}
+      className={`min-h-10 border-b-2 px-3 text-left text-sm font-semibold md:border-b-0 md:border-l-2 ${
+        active
+          ? "border-app-accent bg-app-accent/5 text-app-ink"
+          : "border-transparent text-app-muted hover:bg-slate-100 hover:text-app-ink"
       }`}
       type="button"
       onClick={onClick}
@@ -565,6 +752,26 @@ function SettingsNavButton({ active, label, onClick }: { active: boolean; label:
       {label}
     </button>
   );
+}
+
+function SettingsTabButton({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
+  return (
+    <button
+      aria-current={active ? "page" : undefined}
+      className={`-mb-px min-h-10 border-b-2 px-0 text-sm font-semibold ${
+        active ? "border-app-ink text-app-ink" : "border-transparent text-app-muted hover:text-app-ink"
+      }`}
+      type="button"
+      onClick={onClick}
+    >
+      {label}
+    </button>
+  );
+}
+
+function formatMemoryOption(memory: BuilderConversationMemory): string {
+  const label = `${memory.charAt(0).toUpperCase()}${memory.slice(1)}`;
+  return `${label} (${BUILDER_MEMORY_MESSAGE_LIMITS[memory]})`;
 }
 
 function SetupGuideSection({
@@ -587,16 +794,13 @@ function SetupGuideSection({
   return (
     <section>
       <button
-        className="grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 text-left hover:bg-app-accent/5"
+        className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 text-left hover:bg-app-accent/5"
         type="button"
         aria-expanded={open}
         onClick={() => onOpenChange(open ? null : id)}
       >
-        <span className="grid h-7 min-h-7 w-7 place-items-center rounded-full bg-app-accent text-sm font-extrabold text-white">
-          {number}
-        </span>
         <span className="min-w-0">
-          <span className="block text-sm font-extrabold text-app-ink">{title}</span>
+          <span className="block text-sm font-extrabold text-app-ink">{`${number}. ${title}`}</span>
           <span className="block text-sm leading-relaxed text-app-muted">{description}</span>
         </span>
         <span className="text-xl leading-none text-app-muted" aria-hidden="true">
@@ -657,13 +861,10 @@ function SyncMaterialStep({
   title: string;
 }) {
   return (
-    <section className="grid grid-cols-[2rem_minmax(0,1fr)] gap-4 px-4 py-4 text-sm leading-relaxed">
-      <span className="grid h-7 min-h-7 w-7 place-items-center rounded-full bg-app-accent text-sm font-extrabold text-white">
-        {number}
-      </span>
+    <section className="grid gap-3 py-5 text-sm leading-relaxed">
       <div className="grid min-w-0 gap-3">
         <div className="grid gap-1">
-          <h3 className="font-extrabold text-app-ink">{title}</h3>
+          <h3 className="font-extrabold text-app-ink">{`${number}. ${title}`}</h3>
           <p className="text-app-muted">{description}</p>
         </div>
         <div className="grid gap-3">{children}</div>
@@ -683,4 +884,10 @@ function createSetupStepState(): Record<SetupStepId, boolean> {
     "paste-rules": false,
     sync: false,
   };
+}
+
+function isCompactSettingsViewport(): boolean {
+  if (typeof window === "undefined") return false;
+  if (typeof window.matchMedia === "function") return window.matchMedia("(max-width: 767px)").matches;
+  return window.innerWidth <= 767;
 }

@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AiActions, AiConfig, AiUsage } from "../../ai";
+import type { AiActions, AiConfig, AiUsage, BuilderProfile } from "../../ai";
 import type { AppLabCore } from "../../core";
 import { createMemoryCore } from "../../core/memoryCore";
 import { createMemorySyncQueueStore, enqueueSaveSource, resetSyncingQueueItems, type SyncQueueStore } from "../../sync/queue/syncQueue";
@@ -384,7 +384,7 @@ describe("WorkspaceShell sync wake-ups", () => {
     fireEvent.click(within(shareDialog).getByRole("button", { name: "Open settings" }));
 
     expect(screen.queryByRole("dialog", { name: "Share app" })).toBeNull();
-    expect(await screen.findByRole("dialog", { name: "Storage and sync" })).toBeTruthy();
+    expect(await screen.findByRole("dialog", { name: "Settings" })).toBeTruthy();
   });
 
   it("defaults new storage setup to authenticated room claims", async () => {
@@ -578,11 +578,11 @@ describe("WorkspaceShell sync wake-ups", () => {
     );
 
     fireEvent.click(await screen.findByRole("button", { name: "Open settings" }));
-    expect(await screen.findByRole("dialog", { name: "Storage and sync" })).toBeTruthy();
+    expect(await screen.findByRole("dialog", { name: "Settings" })).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: /Back/ }));
 
-    expect(screen.queryByRole("dialog", { name: "Storage and sync" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Settings" })).toBeNull();
   });
 
   it("combines workspace export and restore into sync device settings", async () => {
@@ -605,7 +605,7 @@ describe("WorkspaceShell sync wake-ups", () => {
 
     expect(screen.getByText(/moving the whole workspace/i)).toBeTruthy();
     expect(screen.getAllByText("Generate sync material").length).toBeGreaterThan(0);
-    expect(screen.getByText("Paste sync material")).toBeTruthy();
+    expect(screen.getByText("2. Paste sync material")).toBeTruthy();
   });
 
   it("blocks syncing device material when this browser already has a storage profile", async () => {
@@ -717,15 +717,31 @@ describe("WorkspaceShell sync wake-ups", () => {
 function createAiActionsStub(config: AiConfig = { apiKey: "", model: "" }): AiActions {
   return {
     clearConfig: vi.fn().mockResolvedValue(undefined),
+    createBuilderProfile: vi.fn(async (input) => ({ ...input, builtIn: false, profileId: "custom-profile" })),
+    deleteBuilderProfile: vi.fn().mockResolvedValue(undefined),
+    getBuilderPreferences: vi.fn().mockResolvedValue({ conversationMemory: "short" }),
     getConfig: vi.fn().mockResolvedValue(config),
+    listBuilderProfiles: vi.fn().mockResolvedValue(TEST_BUILDER_PROFILES),
     runBuilderTurn: vi.fn().mockResolvedValue({ content: "Done.", toolRounds: 0, usage: TEST_AI_USAGE }),
     saveConfig: vi.fn(async (nextConfig) => ({
       apiKey: nextConfig.apiKey.trim(),
       model: nextConfig.model.trim(),
     })),
+    saveBuilderPreferences: vi.fn(async (preferences) => preferences),
     testConnection: vi.fn(),
+    updateBuilderProfile: vi.fn(async (input) => ({ ...input, builtIn: false })),
   };
 }
+
+const TEST_BUILDER_PROFILES: BuilderProfile[] = [
+  {
+    builtIn: true,
+    name: "Minimal",
+    profileId: "builtin-minimal-v1",
+    promptTemplate: "Build the requested app.",
+    starterSource: "<!doctype html><html><body><main></main></body></html>",
+  },
+];
 
 function createSyncActionsStub(
   input: { queueStore?: SyncQueueStore; syncRegistry?: WorkspaceSyncRegistry } = {},
