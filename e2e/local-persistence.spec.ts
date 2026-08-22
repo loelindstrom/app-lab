@@ -1,10 +1,11 @@
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 import { readFirebaseE2eProfile, type FirebaseE2eProfile } from "./firebaseProfile";
+import { addSyncTestItem, createSyncTestApp, SYNC_TEST_APP_TITLE } from "./syncTestApp";
 
 const firebaseProfile = readFirebaseE2eProfile();
 
 test.describe("local app persistence", () => {
-  test("keeps the built-in example app data after returning to the launcher", async ({ page }) => {
+  test("keeps the built-in board data after returning to the launcher", async ({ page }) => {
     await page.goto("/");
     await page.evaluate(async () => {
       indexedDB.deleteDatabase("app-lab-v2");
@@ -13,16 +14,50 @@ test.describe("local app persistence", () => {
     });
     await page.reload();
 
-    await createExampleApp(page);
-    await expect(appFrame(page).getByRole("heading", { name: "Example App" })).toBeVisible();
+    await createOpinionatedBoard(page);
+    const frame = appFrame(page);
+    await expect(frame.getByRole("heading", { name: "Active notes" })).toBeVisible();
 
-    await addExampleItem(page, "Example persisted item", "This description should persist.");
+    const boardViewport = frame.locator("[data-board-scroll]");
+    const shareDragHandle = frame.getByRole("button", { name: "Drag Share live updates to reorder" });
+    const viewportBounds = await boardViewport.boundingBox();
+    if (!viewportBounds) throw new Error("Board viewport is not visible");
+
+    await shareDragHandle.dragTo(boardViewport, {
+      targetPosition: { x: viewportBounds.width - 2, y: viewportBounds.height - 2 }
+    });
+    await expect(frame.locator("article h3").last()).toHaveText("Share live updates");
+
+    await shareDragHandle.dragTo(boardViewport, { targetPosition: { x: 2, y: 2 } });
+    await expect(frame.locator("article h3").first()).toHaveText("Share live updates");
+
+    await addBoardNote(page, "Example persisted item", "This description should persist.");
 
     await page.getByRole("button", { name: "‹ Apps" }).click();
     await page.getByRole("button", { name: "Open", exact: true }).click();
 
-    await expect(appFrame(page).getByRole("heading", { name: "Example App" })).toBeVisible();
-    await expect(appFrame(page).getByText("Example persisted item", { exact: true })).toBeVisible();
+    await expect(frame.getByRole("heading", { name: "Active notes" })).toBeVisible();
+    await expect(frame.locator("article h3").first()).toHaveText("Example persisted item");
+    await expect(frame.locator("article h3").nth(1)).toHaveText("Share live updates");
+
+    const persistedArticle = frame.locator("article", { hasText: "Example persisted item" });
+    const collapseButton = frame.getByRole("button", { name: "Collapse Example persisted item" });
+    await expect(collapseButton.locator('svg[data-direction="up"]')).toBeVisible();
+    await persistedArticle.locator("[data-note-toggle]").click();
+    await expect(frame.getByText("This description should persist.", { exact: true })).toBeHidden();
+    const expandButton = frame.getByRole("button", { name: "Expand Example persisted item" });
+    await expect(expandButton.locator('svg[data-direction="down"]')).toBeVisible();
+    await expandButton.click();
+    await expect(frame.getByText("This description should persist.", { exact: true })).toBeVisible();
+
+    await archiveBoardNote(page, "Example persisted item");
+    await archiveBoardNote(page, "Share live updates");
+    await frame.getByRole("button", { name: "Archived" }).click();
+    await frame.getByRole("button", { name: "Move Share live updates up" }).click();
+    await expect(frame.locator("article h3").first()).toHaveText("Share live updates");
+    await frame.getByRole("button", { name: "Delete Example persisted item" }).click();
+    await frame.getByRole("button", { name: "Delete", exact: true }).click();
+    await expect(frame.getByText("Example persisted item", { exact: true })).toBeHidden();
   });
 
   test("keeps source and app data after returning to the launcher", async ({ page }) => {
@@ -34,7 +69,7 @@ test.describe("local app persistence", () => {
     });
     await page.reload();
 
-    await createExampleApp(page);
+    await createOpinionatedBoard(page);
 
     await saveSource(page, htmlForChecklistTitle("Persisted Source"));
     await expect(appFrame(page).getByRole("heading", { name: "Persisted Source" })).toBeVisible();
@@ -60,7 +95,7 @@ test.describe("local app persistence", () => {
     });
     await page.reload();
 
-    await createExampleApp(page);
+    await createOpinionatedBoard(page);
     await saveSource(page, htmlForNormalAlpine());
 
     await expect(appFrame(page).getByRole("heading", { name: "Normal Alpine" })).toBeVisible();
@@ -96,7 +131,7 @@ test.describe("@firebase synced app persistence", () => {
 
   test.skip(!firebaseProfile, "Auth-capable Firebase E2E profile is required for Firebase-backed E2E tests.");
 
-  test("keeps built-in example data after returning to the launcher with storage configured", async () => {
+  test("keeps app data after returning to the launcher with storage configured", async () => {
     if (!firebaseProfile) throw new Error("Auth-capable Firebase E2E profile is required.");
 
     const context = requireContext(firebaseContext);
@@ -105,18 +140,18 @@ test.describe("@firebase synced app persistence", () => {
     try {
       await configureStorage(page, firebaseProfile.config, firebaseProfile);
 
-      await createExampleApp(page);
-      await expect(appFrame(page).getByRole("heading", { name: "Example App" })).toBeVisible();
+      await createSyncTestApp(page);
+      await expect(appFrame(page).getByRole("heading", { name: SYNC_TEST_APP_TITLE })).toBeVisible();
       await page.getByRole("button", { name: "‹ Apps" }).click();
       await expect(page.getByTitle("Synced with remote storage.")).toBeVisible({ timeout: 15_000 });
       await page.getByRole("button", { name: "Open", exact: true }).click();
 
-      await addExampleItem(page, "Synced persisted item");
+      await addSyncTestItem(page, "Synced persisted item");
 
       await page.getByRole("button", { name: "‹ Apps" }).click();
       await page.getByRole("button", { name: "Open", exact: true }).click();
 
-      await expect(appFrame(page).getByRole("heading", { name: "Example App" })).toBeVisible();
+      await expect(appFrame(page).getByRole("heading", { name: SYNC_TEST_APP_TITLE })).toBeVisible();
       await expect(appFrame(page).getByText("Synced persisted item", { exact: true })).toBeVisible();
     } finally {
       await context.setOffline(false);
@@ -133,7 +168,7 @@ test.describe("@firebase synced app persistence", () => {
     try {
       await configureStorage(page, firebaseProfile.config, firebaseProfile);
 
-      await createExampleApp(page);
+      await createSyncTestApp(page);
       await saveSource(page, htmlForChecklistTitle("Synced Source Persisted"));
       await expect(appFrame(page).getByRole("heading", { name: "Synced Source Persisted" })).toBeVisible();
 
@@ -156,8 +191,8 @@ test.describe("@firebase synced app persistence", () => {
     try {
       await configureStorage(page, firebaseProfile.config, firebaseProfile);
 
-      await createExampleApp(page);
-      await expect(appFrame(page).getByRole("heading", { name: "Example App" })).toBeVisible();
+      await createSyncTestApp(page);
+      await expect(appFrame(page).getByRole("heading", { name: SYNC_TEST_APP_TITLE })).toBeVisible();
       await page.getByRole("button", { name: "‹ Apps" }).click();
       await expect(page.getByTitle("Synced with remote storage.")).toBeVisible({ timeout: 15_000 });
       await page.getByRole("button", { name: "Open", exact: true }).click();
@@ -165,7 +200,7 @@ test.describe("@firebase synced app persistence", () => {
       await context.setOffline(true);
       await page.evaluate(() => window.dispatchEvent(new Event("offline")));
 
-      await addExampleItem(page, "Offline first");
+      await addSyncTestItem(page, "Offline first");
       await expect(appFrame(page).getByText("Offline first", { exact: true })).toBeVisible();
 
       await page.getByRole("button", { name: "‹ Apps" }).click();
@@ -173,7 +208,7 @@ test.describe("@firebase synced app persistence", () => {
       await page.getByRole("button", { name: "Open", exact: true }).click();
       await expect(appFrame(page).getByText("Offline first", { exact: true })).toBeVisible();
 
-      await addExampleItem(page, "Offline second");
+      await addSyncTestItem(page, "Offline second");
       await expect(appFrame(page).getByText("Offline second", { exact: true })).toBeVisible();
 
       await page.getByRole("button", { name: "‹ Apps" }).click();
@@ -200,8 +235,8 @@ test.describe("@firebase synced app persistence", () => {
     try {
       await configureStorage(page, firebaseProfile.config, firebaseProfile);
 
-      await createExampleApp(page);
-      await expect(appFrame(page).getByRole("heading", { name: "Example App" })).toBeVisible();
+      await createSyncTestApp(page);
+      await expect(appFrame(page).getByRole("heading", { name: SYNC_TEST_APP_TITLE })).toBeVisible();
       await page.getByRole("button", { name: "‹ Apps" }).click();
       await expect(page.getByTitle("Synced with remote storage.")).toBeVisible({ timeout: 15_000 });
       await page.getByRole("button", { name: "Open", exact: true }).click();
@@ -233,7 +268,7 @@ test.describe("@firebase synced app persistence", () => {
   });
 });
 
-async function createExampleApp(page: Page) {
+async function createOpinionatedBoard(page: Page) {
   await selectOpinionatedBuilderProfile(page);
   await page.getByRole("button", { name: "Create new app" }).click();
   await expect(page.getByRole("button", { name: "Toggle source" })).toBeVisible({ timeout: 30_000 });
@@ -248,13 +283,19 @@ async function selectOpinionatedBuilderProfile(page: Page) {
   });
 }
 
-async function addExampleItem(page: Page, title: string, description = "") {
+async function addBoardNote(page: Page, title: string, description = "") {
   const frame = appFrame(page);
-  await frame.getByRole("button", { name: "New item" }).click();
+  await frame.getByRole("button", { name: "New note" }).click();
   await frame.getByLabel("Title").fill(title);
-  if (description) await frame.getByLabel("Description").fill(description);
+  await frame.getByLabel("Note", { exact: true }).fill(description || title);
   await frame.getByRole("button", { name: "Save" }).click();
   await expect(frame.getByText(title, { exact: true })).toBeVisible();
+}
+
+async function archiveBoardNote(page: Page, title: string) {
+  const frame = appFrame(page);
+  await frame.getByRole("button", { name: `Archive ${title}` }).click();
+  await frame.getByRole("button", { name: "Archive", exact: true }).click();
 }
 
 function requireContext(context: BrowserContext | null): BrowserContext {

@@ -1,4 +1,3 @@
-export { createAlpineExampleAppInput } from "./alpineExampleApp";
 export { createIndexedDbCore } from "./indexedDbCore";
 export type {
   AppId,

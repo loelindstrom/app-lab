@@ -1,5 +1,6 @@
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 import { readFirebaseE2eProfile, type FirebaseE2eProfile } from "./firebaseProfile";
+import { createSyncTestApp } from "./syncTestApp";
 
 const firebaseProfile = readFirebaseE2eProfile();
 let primaryContext: BrowserContext | null = null;
@@ -29,7 +30,7 @@ test.describe("@firebase sync management", () => {
 
     try {
       await configureStorage(owner, firebaseProfile.config, firebaseProfile);
-      await createExampleApp(owner);
+      await createSyncTestApp(owner);
       await saveSource(owner, htmlForTitle(title));
       await waitForSyncQueueDrained(owner);
 
@@ -52,7 +53,7 @@ test.describe("@firebase sync management", () => {
 
     try {
       await configureStorage(owner, firebaseProfile.config, firebaseProfile);
-      await createExampleApp(owner);
+      await createSyncTestApp(owner);
       await saveSource(owner, htmlForTitle(title));
       const inviteUrl = await createInvite(owner);
 
@@ -90,7 +91,7 @@ test.describe("@firebase workspace sync management", () => {
 
     try {
       await configureStorage(original, firebaseProfile.config, firebaseProfile);
-      await createExampleApp(original);
+      await createSyncTestApp(original);
       await saveSource(original, htmlForTitle(initialTitle));
       await waitForSyncQueueDrained(original);
 
@@ -100,12 +101,12 @@ test.describe("@firebase workspace sync management", () => {
       await expect(synced.getByText(initialTitle).first()).toBeVisible({ timeout: 15_000 });
 
       await original.getByRole("button", { name: "‹ Apps" }).click();
-      await createExampleApp(original);
+      await createSyncTestApp(original);
       await saveSource(original, htmlForTitle(originalLaterTitle));
 
       await expect(synced.getByText(originalLaterTitle).first()).toBeVisible({ timeout: 20_000 });
 
-      await createExampleApp(synced);
+      await createSyncTestApp(synced);
       await saveSource(synced, htmlForTitle(syncedLaterTitle));
 
       await original.getByRole("button", { name: "‹ Apps" }).click();
@@ -128,7 +129,7 @@ test.describe("@firebase workspace sync management", () => {
 
     try {
       await configureStorage(original, firebaseProfile.config, firebaseProfile);
-      await createExampleApp(original);
+      await createSyncTestApp(original);
       await saveSource(original, htmlForTitle(initialTitle));
       await waitForSyncQueueDrained(original);
 
@@ -140,12 +141,12 @@ test.describe("@firebase workspace sync management", () => {
       await offlineContext.setOffline(true);
 
       await returnToLauncher(original);
-      await createExampleApp(original);
+      await createSyncTestApp(original);
       await saveSource(original, htmlForTitle(originalLaterTitle));
       await expectLauncherApp(original, originalLaterTitle);
       await waitForSyncQueueDrained(original);
 
-      await createExampleApp(offline);
+      await createSyncTestApp(offline);
       await saveSource(offline, htmlForTitle(offlineLaterTitle));
       await expectLauncherApp(offline, offlineLaterTitle);
 
@@ -173,7 +174,7 @@ test.describe("@firebase workspace sync management", () => {
 
     try {
       await configureStorage(original, firebaseProfile.config, firebaseProfile);
-      await createExampleApp(original);
+      await createSyncTestApp(original);
       await saveSource(original, htmlForTitle(deletedTitle));
       await waitForSyncQueueDrained(original);
 
@@ -187,7 +188,7 @@ test.describe("@firebase workspace sync management", () => {
       await deleteCurrentOwnerApp(original, deletedTitle);
       await waitForSyncQueueDrained(original);
 
-      await createExampleApp(stale);
+      await createSyncTestApp(stale);
       await saveSource(stale, htmlForTitle(preservedTitle));
       await expectLauncherApp(stale, preservedTitle);
 
@@ -287,11 +288,6 @@ async function configureStorage(page: Page, config: Record<string, string>, prof
     );
   }, { firebaseConfig: config, profile });
   await page.reload();
-}
-
-async function createExampleApp(page: Page) {
-  await page.getByRole("button", { name: "Create new app" }).click();
-  await expect(page.getByRole("button", { name: "Toggle source" })).toBeVisible({ timeout: 30_000 });
 }
 
 async function returnToLauncher(page: Page) {

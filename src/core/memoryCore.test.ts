@@ -8,21 +8,16 @@ describe("createMemoryCore", () => {
     await expect(core.listApps()).resolves.toEqual([]);
   });
 
-  it("creates and reads an example app", async () => {
+  it("creates and reads a neutral blank app", async () => {
     const core = createMemoryCore();
     const app = await core.createBlankApp();
     const found = await core.getApp(app.appId);
 
     expect(found).toEqual(app);
-    expect(app.name).toBe("Example App");
+    expect(app.name).toBe("Blank App");
     expect(app.sourceCode).toContain("<html");
-    expect(app.sourceCode).toContain("AppLab.getData");
-    expect(app.sourceCode).toContain("AppLab.saveData");
-    expect(app.sourceCode).toContain("AppLab.onDataChange");
-    expect(app.sourceCode).toContain('x-data="todoExample"');
-    expect(app.sourceCode).toContain("crypto.randomUUID");
-    expect(app.sourceCode).toContain("New item");
-    expect(app.description).toBe("Small Alpine and Tailwind TODO app with AppLab JSON persistence and live shared data.");
+    expect(app.sourceCode).toContain("<title>Blank App</title>");
+    expect(app.description).toBe("Blank App Lab document.");
   });
 
   it("uses HTML head metadata when creating and updating app source", async () => {

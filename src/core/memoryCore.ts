@@ -1,4 +1,4 @@
-import { createAlpineExampleAppInput } from "./alpineExampleApp";
+import { createBlankAppInput } from "./blankApp";
 import { readAppHtmlMetadata } from "./htmlMetadata";
 import { normalizeJsonValue } from "../jsonData";
 import type { AppLabCore, AppRecord, AppSummary, CreateAppInput, JsonValue, UpdateAppInput } from "./types";
@@ -35,7 +35,7 @@ export function createMemoryCore(): AppLabCore {
   }
 
   async function createBlankApp(): Promise<AppRecord> {
-    return createApp(createAlpineExampleAppInput());
+    return createApp(createBlankAppInput());
   }
 
   async function deleteApp(appId: string): Promise<void> {

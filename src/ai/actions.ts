@@ -8,16 +8,15 @@ import type { AiActions } from "./types";
 
 interface BrowserAiActionsOptions {
   client?: OpenRouterClient;
-  opinionatedStarterSource: string;
   storage?: Storage;
 }
 
-export function createBrowserAiActions(options: BrowserAiActionsOptions): AiActions {
+export function createBrowserAiActions(options: BrowserAiActionsOptions = {}): AiActions {
   const storage = options.storage ?? window.localStorage;
   const configStore = createAiConfigStore(storage);
   const preferencesStore = createBuilderPreferencesStore(storage);
   const profileStore = createBuilderProfileStore(storage, {
-    builtInProfiles: createBuiltInBuilderProfiles(options.opinionatedStarterSource),
+    builtInProfiles: createBuiltInBuilderProfiles(),
   });
   const client = options.client ?? createOpenRouterClient({ referer: window.location.origin });
   const agent = createBuilderAgent(client, configStore.get);

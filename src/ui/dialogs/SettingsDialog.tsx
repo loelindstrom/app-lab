@@ -509,21 +509,21 @@ export function SettingsDialog({
                         >
                           <SetupStep
                             checked={setupSteps["create-account"]}
-                            stepNumber="1a"
+                            stepNumber="a"
                             label="Create or sign in to Firebase"
                             detail="Use the Google account that should own this sync storage."
                             onChange={() => toggleSetupStep("create-account")}
                           />
                           <SetupStep
                             checked={setupSteps["create-project"]}
-                            stepNumber="1b"
+                            stepNumber="b"
                             label="Create a Firebase project"
                             detail="A plain project is enough; App Lab only needs the web app config and Realtime Database."
                             onChange={() => toggleSetupStep("create-project")}
                           />
                           <SetupStep
                             checked={setupSteps["create-database"]}
-                            stepNumber="1c"
+                            stepNumber="c"
                             label="Create Realtime Database"
                             detail="Pick a region, create the database, and leave this screen open before copying details."
                             onChange={() => toggleSetupStep("create-database")}
@@ -544,14 +544,14 @@ export function SettingsDialog({
                           </p>
                           <SetupStep
                             checked={setupSteps["enable-auth"]}
-                            stepNumber="2a"
+                            stepNumber="a"
                             label="Enable Anonymous Auth"
                             detail="In Firebase Authentication, add Anonymous as a sign-in provider."
                             onChange={() => toggleSetupStep("enable-auth")}
                           />
                           <SetupStep
                             checked={setupSteps["paste-rules"]}
-                            stepNumber="2b"
+                            stepNumber="b"
                             label="Publish these Realtime Database rules"
                             detail="They let you create rooms and let invited people claim only the rooms in an invite."
                             onChange={() => toggleSetupStep("paste-rules")}
@@ -584,7 +584,7 @@ export function SettingsDialog({
                         >
                           <SetupStep
                             checked={setupSteps["copy-config"]}
-                            stepNumber="3a"
+                            stepNumber="a"
                             label="Copy web app config object"
                             detail="Use the config object from Project settings. Authenticated setup requires the apiKey field."
                             onChange={() => toggleSetupStep("copy-config")}
@@ -610,7 +610,7 @@ export function SettingsDialog({
                           </SetupStep>
                           <SetupStep
                             checked={setupSteps["copy-url"]}
-                            stepNumber="3b"
+                            stepNumber="b"
                             label="Copy the Realtime Database URL"
                             detail="Use the database URL from Realtime Database, not a Storage bucket URL."
                             onChange={() => toggleSetupStep("copy-url")}
@@ -627,7 +627,7 @@ export function SettingsDialog({
                           </SetupStep>
                           <SetupStep
                             checked={setupSteps.sync}
-                            stepNumber="3c"
+                            stepNumber="c"
                             label="Ready to connect and sync"
                             detail="Saving the profile backs up existing local apps to the selected Firebase project."
                             onChange={() => toggleSetupStep("sync")}

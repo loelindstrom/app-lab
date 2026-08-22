@@ -743,7 +743,7 @@ describe("WorkspaceShell sync wake-ups", () => {
     expect(screen.queryByText("Create or sign in to Firebase")).toBeNull();
 
     fireEvent.click(await screen.findByRole("button", { name: /Set Security/ }));
-    expect(await screen.findByText("2a")).toBeTruthy();
+    expect(await screen.findByText("a")).toBeTruthy();
     fireEvent.click(screen.getByLabelText(/Enable Anonymous Auth/));
 
     expect(screen.getByText("Enable Anonymous Auth").className).toContain("line-through");

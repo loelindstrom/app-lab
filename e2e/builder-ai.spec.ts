@@ -39,7 +39,7 @@ test.describe("BuilderAI browser workflow", () => {
     await configureTestAi(page);
     await page.getByRole("button", { name: "Create new app" }).click();
     await page.getByRole("button", { name: "Toggle BuilderAI" }).click();
-    await expect(page.getByText(/I can edit Example App/)).toBeVisible();
+    await expect(page.getByText(/I can edit Opinionated Board/)).toBeVisible();
 
     await page.getByLabel("Message", { exact: true }).fill("Replace this with the browser test app");
     await page.getByRole("button", { name: "Send message" }).click();
@@ -48,7 +48,7 @@ test.describe("BuilderAI browser workflow", () => {
     await expect(page.frameLocator('iframe[sandbox="allow-scripts"]').getByRole("heading", { name: "AI Browser Test" })).toBeVisible();
     expect(requests).toHaveLength(3);
     expect(readMessages(requests[0])[0]).toMatchObject({
-      content: expect.stringContaining('active App Lab app named "Example App"'),
+      content: expect.stringContaining('active App Lab app named "Opinionated Board"'),
       role: "system",
     });
     expect(String(readMessages(requests[0])[0].content)).toContain("Runtime constraints:");
@@ -87,6 +87,37 @@ test.describe("BuilderAI browser workflow", () => {
 
     await expect(page.getByRole("dialog", { name: "Settings" })).toBeVisible();
     await expect(page.getByLabel("OpenRouter API key")).toBeVisible();
+  });
+
+  test("creates the selected starter and changes profiles without replacing the active app", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: "Open settings" }).click();
+    await page.getByRole("button", { name: "AI", exact: true }).click();
+    await page.getByRole("button", { name: "AI Agent" }).click();
+    await page.getByLabel("Active profile").selectOption("builtin-minimal-v1");
+    await expect(page.getByLabel("Active profile")).toHaveValue("builtin-minimal-v1");
+    await page.getByRole("button", { name: /Back/ }).click();
+
+    await page.getByRole("button", { name: "Create new app" }).click();
+    const frame = page.frameLocator('iframe[sandbox="allow-scripts"]');
+    await expect(page.getByText("Minimal Board", { exact: true }).first()).toBeVisible();
+    await expect(frame.getByText(/This example app shows you and the AI/)).toBeVisible();
+
+    await frame.getByLabel("Note", { exact: true }).fill("Temporary board note");
+    await frame.getByRole("button", { name: "Post" }).click();
+    await expect(frame.getByText("Temporary board note", { exact: true })).toBeVisible();
+    await frame.getByRole("button", { name: /Delete note: Temporary board note/ }).click();
+    await frame.getByRole("button", { name: "Delete", exact: true }).click();
+    await expect(frame.getByText("Temporary board note", { exact: true })).toBeHidden();
+
+    await page.getByRole("button", { name: "Toggle BuilderAI" }).click();
+    await page.getByRole("button", { name: "Open Builder profile settings for Minimal" }).click();
+    await expect(page.getByRole("button", { name: "AI Agent" })).toHaveAttribute("aria-current", "page");
+    await page.getByLabel("Active profile").selectOption("builtin-opinionated-v1");
+    await page.getByRole("button", { name: /Back/ }).click();
+
+    await expect(frame.getByLabel("Note", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Open Builder profile settings for Opinionated" })).toBeVisible();
   });
 
   test("stores custom Builder profiles in this browser", async ({ page }) => {

@@ -5,7 +5,7 @@ import { createBuiltInBuilderProfiles, resolveActiveBuilderProfile } from "./pro
 describe("Builder profile store", () => {
   it("keeps built-ins locked while custom profiles can be created, changed, and deleted", async () => {
     const storage = createMemoryStorage();
-    const builtIns = createBuiltInBuilderProfiles("<!doctype html><title>Opinionated</title>");
+    const builtIns = createBuiltInBuilderProfiles();
     const store = createBuilderProfileStore(storage, {
       builtInProfiles: builtIns,
       createId: () => "custom-1",
@@ -33,14 +33,15 @@ describe("Builder profile store", () => {
   });
 
   it("puts Opinionated first while keeping additional guidance out of Minimal", () => {
-    const opinionatedStarterSource = "<!doctype html><title>Opinionated</title>";
-    const [opinionated, minimal] = createBuiltInBuilderProfiles(opinionatedStarterSource);
+    const [opinionated, minimal] = createBuiltInBuilderProfiles();
 
     expect(minimal.promptTemplate).toContain("Runtime constraints:");
     expect(minimal.promptTemplate).toContain("Persistence and live data:");
     expect(minimal.promptTemplate).not.toContain("App Lab best practices:");
     expect(minimal.promptTemplate).not.toContain("read_current_app_source");
     expect(minimal.starterSource).toContain('name="app-lab-tailwind"');
+    expect(minimal.starterSource).toContain("<title>Minimal Board</title>");
+    expect(minimal.starterSource).toContain("Post</button>");
     expect(minimal.starterSource).toContain("Alpine.data");
     expect(minimal.starterSource).toContain("AppLab.getData");
     expect(minimal.starterSource).toContain("AppLab.saveData");
@@ -49,13 +50,15 @@ describe("Builder profile store", () => {
     expect(opinionated.promptTemplate).toContain(minimal.promptTemplate);
     expect(opinionated.promptTemplate).toContain("App Lab best practices:");
     expect(opinionated.promptTemplate).toContain("transient UI state");
-    expect(opinionated.starterSource).toBe(opinionatedStarterSource);
+    expect(opinionated.starterSource).toContain("<title>Opinionated Board</title>");
+    expect(opinionated.starterSource).toContain("Drag to reorder");
+    expect(opinionated.starterSource).toContain("toggleNoteCollapsed");
     expect(resolveActiveBuilderProfile([opinionated, minimal], opinionated.profileId)).toBe(opinionated);
     expect(resolveActiveBuilderProfile([opinionated, minimal], "missing-profile")).toBe(opinionated);
   });
 
   it("rejects changes to built-ins and invalid custom input", async () => {
-    const builtIns = createBuiltInBuilderProfiles("<!doctype html><title>Opinionated</title>");
+    const builtIns = createBuiltInBuilderProfiles();
     const store = createBuilderProfileStore(createMemoryStorage(), { builtInProfiles: builtIns });
 
     await expect(store.delete(builtIns[0].profileId)).rejects.toThrow("cannot be deleted");
@@ -77,7 +80,7 @@ describe("Builder profile store", () => {
 
   it("ignores malformed and unsupported stored versions", async () => {
     const storage = createMemoryStorage();
-    const builtIns = createBuiltInBuilderProfiles("<!doctype html><title>Opinionated</title>");
+    const builtIns = createBuiltInBuilderProfiles();
     const store = createBuilderProfileStore(storage, { builtInProfiles: builtIns });
 
     storage.setItem("app-lab-builder-profiles-v1", JSON.stringify({ profiles: [], version: 2 }));

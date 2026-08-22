@@ -1,5 +1,6 @@
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 import { readFirebaseE2eProfile, type FirebaseE2eProfile } from "./firebaseProfile";
+import { addSyncTestItem, createSyncTestApp, deleteSyncTestItem, SYNC_TEST_APP_TITLE } from "./syncTestApp";
 
 const firebaseProfile = readFirebaseE2eProfile();
 let ownerContext: BrowserContext | null = null;
@@ -32,7 +33,7 @@ test.describe("@firebase source sync", () => {
 
     try {
       await configureStorage(owner, firebaseProfile.config, firebaseProfile);
-      await createExampleApp(owner);
+      await createSyncTestApp(owner);
       await saveSource(owner, htmlForTitle(initialTitle));
       const inviteUrl = await createInvite(owner);
 
@@ -71,7 +72,7 @@ test.describe("@firebase source sync", () => {
 
     try {
       await configureStorage(owner, firebaseProfile.config, firebaseProfile);
-      await createExampleApp(owner);
+      await createSyncTestApp(owner);
       await saveSource(owner, htmlForTitle(initialTitle));
       const inviteUrl = await createInvite(owner);
 
@@ -104,7 +105,7 @@ test.describe("@firebase source sync", () => {
 
     try {
       await configureStorage(owner, firebaseProfile.config, firebaseProfile);
-      await createExampleApp(owner);
+      await createSyncTestApp(owner);
       await saveSource(owner, htmlForTitle(initialTitle));
       const inviteUrl = await createInvite(owner);
 
@@ -132,21 +133,21 @@ test.describe("@firebase source sync", () => {
 
     try {
       await configureStorage(owner, firebaseProfile.config, firebaseProfile);
-      await createExampleApp(owner);
+      await createSyncTestApp(owner);
       const inviteUrl = await createInvite(owner);
 
       await joined.goto(inviteUrl);
       await previewAndImportSharedApp(joined);
-      await expect(joined.getByText("Example App").first()).toBeVisible({ timeout: 15_000 });
+      await expect(joined.getByText(SYNC_TEST_APP_TITLE).first()).toBeVisible({ timeout: 15_000 });
       await joined.getByRole("button", { name: "Open", exact: true }).click();
-      await expect(appFrame(joined).getByRole("heading", { name: "Example App" })).toBeVisible();
+      await expect(appFrame(joined).getByRole("heading", { name: SYNC_TEST_APP_TITLE })).toBeVisible();
 
-      await addExampleItem(owner, "Online item");
+      await addSyncTestItem(owner, "Online item");
       await expect(appFrame(joined).getByText("Online item")).toBeVisible({ timeout: 15_000 });
       await expect(appFrame(owner).getByText("Online item")).toBeVisible();
 
       await ownerBrowserContext.setOffline(true);
-      await addExampleItem(owner, "Offline item");
+      await addSyncTestItem(owner, "Offline item");
       await expect(appFrame(owner).getByText("Offline item")).toBeVisible();
       await owner.getByRole("button", { name: "‹ Apps" }).click();
       await owner.getByRole("button", { name: "Open", exact: true }).click();
@@ -170,17 +171,17 @@ test.describe("@firebase source sync", () => {
 
     try {
       await configureStorage(owner, firebaseProfile.config, firebaseProfile);
-      await createExampleApp(owner);
+      await createSyncTestApp(owner);
       const inviteUrl = await createInvite(owner);
 
       await joined.goto(inviteUrl);
       await previewAndImportSharedApp(joined);
-      await expect(joined.getByText("Example App").first()).toBeVisible({ timeout: 15_000 });
+      await expect(joined.getByText(SYNC_TEST_APP_TITLE).first()).toBeVisible({ timeout: 15_000 });
       await joined.getByRole("button", { name: "Open", exact: true }).click();
-      await expect(appFrame(joined).getByRole("heading", { name: "Example App" })).toBeVisible();
+      await expect(appFrame(joined).getByRole("heading", { name: SYNC_TEST_APP_TITLE })).toBeVisible();
 
       for (const item of ["Live one", "Live two", "Live three"]) {
-        await addExampleItem(owner, item);
+        await addSyncTestItem(owner, item);
         await expect(appFrame(owner).getByText(item, { exact: true })).toBeVisible();
         await expect(appFrame(joined).getByText(item, { exact: true })).toBeVisible({ timeout: 15_000 });
       }
@@ -197,22 +198,22 @@ test.describe("@firebase source sync", () => {
 
     try {
       await configureStorage(owner, firebaseProfile.config, firebaseProfile);
-      await createExampleApp(owner);
+      await createSyncTestApp(owner);
 
       for (const item of ["One", "Two", "Three"]) {
-        await addExampleItem(owner, item);
+        await addSyncTestItem(owner, item);
         await expect(appFrame(owner).getByText(item, { exact: true })).toBeVisible();
       }
 
       await ownerBrowserContext.setOffline(true);
 
-      await deleteExampleItem(owner, "One");
+      await deleteSyncTestItem(owner, "One");
       await expect(appFrame(owner).getByText("One", { exact: true })).toBeHidden();
 
-      await addExampleItem(owner, "Four");
+      await addSyncTestItem(owner, "Four");
       await expect(appFrame(owner).getByText("Four", { exact: true })).toBeVisible();
 
-      await deleteExampleItem(owner, "Two");
+      await deleteSyncTestItem(owner, "Two");
       await expect(appFrame(owner).getByText("Two", { exact: true })).toBeHidden();
       await expect(appFrame(owner).getByText("Three", { exact: true })).toBeVisible();
       await expect(appFrame(owner).getByText("Four", { exact: true })).toBeVisible();
@@ -307,32 +308,6 @@ async function configureStorage(page: Page, config: Record<string, string>, prof
     );
   }, { firebaseConfig: config, profile });
   await page.reload();
-}
-
-async function createExampleApp(page: Page) {
-  await page.evaluate(() => {
-    localStorage.setItem(
-      "app-lab-builder-preferences-v1",
-      JSON.stringify({ activeProfileId: "builtin-opinionated-v1", conversationMemory: "short", version: 1 }),
-    );
-  });
-  await page.getByRole("button", { name: "Create new app" }).click();
-  await expect(page.getByRole("button", { name: "Toggle source" })).toBeVisible({ timeout: 30_000 });
-}
-
-async function addExampleItem(page: Page, title: string) {
-  const frame = appFrame(page);
-  await frame.getByRole("button", { name: "New item" }).click();
-  await frame.getByLabel("Title").fill(title);
-  await frame.getByRole("button", { name: "Save" }).click();
-  await expect(frame.getByText(title, { exact: true })).toBeVisible();
-}
-
-async function deleteExampleItem(page: Page, title: string) {
-  const frame = appFrame(page);
-  await frame.locator("details", { hasText: title }).getByRole("button", { name: "Edit item" }).click();
-  await frame.getByRole("button", { name: "Delete this item" }).click();
-  await frame.getByRole("button", { name: "Delete" }).click();
 }
 
 async function saveSource(page: Page, sourceCode: string) {

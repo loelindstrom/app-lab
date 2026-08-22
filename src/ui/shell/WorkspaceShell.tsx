@@ -3,6 +3,8 @@ import {
   addAiUsage,
   createEmptyAiUsage,
   DEFAULT_BUILDER_PREFERENCES,
+  OPINIONATED_BOARD_DESCRIPTION,
+  OPINIONATED_BOARD_SOURCE,
   resolveActiveBuilderProfile,
   type AiActions,
   type AiChatMessage,
@@ -12,7 +14,6 @@ import {
   type BuilderProfile,
 } from "../../ai";
 import {
-  createAlpineExampleAppInput,
   type AppLabCore,
   type AppRecord,
   type AppSummary,
@@ -330,7 +331,11 @@ export function WorkspaceShell({ aiActions, core, syncActions }: WorkspaceShellP
     setBuilderProfiles(profiles);
     setBuilderPreferences(preferences);
     const profile = resolveActiveBuilderProfile(profiles, preferences.activeProfileId);
-    const fallbackInput = createAlpineExampleAppInput();
+    const fallbackInput: CreateAppInput = {
+      description: OPINIONATED_BOARD_DESCRIPTION,
+      name: "Opinionated Board",
+      sourceCode: OPINIONATED_BOARD_SOURCE,
+    };
     await createAppFromInput(
       profile
         ? {
