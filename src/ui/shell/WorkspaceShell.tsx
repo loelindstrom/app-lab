@@ -648,16 +648,18 @@ export function WorkspaceShell({ aiActions, core, syncActions }: WorkspaceShellP
           />
         </>
       ) : mode === "launcher" ? (
-        <>
-          <button
-            className="fixed bottom-5 right-5 z-20 grid h-14 min-h-14 w-14 place-items-center rounded-full border border-app-accent bg-app-accent text-3xl font-light leading-none text-white shadow-panel hover:bg-app-strong"
-            type="button"
-            aria-label="Create new app"
-            onClick={createApp}
-          >
-            +
-          </button>
-        </>
+        <div className="pointer-events-none fixed inset-x-0 bottom-5 z-20">
+          <div className="mx-auto flex w-full max-w-5xl justify-end px-4">
+            <button
+              className="pointer-events-auto grid h-14 min-h-14 w-14 place-items-center rounded-full border border-app-accent bg-app-accent text-3xl font-light leading-none text-white shadow-panel hover:bg-app-strong"
+              type="button"
+              aria-label="Create new app"
+              onClick={createApp}
+            >
+              +
+            </button>
+          </div>
+        </div>
       ) : null}
 
       <SettingsDialog
@@ -948,10 +950,9 @@ function LauncherCard({
         title="App actions"
         onClick={onOpenActions}
       >
-        <svg className="h-4 w-4" aria-hidden="true" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M4.2 19.8 6.4 14.1 9.9 17.6 4.2 19.8Z"></path>
-          <path d="M8.1 12.4 13.4 7.1 16.9 10.6 11.6 15.9Z"></path>
-          <path d="M15.1 5.4 17.4 3.1 20.9 6.6 18.6 8.9Z"></path>
+        <svg className="h-4 w-4" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" />
+          <path d="m15 5 4 4" />
         </svg>
       </button>
       <button className="grid gap-2 pr-9 text-left disabled:cursor-default" type="button" disabled={isRemoteDeleted} onClick={onOpen}>
