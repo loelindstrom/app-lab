@@ -222,6 +222,7 @@ describe("WorkspaceShell sync wake-ups", () => {
     const aiActions = createAiActionsStub();
     const customProfile: BuilderProfile = {
       builtIn: false,
+      description: "Focused profile.",
       name: "Focused",
       profileId: "custom-focused",
       promptTemplate: "Build one focused app.",
@@ -772,6 +773,7 @@ function createAiActionsStub(config: AiConfig = { apiKey: "", model: "" }): AiAc
 const TEST_BUILDER_PROFILES: BuilderProfile[] = [
   {
     builtIn: true,
+    description: "Minimal test profile.",
     name: "Minimal",
     profileId: "builtin-minimal-v1",
     promptTemplate: "Build the requested app.",

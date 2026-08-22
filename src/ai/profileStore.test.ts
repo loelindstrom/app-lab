@@ -14,11 +14,12 @@ describe("Builder profile store", () => {
     await expect(store.list()).resolves.toEqual(builtIns);
 
     const created = await store.create({
+      description: "  My profile description.  ",
       name: "  My profile  ",
       promptTemplate: "",
       starterSource: "<!doctype html><title>Custom</title>",
     });
-    expect(created).toMatchObject({ builtIn: false, name: "My profile", profileId: "custom-1" });
+    expect(created).toMatchObject({ builtIn: false, description: "My profile description.", name: "My profile", profileId: "custom-1" });
 
     const updated = await store.update({
       ...created,
@@ -48,11 +49,13 @@ describe("Builder profile store", () => {
     expect(minimal.starterSource).toContain("AppLab.onDataChange");
 
     expect(opinionated.promptTemplate).toContain(minimal.promptTemplate);
+    expect(opinionated.description).toContain("UI and data best practices");
     expect(opinionated.promptTemplate).toContain("App Lab best practices:");
     expect(opinionated.promptTemplate).toContain("transient UI state");
     expect(opinionated.starterSource).toContain("<title>Opinionated Board</title>");
     expect(opinionated.starterSource).toContain("Drag to reorder");
     expect(opinionated.starterSource).toContain("toggleNoteCollapsed");
+    expect(minimal.description).toContain("essential App Lab constraints");
     expect(resolveActiveBuilderProfile([opinionated, minimal], opinionated.profileId)).toBe(opinionated);
     expect(resolveActiveBuilderProfile([opinionated, minimal], "missing-profile")).toBe(opinionated);
   });
@@ -64,13 +67,14 @@ describe("Builder profile store", () => {
     await expect(store.delete(builtIns[0].profileId)).rejects.toThrow("cannot be deleted");
     await expect(store.update({ ...builtIns[0], name: "Changed" })).rejects.toThrow("cannot be changed");
     await expect(
-      store.create({ name: "", promptTemplate: "Prompt", starterSource: "Source" }),
+      store.create({ description: "", name: "", promptTemplate: "Prompt", starterSource: "Source" }),
     ).rejects.toThrow("Profile name is required");
     await expect(
-      store.create({ name: "Invalid source", promptTemplate: "Prompt", starterSource: "Source" }),
+      store.create({ description: "", name: "Invalid source", promptTemplate: "Prompt", starterSource: "Source" }),
     ).rejects.toThrow("Starter app is invalid");
     await expect(
       store.create({
+        description: "",
         name: "Unsupported form",
         promptTemplate: "Prompt",
         starterSource: "<!doctype html><html><body><form><button>Save</button></form></body></html>",
@@ -82,6 +86,20 @@ describe("Builder profile store", () => {
     const storage = createMemoryStorage();
     const builtIns = createBuiltInBuilderProfiles();
     const store = createBuilderProfileStore(storage, { builtInProfiles: builtIns });
+
+    storage.setItem("app-lab-builder-profiles-v1", JSON.stringify({
+      profiles: [{
+        name: "Legacy profile",
+        profileId: "legacy-profile",
+        promptTemplate: "Legacy prompt",
+        starterSource: "<!doctype html><title>Legacy</title>",
+      }],
+      version: 1,
+    }));
+    await expect(store.list()).resolves.toEqual([
+      ...builtIns,
+      expect.objectContaining({ description: "", name: "Legacy profile", profileId: "legacy-profile" }),
+    ]);
 
     storage.setItem("app-lab-builder-profiles-v1", JSON.stringify({ profiles: [], version: 2 }));
     await expect(store.list()).resolves.toEqual(builtIns);

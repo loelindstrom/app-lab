@@ -35,6 +35,7 @@ describe("BuilderAI agent", () => {
     const agent = createBuilderAgent(client, async () => ({ apiKey: "sk-test", model: "provider/model" }));
     const profile: BuilderProfile = {
       builtIn: false,
+      description: "Focused test profile.",
       name: "Focused",
       profileId: "custom-focused",
       promptTemplate: "Build {{appName}} carefully. The active app is {{appName}}.",

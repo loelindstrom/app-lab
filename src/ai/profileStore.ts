@@ -66,6 +66,7 @@ function normalizeInput(input: BuilderProfileInput, profileId: string): BuilderP
   assertValidStarterSource(input.starterSource);
   return {
     builtIn: false,
+    description: input.description.trim(),
     name,
     profileId,
     promptTemplate: input.promptTemplate,
@@ -109,6 +110,7 @@ function parseStoredProfile(value: unknown): BuilderProfile | null {
   }
   return {
     builtIn: false,
+    description: typeof profile.description === "string" ? profile.description.trim() : "",
     name: profile.name.trim(),
     profileId: profile.profileId,
     promptTemplate: profile.promptTemplate,

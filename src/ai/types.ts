@@ -34,6 +34,7 @@ export interface BuilderPreferences {
 
 export interface BuilderProfile {
   builtIn: boolean;
+  description: string;
   name: string;
   profileId: string;
   promptTemplate: string;
@@ -41,6 +42,7 @@ export interface BuilderProfile {
 }
 
 export interface BuilderProfileInput {
+  description: string;
   name: string;
   promptTemplate: string;
   starterSource: string;

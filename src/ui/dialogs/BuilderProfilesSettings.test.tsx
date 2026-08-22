@@ -7,6 +7,7 @@ import { BuilderProfilesSettings } from "./BuilderProfilesSettings";
 const BUILT_INS: BuilderProfile[] = [
   {
     builtIn: true,
+    description: "Uses additional UI and data guidance.",
     name: "Opinionated",
     profileId: "builtin-opinionated-v1",
     promptTemplate: "Opinionated prompt",
@@ -14,6 +15,7 @@ const BUILT_INS: BuilderProfile[] = [
   },
   {
     builtIn: true,
+    description: "Uses only essential constraints.",
     name: "Minimal",
     profileId: "builtin-minimal-v1",
     promptTemplate: "Minimal prompt",
@@ -69,6 +71,8 @@ describe("BuilderProfilesSettings", () => {
 
     expect(screen.getByLabelText("Profile name")).toHaveProperty("readOnly", true);
     expect(readControlValue("Profile name")).toBe("Opinionated");
+    expect(screen.getAllByText("Uses additional UI and data guidance.").some((element) => element.tagName === "P")).toBe(true);
+    expect(readControlValue("Description")).toBe("Uses additional UI and data guidance.");
     expect(screen.getByLabelText("Builder instructions")).toHaveProperty("readOnly", true);
     expect(readControlValue("Builder instructions")).toBe("Opinionated prompt");
     expect(screen.queryByLabelText("Conversation memory")).toBeNull();
@@ -82,14 +86,16 @@ describe("BuilderProfilesSettings", () => {
     expect(createProfile).toHaveBeenCalledWith(expect.objectContaining({ name: "Opinionated copy" }));
     expect(selectProfile).toHaveBeenCalledWith("custom-1");
     expect(screen.getByLabelText("Profile name")).toHaveProperty("readOnly", false);
+    expect(readControlValue("Description")).toBe("Uses additional UI and data guidance.");
     expect(screen.getByRole("button", { name: "Delete" })).toHaveProperty("disabled", false);
 
     fireEvent.change(screen.getByLabelText("Profile name"), { target: { value: "My Builder" } });
+    fireEvent.change(screen.getByLabelText("Description"), { target: { value: "My custom setup." } });
     fireEvent.click(screen.getByRole("button", { name: "Save profile" }));
 
     await waitFor(() =>
       expect(updateProfile).toHaveBeenCalledWith(
-        expect.objectContaining({ name: "My Builder", profileId: "custom-1" }),
+        expect.objectContaining({ description: "My custom setup.", name: "My Builder", profileId: "custom-1" }),
       ),
     );
   });

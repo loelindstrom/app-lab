@@ -198,6 +198,7 @@ export function createBuiltInBuilderProfiles(): BuilderProfile[] {
   return [
     {
       builtIn: true,
+      description: "Adds App Lab UI and data best practices, with a richer starter that demonstrates reusable patterns.",
       name: "Opinionated",
       profileId: OPINIONATED_BUILDER_PROFILE_ID,
       promptTemplate: `${minimalPrompt}
@@ -218,6 +219,7 @@ App Lab best practices:
     },
     {
       builtIn: true,
+      description: "Uses only the essential App Lab constraints, with a small starter that leaves the rest to you and the AI.",
       name: "Minimal",
       profileId: MINIMAL_BUILDER_PROFILE_ID,
       promptTemplate: minimalPrompt,

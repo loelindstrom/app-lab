@@ -57,11 +57,11 @@ export function BuilderProfilesSettings({
     return () => window.clearTimeout(timeoutId);
   }, [notice]);
 
-  async function createProfile(source: BuilderProfile | null, name: string) {
+  async function createProfile(source: BuilderProfile | null, name: string, description = source?.description ?? "") {
     setStatus("Creating profile...");
     let created: BuilderProfile;
     try {
-      created = await onCreate({ ...toProfileInput(source), name });
+      created = await onCreate({ ...toProfileInput(source), description, name });
     } catch (error) {
       setStatus("Ready");
       setNotice(error instanceof Error ? error.message : "Could not create profile.");
@@ -156,7 +156,7 @@ export function BuilderProfilesSettings({
             <button
               className="min-h-9 rounded-md border border-app-line bg-white px-3 text-sm font-semibold text-app-ink hover:border-app-accent hover:text-app-accent"
               type="button"
-              onClick={() => void createProfile(minimalProfile, "New profile")}
+              onClick={() => void createProfile(minimalProfile, "New profile", "")}
             >
               New
             </button>
@@ -196,6 +196,7 @@ export function BuilderProfilesSettings({
             ))}
           </select>
         </label>
+        {selectedProfile.description ? <p className="text-sm leading-relaxed text-app-muted">{selectedProfile.description}</p> : null}
       </section>
 
       <section className="grid gap-8 border-t border-app-line pt-6" aria-labelledby="profile-details-title">
@@ -209,6 +210,16 @@ export function BuilderProfilesSettings({
             type="text"
             value={draft.name}
             onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
+          />
+        </label>
+
+        <label className="grid gap-1.5 text-sm font-normal text-app-muted">
+          Description
+          <textarea
+            className={`${fieldClassName} min-h-24 resize-y text-sm leading-relaxed`}
+            readOnly={isLocked}
+            value={draft.description}
+            onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))}
           />
         </label>
 
@@ -270,6 +281,7 @@ export function BuilderProfilesSettings({
 
 function toProfileInput(profile: BuilderProfile | null): BuilderProfileInput {
   return {
+    description: profile?.description ?? "",
     name: profile?.name ?? "",
     promptTemplate: profile?.promptTemplate ?? "",
     starterSource: profile?.starterSource ?? "",
