@@ -34,6 +34,50 @@ And the code which caused it was probably this:
         </form>
 ```
 
+**In the "Opinionated Board" I often see sync error**  
+The error shown via the cloud icon in host's top bar is 
+"Could not retry pending sync: Remote room snapshot is older than the last seen version."
+It's unclear why this happens...
+Same for "Minimal Board" starting app.
+
+## Small fixes
+
+**FAB on launcher button should be more centered on desktop**  
+The Floating Action Button doesn't have to be all the way out to the side on very wide screens in the launcher menu of App Lab's shell/host
+
+**Change the pen edit icon for a cleaner one**  
+This is for the icon on the apps in the App Lab host's launcher menu. Would be nicer with the one which is used in the "Opinionated Board" starting app
+
+**Put the "Opinionated Board" starting app in correct place**  
+The "Minimal Board" starting app lives inside the AI folder. I think the "Opinionated Board" belongs there too now when it's part of a AI profile
+
+**When one opens an invite one _has_ to preview it before importing. I think that shall be optional**  
+Title describes well.
+
+**The Opinionated Board starting app drag and drop is not perfect**  
+If many items and one drag the top one to the bottom and aim too low, i.e. hold it on the host's bottom bar (mobile view), it doesn't get moved but isntead bounces back/stays in the top.  
+One needs to allow it to move as long as it's "south" of the last item even if it's "outside" the list of items
+
+**Show token usage/cost always**  
+Don't only show after first message is sent. Show from start but with 0 then if it hasn't been used yet
+
+**The 'Copy prompt+code' button does not look good**  
+I can't say exactly what it is, but something with its shape and placement. And the arrow in it is not good-looking.
+Also I think there shall be a short description when it's opened saying "Copy prompt and paste into external AI. Paste result back in '<>' - where the source code lives"
+
+**Also with OpenRouter connected the first message shall highlight the possibility to Copy prompt+code**  
+The messages:
+If OpenRouter connected:
+- Hi,  
+  Describe how you want to edit the app!  
+  Or if you prefer, use the button below to copy prompt+source to use in external AI.
+If OpenRouter not connected:
+- Hi,  
+  Use the button below to copy prompt+source to use in external AI to edit the app.  
+  Or set up your AI provider in ['Settings'](<link to settings ai connection page>) to be able to chat directly here.
+
+Btw, I suppose that this first message shall be included in the chat history as well sent to the LLM. That makes sense in my book, but open to change my mind.
+
 ## Current Baseline
 
 App Lab is a React/Vite browser app with:
@@ -75,22 +119,26 @@ Known limitations that are intentionally not blockers for the current MVP:
 
 ## Nice-To-Have After MVP
 
-0. PWA 
+The order does not have any meaning, one needs to evaluate the priority when we get here.
+
+- PWA 
    Easy to make into a PWA so the app becomes very accessible for people
 
-1. Source history
+- Source history
 
    Add lightweight source snapshots only if manual experimentation shows real need. This should not block current sync work.
 
-2. Better app-data merge
+- Better app-data merge
 
    Add ID-based merge only if shared/offline conflicts become common enough to justify the complexity. The current policy is
    latest-local-pending-data wins.
 
-3. Import app data
+- Import app data
 
    Export exists for source and app data. Add app-data import only when manual backup/restore workflows show enough demand to
    justify UI and safety checks.
+
+- When clicking the "+" button on the launcher to create a new app one could get the choice to decide which Agent profile one wants to be active. Maybe think a bit about how the user perceives this in regards to if they think that one chooses profile per app while perhaps one is changing globally? Trade-off desired functionality, implemention complexity and clarity for the user.
 
 ## Explicit Non-Goals For Now
 

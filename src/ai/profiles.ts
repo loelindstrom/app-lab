@@ -103,11 +103,11 @@ export const MINIMAL_BUILDER_STARTER_SOURCE = `<!doctype html>
                   body: [
                     "Hi!",
                     "",
-                    "This example app shows you and the AI who will edit it the most crucial parts of building apps in App Lab.",
+                    "This example app shows you (the user) and the AI, the most crucial parts of building apps in App Lab.",
                     "",
-                    "Press AI to copy a prompt into your favorite external AI tool, or work directly with BuilderAI after connecting your own AI in Settings.",
+                    "Press 'AI ✦' to copy the prompt+app source into an external AI chat, or work directly with BuilderAI after connecting your own provider in 'Settings'.",
                     "",
-                    "In Settings you can also switch profile, add your own starter app, and adjust the AI agent's instructions.",
+                    "In 'Settings' you can also switch profile, add your own starter app, and adjust the AI agent's instructions.",
                     "",
                     "Happy building!",
                     "",
@@ -117,7 +117,7 @@ export const MINIMAL_BUILDER_STARTER_SOURCE = `<!doctype html>
                 },
                 {
                   id: this.createId(),
-                  body: "Connect a storage provider in Settings to share this board and see notes update live across browsers.",
+                  body: "PS. Connect a storage provider in 'Settings' to share your app with friends and collaborate in real-time.",
                   createdAt: now
                 }
               ]

@@ -231,7 +231,7 @@ export const OPINIONATED_BOARD_SOURCE = `<!doctype html>
                 {
                   id: this.createId(),
                   title: "Welcome to App Lab",
-                  body: "This board demonstrates App Lab persistence, live updates, tabs, dialogs, and reusable actions.",
+                  body: "This board showcases App Lab persistence, live updates, tabs, dialogs, and reusable actions for you (the user) and for the AI which will interact with it.",
                   status: "active",
                   createdAt: now,
                   updatedAt: now,
@@ -240,7 +240,7 @@ export const OPINIONATED_BOARD_SOURCE = `<!doctype html>
                 {
                   id: this.createId(),
                   title: "Build with AI",
-                  body: "Press AI to copy the current app into an external AI chat or work directly with BuilderAI after connecting your own provider in Settings.",
+                  body: "Press 'AI ✦' to copy the prompt+app source into an external AI chat, or work directly with BuilderAI after connecting your own provider in 'Settings'.",
                   status: "active",
                   createdAt: now,
                   updatedAt: now,
@@ -249,7 +249,7 @@ export const OPINIONATED_BOARD_SOURCE = `<!doctype html>
                 {
                   id: this.createId(),
                   title: "Share live updates",
-                  body: "Connect a storage provider in Settings, then share the app to let other people update this board live.",
+                  body: "Connect a storage provider in 'Settings', then share the app to let other people update this board live.",
                   status: "active",
                   createdAt: now,
                   updatedAt: now,
