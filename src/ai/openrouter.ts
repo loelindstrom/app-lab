@@ -1,9 +1,13 @@
+import { createParser } from "eventsource-parser";
 import { normalizeAiConfig } from "./config";
 import type { AiConfig, AiConnectionResult, AiUsage } from "./types";
 
 const OPENROUTER_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions";
 const OPENROUTER_KEY_URL = "https://openrouter.ai/api/v1/key";
 const OPENROUTER_TOOL_MODELS_URL = "https://openrouter.ai/api/v1/models?supported_parameters=tools";
+const MAX_OPENROUTER_STREAM_BYTES = 20 * 1024 * 1024;
+
+export type OpenRouterReasoningDetail = Record<string, unknown>;
 
 export interface OpenRouterToolCall {
   function: {
@@ -17,6 +21,8 @@ export interface OpenRouterToolCall {
 export interface OpenRouterMessage {
   content: string | null;
   name?: string;
+  reasoning?: string;
+  reasoning_details?: OpenRouterReasoningDetail[];
   role: "assistant" | "system" | "tool" | "user";
   tool_call_id?: string;
   tool_calls?: OpenRouterToolCall[];
@@ -34,6 +40,8 @@ export interface OpenRouterTool {
 export interface SendOpenRouterChatInput {
   config: AiConfig;
   messages: OpenRouterMessage[];
+  onContent?: (content: string) => void;
+  onReasoning?: (reasoning: string) => void;
   signal?: AbortSignal;
   tools: OpenRouterTool[];
 }
@@ -64,7 +72,7 @@ export function createOpenRouterClient(options: CreateOpenRouterClientOptions = 
           messages: input.messages,
           model: config.model,
           parallel_tool_calls: false,
-          stream: false,
+          stream: true,
           tool_choice: "auto",
           tools: input.tools,
         }),
@@ -72,14 +80,11 @@ export function createOpenRouterClient(options: CreateOpenRouterClientOptions = 
         method: "POST",
         signal: input.signal,
       });
-      const payload = await readJsonResponse(response);
-      assertSuccessfulResponse(response, payload);
-
-      const rawMessage = readRecord(readArray(payload.choices)[0])?.message;
-      return {
-        message: parseAssistantMessage(rawMessage),
-        usage: parseUsage(payload.usage),
-      };
+      if (!response.ok) {
+        const payload = await readJsonResponse(response);
+        assertSuccessfulResponse(response, payload);
+      }
+      return readStreamingChatResponse(response, input);
     },
 
     async testConnection(input, signal) {
@@ -107,6 +112,165 @@ export function createOpenRouterClient(options: CreateOpenRouterClientOptions = 
       };
     },
   };
+}
+
+async function readStreamingChatResponse(response: Response, input: SendOpenRouterChatInput): Promise<OpenRouterChatResult> {
+  if (!response.body) throw new Error("OpenRouter returned an empty response stream.");
+
+  let content = "";
+  let rawReasoning = "";
+  let reasoningDetails: OpenRouterReasoningDetail[] = [];
+  let visibleReasoning = "";
+  let usage = emptyUsage();
+  let streamBytes = 0;
+  let streamDone = false;
+  let streamError: Error | null = null;
+  const toolCalls = new Map<number, MutableToolCall>();
+  const parser = createParser({
+    onError(error) {
+      streamError = new Error(`OpenRouter returned an invalid response stream: ${error.message}`);
+    },
+    onEvent(event) {
+      if (streamDone) return;
+      if (event.data === "[DONE]") {
+        streamDone = true;
+        return;
+      }
+
+      let payload: Record<string, unknown>;
+      try {
+        payload = readRecord(JSON.parse(event.data)) ?? {};
+      } catch (_) {
+        streamError = new Error("OpenRouter returned invalid JSON in its response stream.");
+        return;
+      }
+
+      const error = readRecord(payload.error);
+      if (error) {
+        streamError = new Error(typeof error.message === "string" ? error.message : "OpenRouter streaming request failed.");
+        return;
+      }
+
+      if (readRecord(payload.usage)) usage = parseUsage(payload.usage);
+      const choice = readRecord(readArray(payload.choices)[0]);
+      const delta = readRecord(choice?.delta);
+      if (!delta) return;
+
+      if (typeof delta.content === "string") {
+        content += delta.content;
+        input.onContent?.(content);
+      }
+      if (typeof delta.reasoning === "string") rawReasoning += delta.reasoning;
+      reasoningDetails = mergeReasoningDetails(reasoningDetails, readArray(delta.reasoning_details));
+      const nextVisibleReasoning = extractVisibleReasoning(reasoningDetails, rawReasoning);
+      if (nextVisibleReasoning !== visibleReasoning) {
+        visibleReasoning = nextVisibleReasoning;
+        input.onReasoning?.(visibleReasoning);
+      }
+      mergeToolCallDeltas(toolCalls, readArray(delta.tool_calls));
+    },
+  });
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+
+  try {
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      streamBytes += chunk.value.byteLength;
+      if (streamBytes > MAX_OPENROUTER_STREAM_BYTES) throw new Error("OpenRouter response exceeded the 20 MB stream limit.");
+      parser.feed(decoder.decode(chunk.value, { stream: true }));
+      if (streamError) throw streamError;
+      if (streamDone) {
+        await reader.cancel().catch(() => undefined);
+        break;
+      }
+    }
+    if (!streamDone) {
+      parser.feed(decoder.decode());
+      parser.reset({ consume: true });
+      if (streamError) throw streamError;
+    }
+  } catch (error) {
+    await reader.cancel().catch(() => undefined);
+    throw error;
+  }
+
+  return {
+    message: parseAssistantMessage({
+      content: content || null,
+      reasoning: rawReasoning || undefined,
+      reasoning_details: reasoningDetails.length ? reasoningDetails : undefined,
+      role: "assistant",
+      tool_calls: [...toolCalls.entries()].sort(([left], [right]) => left - right).map(([, toolCall]) => toolCall),
+    }),
+    usage,
+  };
+}
+
+type MutableToolCall = OpenRouterToolCall;
+
+function mergeToolCallDeltas(target: Map<number, MutableToolCall>, values: unknown[]): void {
+  values.forEach((value, position) => {
+    const delta = readRecord(value);
+    if (!delta) return;
+    const index = typeof delta.index === "number" && Number.isInteger(delta.index) ? delta.index : position;
+    const fn = readRecord(delta.function);
+    const current = target.get(index) ?? {
+      function: { arguments: "", name: "" },
+      id: "",
+      type: "function" as const,
+    };
+    if (typeof delta.id === "string") current.id ||= delta.id;
+    if (typeof fn?.name === "string") current.function.name += fn.name;
+    if (typeof fn?.arguments === "string") current.function.arguments += fn.arguments;
+    target.set(index, current);
+  });
+}
+
+function mergeReasoningDetails(current: OpenRouterReasoningDetail[], values: unknown[]): OpenRouterReasoningDetail[] {
+  const next = current.map((detail) => ({ ...detail }));
+  for (const value of values) {
+    const detail = readRecord(value);
+    if (!detail) continue;
+    const existingIndex = findReasoningDetail(next, detail);
+    if (existingIndex < 0) {
+      next.push({ ...detail });
+      continue;
+    }
+    const existing = next[existingIndex];
+    const merged = { ...existing, ...detail };
+    for (const field of ["data", "summary", "text"] as const) {
+      if (typeof detail[field] === "string") {
+        merged[field] = `${typeof existing[field] === "string" ? existing[field] : ""}${detail[field]}`;
+      }
+    }
+    next[existingIndex] = merged;
+  }
+  return next;
+}
+
+function findReasoningDetail(details: OpenRouterReasoningDetail[], candidate: Record<string, unknown>): number {
+  if (typeof candidate.index === "number") {
+    return details.findIndex((detail) => detail.index === candidate.index && detail.type === candidate.type);
+  }
+  if (typeof candidate.id === "string") {
+    return details.findIndex((detail) => detail.id === candidate.id && detail.type === candidate.type);
+  }
+  return -1;
+}
+
+function extractVisibleReasoning(details: OpenRouterReasoningDetail[], fallback: string): string {
+  const text = details
+    .filter((detail) => detail.type === "reasoning.text" && typeof detail.text === "string")
+    .map((detail) => detail.text)
+    .join("\n\n");
+  if (text) return text;
+  const summary = details
+    .filter((detail) => detail.type === "reasoning.summary" && typeof detail.summary === "string")
+    .map((detail) => detail.summary)
+    .join("\n\n");
+  return summary || fallback;
 }
 
 function createHeaders(config: AiConfig, referer?: string): Record<string, string> {
@@ -137,12 +301,20 @@ function parseAssistantMessage(value: unknown): OpenRouterMessage {
 
   const toolCalls = readArray(message.tool_calls).map(parseToolCall);
   const content = typeof message.content === "string" ? message.content : null;
+  const reasoning = typeof message.reasoning === "string" ? message.reasoning : undefined;
+  const reasoningDetails = readArray(message.reasoning_details).map(readRecord).filter((detail): detail is Record<string, unknown> => Boolean(detail));
   if (!content && toolCalls.length === 0) throw new Error("OpenRouter returned an empty assistant response.");
   return {
     content,
+    ...(reasoning ? { reasoning } : {}),
+    ...(reasoningDetails.length ? { reasoning_details: reasoningDetails } : {}),
     role: "assistant",
     ...(toolCalls.length ? { tool_calls: toolCalls } : {}),
   };
+}
+
+function emptyUsage(): AiUsage {
+  return { completionTokens: 0, costUsd: null, promptTokens: 0, reasoningTokens: 0, totalTokens: 0 };
 }
 
 function parseToolCall(value: unknown): OpenRouterToolCall {

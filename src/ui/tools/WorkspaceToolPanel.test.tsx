@@ -124,6 +124,43 @@ describe("WorkspaceToolPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Clear chat" }));
     expect(onClearBuilderConversation).toHaveBeenCalledTimes(1);
   });
+
+  it("renders safe assistant Markdown and a collapsed live reasoning trace", () => {
+    renderToolPanel({
+      aiConfigured: true,
+      builderActivity: "Thinking...",
+      builderIsRunning: true,
+      builderMessages: [
+        {
+          appId: app.appId,
+          content: "**Finished**\n\n- First item\n\n[Open docs](https://example.test)\n\n[Unsafe link](javascript:alert(1))\n\n<script>unsafe</script>",
+          createdAt: "2026-01-01T00:00:02.000Z",
+          messageId: "assistant-markdown",
+          role: "assistant",
+        },
+      ],
+      builderReasoning: "Inspecting the current source...",
+      builderStreamingContent: "Drafting **the answer**...",
+      mode: "builder",
+    });
+
+    expect(screen.getByText("Finished").tagName).toBe("STRONG");
+    expect(screen.getByText("First item").closest("li")).toBeTruthy();
+    const link = screen.getByRole("link", { name: "Open docs" });
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("rel")).toContain("noopener");
+    expect(screen.getByText("Unsafe link").closest("a")).toBeNull();
+    expect(screen.queryByText("unsafe")).toBeNull();
+    expect(screen.getByText("the answer").tagName).toBe("STRONG");
+
+    const summary = screen.getByText("Thinking...").closest("summary");
+    const details = summary?.closest("details");
+    expect(details?.open).toBe(false);
+    if (!summary) throw new Error("Expected reasoning summary.");
+    fireEvent.click(summary);
+    expect(details?.open).toBe(true);
+    expect(screen.getByText("Inspecting the current source...")).toBeTruthy();
+  });
 });
 
 function renderToolPanel(overrides: Partial<ComponentProps<typeof WorkspaceToolPanel>> = {}): RenderResult {
@@ -137,6 +174,9 @@ function renderToolPanel(overrides: Partial<ComponentProps<typeof WorkspaceToolP
       builderError={null}
       builderIsRunning={false}
       builderMessages={[]}
+      builderReasoning=""
+      builderReasoningMessageId={null}
+      builderStreamingContent=""
       builderUsage={{ completionTokens: 0, costUsd: 0, promptTokens: 0, reasoningTokens: 0, totalTokens: 0 }}
       consoleEntries={[]}
       mode="builder"

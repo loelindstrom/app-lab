@@ -59,6 +59,7 @@ test.describe("BuilderAI browser workflow", () => {
       "read_recent_console_output",
       "replace_current_app_source",
     ]);
+    expect(requests.every((request) => request.stream === true)).toBe(true);
     expect(readMessages(requests[1])).toEqual(
       expect.arrayContaining([expect.objectContaining({ role: "tool", tool_call_id: "read-source" })]),
     );
@@ -242,18 +243,19 @@ function toolCall(id: string, name: string, args: Record<string, unknown>) {
 }
 
 async function fulfillAssistant(route: Route, message: Record<string, unknown>) {
+  const payload = {
+    choices: [{ delta: message }],
+    usage: {
+      completion_tokens: 20,
+      completion_tokens_details: { reasoning_tokens: 5 },
+      cost: 0.001,
+      prompt_tokens: 100,
+      total_tokens: 120,
+    },
+  };
   await route.fulfill({
-    body: JSON.stringify({
-      choices: [{ message }],
-      usage: {
-        completion_tokens: 20,
-        completion_tokens_details: { reasoning_tokens: 5 },
-        cost: 0.001,
-        prompt_tokens: 100,
-        total_tokens: 120,
-      },
-    }),
-    contentType: "application/json",
+    body: `data: ${JSON.stringify(payload)}\n\ndata: [DONE]\n\n`,
+    contentType: "text/event-stream",
     status: 200,
   });
 }

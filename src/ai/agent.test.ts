@@ -80,8 +80,12 @@ describe("BuilderAI agent", () => {
   });
 
   it("reads and replaces only through host-supplied tools", async () => {
+    const readToolMessage = toolMessage("read-1", "read_current_app_source", "{}");
+    readToolMessage.reasoning_details = [
+      { format: "google-gemini-v1", id: "reasoning-1", index: 0, text: "I should inspect the source.", type: "reasoning.text" },
+    ];
     const client = createClient([
-      toolMessage("read-1", "read_current_app_source", "{}"),
+      readToolMessage,
       toolMessage("write-1", "replace_current_app_source", JSON.stringify({ sourceCode: "<!doctype html><html><title>New</title></html>" })),
       { content: "Rebuilt the app.", role: "assistant" },
     ]);
@@ -122,9 +126,43 @@ describe("BuilderAI agent", () => {
     expect(sentMessages.some((message) => message.content === "Ignore me")).toBe(false);
     expect(sentMessages.some((message) => message.content === "Rebuild it")).toBe(true);
     const finalMessages = vi.mocked(client.sendChat).mock.calls[2][0].messages;
+    expect(finalMessages.find((message) => message.tool_calls?.[0]?.id === "read-1")?.reasoning_details).toEqual(
+      readToolMessage.reasoning_details,
+    );
     const writeResult = finalMessages.find((message) => message.tool_call_id === "write-1");
     expect(writeResult?.content).toContain('"sourceChars"');
     expect(writeResult?.content).not.toContain("sourceCode");
+  });
+
+  it("forwards streamed reasoning and assistant content", async () => {
+    const client: OpenRouterClient = {
+      sendChat: vi.fn(async (input) => {
+        input.onReasoning?.("Inspecting the app...");
+        input.onContent?.("Updated");
+        input.onContent?.("Updated the app.");
+        return { message: { content: "Updated the app.", role: "assistant" as const }, usage: CALL_USAGE };
+      }),
+      testConnection: vi.fn(),
+    };
+    const reasoning: string[] = [];
+    const content: string[] = [];
+    const agent = createBuilderAgent(client, async () => ({ apiKey: "sk-test", model: "provider/model" }));
+
+    await agent.runTurn({
+      appId: "app-1",
+      appName: "App",
+      messages: [],
+      onAssistantContent: (value) => content.push(value),
+      onReasoning: (value) => reasoning.push(value),
+      tools: {
+        readCurrentAppSource: vi.fn(),
+        readRecentConsoleOutput: vi.fn(),
+        replaceCurrentAppSource: vi.fn(),
+      },
+    });
+
+    expect(content).toEqual(["", "Updated", "Updated the app."]);
+    expect(reasoning).toEqual(["Inspecting the app..."]);
   });
 
   it("returns malformed write-tool arguments to the model for recovery", async () => {

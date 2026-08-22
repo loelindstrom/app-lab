@@ -81,6 +81,8 @@ export interface RunBuilderTurnInput {
   conversationMemory?: BuilderConversationMemory;
   messages: AiChatMessage[];
   onActivity?: (message: string) => void;
+  onAssistantContent?: (content: string) => void;
+  onReasoning?: (reasoning: string) => void;
   onUsage?: (usage: AiUsage) => void;
   profile?: BuilderProfile;
   signal?: AbortSignal;

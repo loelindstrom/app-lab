@@ -72,10 +72,24 @@ export function createBuilderAgent(client: OpenRouterClient, getConfig: () => Pr
       ];
       const config = await getConfig();
       let usage = createEmptyAiUsage();
+      const completedReasoning: string[] = [];
 
       for (let round = 0; round < MAX_BUILDER_TOOL_ROUNDS; round += 1) {
         input.onActivity?.("Thinking...");
-        const response = await client.sendChat({ config, messages: [...messages], signal: input.signal, tools: BUILDER_TOOLS });
+        input.onAssistantContent?.("");
+        let currentReasoning = "";
+        const response = await client.sendChat({
+          config,
+          messages: [...messages],
+          onContent: input.onAssistantContent,
+          onReasoning: (reasoning) => {
+            currentReasoning = reasoning;
+            input.onReasoning?.([...completedReasoning, reasoning].filter(Boolean).join("\n\n"));
+          },
+          signal: input.signal,
+          tools: BUILDER_TOOLS,
+        });
+        if (currentReasoning) completedReasoning.push(currentReasoning);
         const assistant = response.message;
         usage = addAiUsage(usage, response.usage);
         input.onUsage?.(response.usage);
@@ -89,6 +103,7 @@ export function createBuilderAgent(client: OpenRouterClient, getConfig: () => Pr
           };
         }
 
+        input.onAssistantContent?.("");
         for (const toolCall of toolCalls) {
           const result = await executeTool(toolCall, input.tools, input.onActivity);
           messages.push({

@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { createPromptWithCode, type AiChatMessage, type AiUsage } from "../../ai";
 import type { AppRecord, JsonValue } from "../../core";
 import type { SandboxConsoleEntry } from "../../runtime";
+import { MarkdownMessage } from "./MarkdownMessage";
 
 export type ToolPanelMode = "builder" | "console" | "source";
 type SourceExportKind = "data" | "source";
@@ -15,6 +16,9 @@ interface WorkspaceToolPanelProps {
   builderError: string | null;
   builderIsRunning: boolean;
   builderMessages: AiChatMessage[];
+  builderReasoning: string;
+  builderReasoningMessageId: string | null;
+  builderStreamingContent: string;
   builderUsage: AiUsage;
   consoleEntries: SandboxConsoleEntry[];
   mode: ToolPanelMode | null;
@@ -37,6 +41,9 @@ export function WorkspaceToolPanel({
   builderError,
   builderIsRunning,
   builderMessages,
+  builderReasoning,
+  builderReasoningMessageId,
+  builderStreamingContent,
   builderUsage,
   consoleEntries,
   mode,
@@ -54,7 +61,7 @@ export function WorkspaceToolPanel({
 
   return (
     <aside
-      className={`fixed bottom-11 right-0 z-20 grid h-[min(74svh,620px)] w-full grid-rows-[44px_minmax(0,1fr)] overflow-hidden border-t border-app-line bg-app-panel shadow-panel transition-transform duration-200 lg:bottom-0 lg:top-11 lg:h-auto lg:w-[min(420px,36vw)] lg:border-l lg:border-t-0 ${
+      className={`fixed bottom-11 right-0 z-20 grid h-[min(74svh,620px)] min-w-0 w-full grid-rows-[44px_minmax(0,1fr)] overflow-hidden border-t border-app-line bg-app-panel shadow-panel transition-transform duration-200 lg:bottom-0 lg:top-11 lg:h-auto lg:w-[min(420px,36vw)] lg:border-l lg:border-t-0 ${
         isOpen ? "translate-y-0 lg:translate-x-0" : "translate-y-[calc(100%+44px)] lg:translate-x-full lg:translate-y-0"
       }`}
       aria-label={title}
@@ -66,10 +73,10 @@ export function WorkspaceToolPanel({
           <div className="flex min-w-0 items-baseline gap-1.5">
             <h2 className="shrink-0 truncate text-base font-extrabold leading-tight">{title}</h2>
             {mode === "builder" && activeBuilderProfileName ? (
-              <div className="flex min-w-0 items-baseline gap-1 text-xs font-bold text-app-muted">
-                <span className="shrink-0">(Profile:</span>
+              <div className="flex min-w-0 items-baseline gap-1.5 text-xs font-bold text-app-muted">
+                <span aria-hidden="true" className="shrink-0">·</span>
                 <button
-                  className="max-w-[32%] truncate text-left text-app-accent underline underline-offset-2"
+                  className="min-w-0 truncate text-left text-app-accent underline underline-offset-2"
                   type="button"
                   aria-label={`Open Builder profile settings for ${activeBuilderProfileName}`}
                   title={`Active profile: ${activeBuilderProfileName}`}
@@ -79,9 +86,9 @@ export function WorkspaceToolPanel({
                 </button>
                 {activeBuilderModel ? (
                   <>
-                    <span className="shrink-0">Model:</span>
+                    <span aria-hidden="true" className="hidden shrink-0 sm:inline">·</span>
                     <button
-                      className="min-w-0 truncate text-left text-app-accent underline underline-offset-2"
+                      className="hidden min-w-0 truncate text-left text-app-accent underline underline-offset-2 sm:block"
                       type="button"
                       aria-label={`Open AI connection settings for ${activeBuilderModel}`}
                       title={`Active model: ${activeBuilderModel}`}
@@ -91,7 +98,6 @@ export function WorkspaceToolPanel({
                     </button>
                   </>
                 ) : null}
-                <span className="-ml-1 shrink-0">)</span>
               </div>
             ) : null}
           </div>
@@ -118,6 +124,9 @@ export function WorkspaceToolPanel({
           error={builderError}
           isRunning={builderIsRunning}
           messages={builderMessages}
+          reasoning={builderReasoning}
+          reasoningMessageId={builderReasoningMessageId}
+          streamingContent={builderStreamingContent}
           usage={builderUsage}
           onClear={onClearBuilderConversation}
           onOpenAiSettings={onOpenAiSettings}
@@ -366,6 +375,9 @@ function BuilderView({
   error,
   isRunning,
   messages,
+  reasoning,
+  reasoningMessageId,
+  streamingContent,
   usage,
   onClear,
   onOpenAiSettings,
@@ -377,6 +389,9 @@ function BuilderView({
   error: string | null;
   isRunning: boolean;
   messages: AiChatMessage[];
+  reasoning: string;
+  reasoningMessageId: string | null;
+  streamingContent: string;
   onClear: () => void;
   onOpenAiSettings: () => void;
   onSendMessage: (content: string) => Promise<void>;
@@ -399,7 +414,7 @@ function BuilderView({
     if (typeof conversationEndRef.current?.scrollIntoView === "function") {
       conversationEndRef.current.scrollIntoView({ block: "nearest" });
     }
-  }, [activity, error, messages.length]);
+  }, [activity, error, messages.length, reasoning, streamingContent]);
 
   async function sendMessage() {
     const message = draft.trim();
@@ -419,9 +434,9 @@ function BuilderView({
   }
 
   return (
-    <div className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto]">
+    <div className="grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_auto]">
       <div className="min-h-0 overflow-auto">
-        <ol className="flex flex-col gap-3 p-3" aria-live="polite">
+        <ol className="flex min-w-0 flex-col gap-3 p-3" aria-live="polite">
           <li className="mr-auto grid max-w-[92%] gap-2 rounded-lg border border-app-line bg-white px-3 py-3 text-sm leading-relaxed text-app-muted">
             <p className="font-bold text-app-ink">Hi,</p>
             {configured ? (
@@ -458,18 +473,22 @@ function BuilderView({
             </div>
           </li>
           {messages.map((message) => (
-            <li
-              className={`max-w-[92%] whitespace-pre-wrap break-words rounded-lg px-3 py-2 text-sm leading-relaxed ${
-                message.role === "user"
-                  ? "ml-auto bg-app-accent text-white"
-                  : "mr-auto border border-app-line bg-white text-app-muted"
-              }`}
-              key={message.messageId}
-            >
-              {message.content}
-            </li>
+            <Fragment key={message.messageId}>
+              {message.messageId === reasoningMessageId && reasoning ? (
+                <BuilderReasoning activity={null} content={reasoning} isRunning={false} />
+              ) : null}
+              <BuilderMessage message={message} />
+            </Fragment>
           ))}
-          {activity ? (
+          {!reasoningMessageId && (isRunning || reasoning || activity) ? (
+            <BuilderReasoning activity={activity} content={reasoning} isRunning={isRunning} />
+          ) : null}
+          {streamingContent ? (
+            <li className="mr-auto max-w-[92%] rounded-lg border border-app-line bg-white px-3 py-2 text-sm leading-relaxed">
+              <MarkdownMessage content={streamingContent} />
+            </li>
+          ) : null}
+          {activity && reasoningMessageId ? (
             <li className="mr-auto max-w-[92%] rounded-lg border border-app-line bg-app-accent/10 px-3 py-2 text-sm font-bold text-app-muted">
               {activity}
             </li>
@@ -571,6 +590,45 @@ function BuilderView({
         </div>
       </form>
     </div>
+  );
+}
+
+function BuilderMessage({ message }: { message: AiChatMessage }) {
+  if (message.role === "assistant") {
+    return (
+      <li className="mr-auto max-w-[92%] rounded-lg border border-app-line bg-white px-3 py-2 text-sm leading-relaxed">
+        <MarkdownMessage content={message.content} />
+      </li>
+    );
+  }
+  return <li className="ml-auto min-w-0 max-w-[92%] whitespace-pre-wrap break-words rounded-lg bg-app-accent px-3 py-2 text-sm leading-relaxed text-white">{message.content}</li>;
+}
+
+function BuilderReasoning({ activity, content, isRunning }: { activity: string | null; content: string; isRunning: boolean }) {
+  const detailsRef = useRef<HTMLDetailsElement>(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  useEffect(() => {
+    if (!isRunning) return;
+    if (detailsRef.current) detailsRef.current.open = false;
+    const startedAt = Date.now();
+    setElapsedSeconds(0);
+    const interval = window.setInterval(() => setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000)), 1000);
+    return () => window.clearInterval(interval);
+  }, [isRunning]);
+
+  return (
+    <li className="mr-auto w-[92%] max-w-[92%] text-sm text-app-muted">
+      <details className="rounded-lg border border-app-line bg-app-accent/10 px-3 py-2" ref={detailsRef}>
+        <summary className="cursor-pointer font-bold text-app-ink">
+          <span className={isRunning ? "animate-pulse" : ""}>{activity ?? "Reasoning"}</span>
+          {isRunning ? <span className="ml-1 font-normal text-app-muted">{elapsedSeconds}s</span> : null}
+        </summary>
+        <div className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap border-t border-app-line pt-2 text-xs leading-relaxed">
+          {content || (isRunning ? "Waiting for model reasoning..." : "This model did not expose reasoning text.")}
+        </div>
+      </details>
+    </li>
   );
 }
 

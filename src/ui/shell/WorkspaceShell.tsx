@@ -56,6 +56,9 @@ interface BuilderSessionState {
   error: string | null;
   isRunning: boolean;
   messages: AiChatMessage[];
+  reasoning: string;
+  reasoningMessageId: string | null;
+  streamingContent: string;
   usage: AiUsage;
 }
 
@@ -401,6 +404,9 @@ export function WorkspaceShell({ aiActions, core, syncActions }: WorkspaceShellP
       error: null,
       isRunning: true,
       messages: requestMessages,
+      reasoning: "",
+      reasoningMessageId: null,
+      streamingContent: "",
     }));
 
     try {
@@ -411,6 +417,12 @@ export function WorkspaceShell({ aiActions, core, syncActions }: WorkspaceShellP
         messages: requestMessages,
         onActivity: (activity) => {
           updateBuilderSession(app.appId, (session) => ({ ...session, activity }));
+        },
+        onAssistantContent: (streamingContent) => {
+          updateBuilderSession(app.appId, (session) => ({ ...session, streamingContent }));
+        },
+        onReasoning: (reasoning) => {
+          updateBuilderSession(app.appId, (session) => ({ ...session, reasoning }));
         },
         onUsage: (usage) => {
           updateBuilderSession(app.appId, (session) => ({ ...session, usage: addAiUsage(session.usage, usage) }));
@@ -436,9 +448,12 @@ export function WorkspaceShell({ aiActions, core, syncActions }: WorkspaceShellP
           },
         },
       });
+      const assistantMessage = createAiChatMessage(app.appId, "assistant", result.content);
       updateBuilderSession(app.appId, (session) => ({
         ...session,
-        messages: [...session.messages, createAiChatMessage(app.appId, "assistant", result.content)],
+        messages: [...session.messages, assistantMessage],
+        reasoningMessageId: assistantMessage.messageId,
+        streamingContent: "",
       }));
     } catch (error) {
       updateBuilderSession(app.appId, (session) => ({
@@ -635,6 +650,9 @@ export function WorkspaceShell({ aiActions, core, syncActions }: WorkspaceShellP
             builderError={builderSessions[activeApp.appId]?.error ?? null}
             builderIsRunning={builderSessions[activeApp.appId]?.isRunning ?? false}
             builderMessages={builderSessions[activeApp.appId]?.messages ?? []}
+            builderReasoning={builderSessions[activeApp.appId]?.reasoning ?? ""}
+            builderReasoningMessageId={builderSessions[activeApp.appId]?.reasoningMessageId ?? null}
+            builderStreamingContent={builderSessions[activeApp.appId]?.streamingContent ?? ""}
             builderUsage={builderSessions[activeApp.appId]?.usage ?? createEmptyAiUsage()}
             consoleEntries={consoleEntries}
             mode={activeTool}
@@ -1584,7 +1602,16 @@ function AppView({
 }
 
 function createEmptyBuilderSession(): BuilderSessionState {
-  return { activity: null, error: null, isRunning: false, messages: [], usage: createEmptyAiUsage() };
+  return {
+    activity: null,
+    error: null,
+    isRunning: false,
+    messages: [],
+    reasoning: "",
+    reasoningMessageId: null,
+    streamingContent: "",
+    usage: createEmptyAiUsage(),
+  };
 }
 
 function createAiChatMessage(appId: string, role: AiChatMessage["role"], content: string): AiChatMessage {

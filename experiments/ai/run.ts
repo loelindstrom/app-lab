@@ -4,24 +4,10 @@ import { BUILDER_TOOLS, MAX_BUILDER_TOOL_ROUNDS } from "../../src/ai/agent.ts";
 import { createOpenRouterClient, type OpenRouterMessage } from "../../src/ai/openrouter.ts";
 import { analyzeGeneratedApp, type GeneratedAppAnalysis } from "./analyze.ts";
 import { AI_EVALUATION_PROFILES, STOPWATCH_SCENARIO, type AiEvaluationProfile } from "./profiles.ts";
+import { createRecordingFetch, type ApiCallMetric } from "./recordingFetch.ts";
 
 const DEFAULT_MODEL = "google/gemini-3.7-flash";
-const CHAT_URL = "https://openrouter.ai/api/v1/chat/completions";
 const MODELS_URL = "https://openrouter.ai/api/v1/models?supported_parameters=tools";
-
-interface ApiCallMetric {
-  cachedTokens: number;
-  completionTokens: number;
-  cost: number;
-  durationMs: number;
-  finishReason: string;
-  promptTokens: number;
-  reasoningTokens: number;
-  requestChars: number;
-  responseChars: number;
-  toolCalls: string[];
-  totalTokens: number;
-}
 
 interface EvaluationResult {
   analysis: GeneratedAppAnalysis;
@@ -212,42 +198,6 @@ function executeTool(name: string, rawArguments: string, sourceCode: string): { 
   throw new Error(`Unknown evaluation tool: ${name}`);
 }
 
-function createRecordingFetch(metrics: ApiCallMetric[]): typeof fetch {
-  return async (input, init) => {
-    const startedAt = performance.now();
-    const response = await fetch(input, init);
-    if (String(input) !== CHAT_URL) return response;
-
-    const responseText = await response.clone().text();
-    const durationMs = performance.now() - startedAt;
-    const payload = parseRecord(responseText);
-    const usage = readRecord(payload.usage);
-    const choice = readRecord(readArray(payload.choices)[0]);
-    const message = readRecord(choice?.message);
-    const completionDetails = readRecord(usage?.completion_tokens_details);
-    const promptDetails = readRecord(usage?.prompt_tokens_details);
-    const requestBody = typeof init?.body === "string" ? init.body : "";
-
-    metrics.push({
-      cachedTokens: readNumber(promptDetails?.cached_tokens),
-      completionTokens: readNumber(usage?.completion_tokens),
-      cost: readNumber(usage?.cost),
-      durationMs,
-      finishReason: typeof choice?.finish_reason === "string" ? choice.finish_reason : "unknown",
-      promptTokens: readNumber(usage?.prompt_tokens),
-      reasoningTokens: readNumber(completionDetails?.reasoning_tokens),
-      requestChars: requestBody.length,
-      responseChars: responseText.length,
-      toolCalls: readArray(message?.tool_calls)
-        .map(readRecord)
-        .map((toolCall) => readRecord(toolCall?.function)?.name)
-        .filter((name): name is string => typeof name === "string"),
-      totalTokens: readNumber(usage?.total_tokens),
-    });
-    return response;
-  };
-}
-
 function createReport(results: EvaluationResult[], runId: string): string {
   const rows = results.map((result) =>
     `| ${result.profile} | ${result.totals.totalTokens} | ${result.totals.promptTokens} | ${result.totals.completionTokens} | $${result.totals.cost.toFixed(4)} | ${(result.totals.durationMs / 1000).toFixed(1)}s | ${result.analysis.sourceChars} | ${result.analysis.formCount} | ${result.analysis.topHeaderCount} | ${result.analysis.scopeSignals.join(", ") || "none"} |`,
@@ -334,24 +284,12 @@ function readTitle(sourceCode: string): string {
   return sourceCode.match(/<title[^>]*>([^<]*)<\/title>/i)?.[1]?.trim() || "Generated App";
 }
 
-function parseRecord(value: string): Record<string, unknown> {
-  try {
-    return readRecord(JSON.parse(value)) ?? {};
-  } catch (_) {
-    return {};
-  }
-}
-
 function readRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
 }
 
 function readArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
-}
-
-function readNumber(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
 function readPricePerMillion(value: unknown): number {

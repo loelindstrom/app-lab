@@ -1,5 +1,9 @@
-import { APP_LAB_RUNTIME_GUIDANCE, createBuilderSystemPrompt } from "../../src/ai/prompt.ts";
-import { ALPINE_EXAMPLE_APP_SOURCE } from "../../src/core/alpineExampleApp.ts";
+import { APP_LAB_RUNTIME_GUIDANCE } from "../../src/ai/prompt.ts";
+import {
+  createBuiltInBuilderProfiles,
+  OPINIONATED_BUILDER_PROFILE_ID,
+  resolveBuilderProfilePrompt,
+} from "../../src/ai/profiles.ts";
 
 export interface AiEvaluationProfile {
   description: string;
@@ -46,17 +50,22 @@ const COMPACT_STARTER_SOURCE = `<!doctype html>
   </body>
 </html>`;
 
+const productionProfile = createBuiltInBuilderProfiles().find(
+  (profile) => profile.profileId === OPINIONATED_BUILDER_PROFILE_ID,
+);
+if (!productionProfile) throw new Error("The production Opinionated Builder profile is missing.");
+
 export const AI_EVALUATION_PROFILES: AiEvaluationProfile[] = [
   {
-    description: "Current production prompt and full Example App source.",
+    description: "Current production prompt and full Opinionated Board source.",
     id: "baseline",
-    sourceCode: ALPINE_EXAMPLE_APP_SOURCE,
-    systemPrompt: createBuilderSystemPrompt,
+    sourceCode: productionProfile.starterSource,
+    systemPrompt: (appName) => resolveBuilderProfilePrompt(productionProfile.promptTemplate, appName),
   },
   {
-    description: "Copy-prompt-aligned, scope-conscious prompt with the full Example App source.",
+    description: "Copy-prompt-aligned, scope-conscious prompt with the full Opinionated Board source.",
     id: "restrained",
-    sourceCode: ALPINE_EXAMPLE_APP_SOURCE,
+    sourceCode: productionProfile.starterSource,
     systemPrompt: createRestrainedBuilderPrompt,
   },
   {

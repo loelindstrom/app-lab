@@ -503,6 +503,8 @@ describe("WorkspaceShell sync wake-ups", () => {
       await input.tools.replaceCurrentAppSource(
         "<!doctype html><html><head><title>AI Updated</title><meta name=\"description\" content=\"Updated by AI\"></head><body><h1>AI Updated</h1></body></html>",
       );
+      input.onReasoning?.("I checked the current source before applying the update.");
+      input.onAssistantContent?.("I rebuilt the active app.");
       input.onUsage?.(TEST_AI_USAGE);
       return { content: "I rebuilt the active app.", toolRounds: 2, usage: TEST_AI_USAGE };
     });
@@ -514,6 +516,8 @@ describe("WorkspaceShell sync wake-ups", () => {
     fireEvent.click(screen.getByRole("button", { name: "Send message" }));
 
     expect(await screen.findByText("I rebuilt the active app.")).toBeTruthy();
+    fireEvent.click(screen.getByText("Reasoning", { exact: true }));
+    expect(screen.getByText("I checked the current source before applying the update.")).toBeTruthy();
     await expect(core.getApp(originalApp.appId)).resolves.toMatchObject({
       description: "Updated by AI",
       name: "AI Updated",
