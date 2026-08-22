@@ -308,6 +308,7 @@ The six slices below are the working implementation plan. Each slice should be r
    - ✅ Return compact write receipts and track session usage.
    - ✅ Store Builder profiles, the active profile, and the global conversation-memory preference locally.
    - ✅ Apply the selected profile and conversation-memory limit to agent requests.
+   - ✅ Create new apps from the selected profile's starter source.
    - ✅ Test text-only answers, tool calls, provider failures, and malformed responses.
    - Cancel or invalidate a request when its app session changes.
    - Test stale requests after cancellation is implemented.

@@ -216,6 +216,40 @@ describe("WorkspaceShell sync wake-ups", () => {
     await waitFor(() => expect(syncActions.pullLatestWorkspaceManifest).toHaveBeenCalledTimes(1));
   });
 
+  it("creates a new app from the active Builder profile starter", async () => {
+    const core = createMemoryCore();
+    const syncActions = createSyncActionsStub();
+    const aiActions = createAiActionsStub();
+    const customProfile: BuilderProfile = {
+      builtIn: false,
+      name: "Focused",
+      profileId: "custom-focused",
+      promptTemplate: "Build one focused app.",
+      starterSource: "<!doctype html><html><head><meta name=\"description\" content=\"Custom profile starter.\"><title>Focused Starter</title></head><body><h1>Focused Starter</h1></body></html>",
+    };
+    vi.mocked(aiActions.listBuilderProfiles).mockResolvedValue([...TEST_BUILDER_PROFILES, customProfile]);
+    vi.mocked(aiActions.getBuilderPreferences).mockResolvedValue({
+      activeProfileId: customProfile.profileId,
+      conversationMemory: "short",
+    });
+
+    render(<WorkspaceShell aiActions={aiActions} core={core} syncActions={syncActions} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Create new app" }));
+
+    expect(await screen.findByRole("heading", { name: "Focused Starter" })).toBeTruthy();
+    const [summary] = await core.listApps();
+    const created = await core.getApp(summary.appId);
+    expect(created).toMatchObject({
+      description: "Custom profile starter.",
+      name: "Focused Starter",
+      sourceCode: customProfile.starterSource,
+    });
+    expect(syncActions.ensureAppBackedUp).toHaveBeenCalledWith(
+      expect.objectContaining({ appId: summary.appId, name: "Focused Starter" }),
+      expect.any(Object),
+    );
+  });
+
   it("updates launcher metadata from the saved source HTML head", async () => {
     const syncActions = createSyncActionsStub();
     const core = createMemoryCore();

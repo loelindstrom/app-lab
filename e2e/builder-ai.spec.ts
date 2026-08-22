@@ -10,6 +10,11 @@ const UPDATED_SOURCE = `<!doctype html>
   </head>
   <body><main><h1>AI Browser Test</h1></main></body>
 </html>`;
+const CUSTOM_STARTER_SOURCE = `<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8"><title>Profile Starter</title></head>
+  <body><main><h1>Profile Starter</h1></main></body>
+</html>`;
 
 test.describe("BuilderAI browser workflow", () => {
   test("runs the tool loop and reloads the sandbox with replaced source", async ({ page }) => {
@@ -34,7 +39,7 @@ test.describe("BuilderAI browser workflow", () => {
     await configureTestAi(page);
     await page.getByRole("button", { name: "Create new app" }).click();
     await page.getByRole("button", { name: "Toggle BuilderAI" }).click();
-    await expect(page.getByText(/I can edit Example App/)).toBeVisible();
+    await expect(page.getByText(/I can edit New App/)).toBeVisible();
 
     await page.getByLabel("Message", { exact: true }).fill("Replace this with the browser test app");
     await page.getByRole("button", { name: "Send message" }).click();
@@ -43,7 +48,7 @@ test.describe("BuilderAI browser workflow", () => {
     await expect(page.frameLocator('iframe[sandbox="allow-scripts"]').getByRole("heading", { name: "AI Browser Test" })).toBeVisible();
     expect(requests).toHaveLength(3);
     expect(readMessages(requests[0])[0]).toMatchObject({
-      content: expect.stringContaining('active App Lab app named "Example App"'),
+      content: expect.stringContaining('active App Lab app named "New App"'),
       role: "system",
     });
     expect(String(readMessages(requests[0])[0].content)).toContain("Runtime constraints:");
@@ -98,13 +103,14 @@ test.describe("BuilderAI browser workflow", () => {
     await page.getByLabel("Conversation memory").selectOption("long");
     await expect(page.getByText("Saved", { exact: true })).toBeVisible();
 
-    await expect(page.getByLabel("Selected profile")).toHaveValue("builtin-minimal-v1");
+    await expect(page.getByLabel("Active profile")).toHaveValue("builtin-minimal-v1");
     await expect(page.getByLabel("Builder instructions")).not.toBeEditable();
-    await page.getByRole("button", { name: "Duplicate" }).click();
+    await page.getByRole("button", { name: "Create editable copy" }).click();
     await expect(page.getByLabel("Name", { exact: true })).toHaveValue("Minimal copy");
 
     await page.getByLabel("Name", { exact: true }).fill("Mobile Builder");
     await page.getByLabel("Builder instructions").fill("Build one focused app.");
+    await page.getByLabel("Starter app source").fill(CUSTOM_STARTER_SOURCE);
     await page.getByRole("button", { name: "Save profile" }).click();
     await expect(page.getByText("Profile saved.")).toBeVisible();
 
@@ -116,6 +122,7 @@ test.describe("BuilderAI browser workflow", () => {
           builtIn: false,
           name: "Mobile Builder",
           promptTemplate: "Build one focused app.",
+          starterSource: CUSTOM_STARTER_SOURCE,
         },
       ],
       version: 1,
@@ -132,7 +139,7 @@ test.describe("BuilderAI browser workflow", () => {
     await page.getByRole("button", { name: /^AI/ }).click();
     await page.getByRole("button", { name: "AI Agent" }).click();
     await expect(page.getByLabel("Conversation memory")).toHaveValue("long");
-    await page.getByLabel("Selected profile").selectOption({ label: "Mobile Builder" });
+    await page.getByLabel("Active profile").selectOption({ label: "Mobile Builder" });
     await expect(page.getByLabel("Builder instructions")).toHaveValue("Build one focused app.");
 
     await page.evaluate(() => {
@@ -140,6 +147,7 @@ test.describe("BuilderAI browser workflow", () => {
     });
     await page.reload();
     await page.getByRole("button", { name: "Create new app" }).click();
+    await expect(page.frameLocator('iframe[sandbox="allow-scripts"]').getByRole("heading", { name: "Profile Starter" })).toBeVisible();
     await page.getByRole("button", { name: "Toggle BuilderAI" }).click();
     await page.getByLabel("Message", { exact: true }).fill("Use my profile");
     await page.getByRole("button", { name: "Send message" }).click();

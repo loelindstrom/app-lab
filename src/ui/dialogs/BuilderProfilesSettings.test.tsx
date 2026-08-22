@@ -71,8 +71,10 @@ describe("BuilderProfilesSettings", () => {
     expect(screen.getByLabelText("Builder instructions")).toHaveProperty("readOnly", true);
     expect(readControlValue("Builder instructions")).toBe("Minimal prompt");
     expect(screen.queryByLabelText("Conversation memory")).toBeNull();
+    expect(screen.getByRole("option", { name: "Minimal (Built-in)" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "Guided (Built-in)" })).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "Duplicate" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create editable copy" }));
     await waitFor(() => expect(readControlValue("Name")).toBe("Minimal copy"));
     expect(createProfile).toHaveBeenCalledWith(expect.objectContaining({ name: "Minimal copy" }));
     expect(selectProfile).toHaveBeenCalledWith("custom-1");

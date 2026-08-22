@@ -1,4 +1,5 @@
 import type { BuilderProfile, BuilderProfileInput, UpdateBuilderProfileInput } from "./types";
+import { validateBuilderSource } from "./sourceValidation";
 
 const BUILDER_PROFILES_KEY = "app-lab-builder-profiles-v1";
 
@@ -62,7 +63,7 @@ export function createBuilderProfileStore(
 function normalizeInput(input: BuilderProfileInput, profileId: string): BuilderProfile {
   const name = input.name.trim();
   if (!name) throw new Error("Profile name is required.");
-  if (!input.starterSource.trim()) throw new Error("Starting template is required.");
+  assertValidStarterSource(input.starterSource);
   return {
     builtIn: false,
     name,
@@ -113,6 +114,12 @@ function parseStoredProfile(value: unknown): BuilderProfile | null {
     promptTemplate: profile.promptTemplate,
     starterSource: profile.starterSource,
   };
+}
+
+function assertValidStarterSource(starterSource: string): void {
+  if (!starterSource.trim()) throw new Error("Starter app is required.");
+  const failure = validateBuilderSource(starterSource);
+  if (failure) throw new Error(`Starter app is invalid: ${failure.message}`);
 }
 
 function writeCustomProfiles(storage: ProfileStorage, profiles: BuilderProfile[]): void {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createBuilderProfileStore } from "./profileStore";
-import { createBuiltInBuilderProfiles } from "./profiles";
+import { createBuiltInBuilderProfiles, resolveActiveBuilderProfile } from "./profiles";
 
 describe("Builder profile store", () => {
   it("keeps built-ins locked while custom profiles can be created, changed, and deleted", async () => {
@@ -50,6 +50,8 @@ describe("Builder profile store", () => {
     expect(guided.promptTemplate).toContain("App Lab best practices:");
     expect(guided.promptTemplate).toContain("transient UI state");
     expect(guided.starterSource).toBe(guidedStarterSource);
+    expect(resolveActiveBuilderProfile([minimal, guided], guided.profileId)).toBe(guided);
+    expect(resolveActiveBuilderProfile([minimal, guided], "missing-profile")).toBe(minimal);
   });
 
   it("rejects changes to built-ins and invalid custom input", async () => {
@@ -61,6 +63,16 @@ describe("Builder profile store", () => {
     await expect(
       store.create({ name: "", promptTemplate: "Prompt", starterSource: "Source" }),
     ).rejects.toThrow("Profile name is required");
+    await expect(
+      store.create({ name: "Invalid source", promptTemplate: "Prompt", starterSource: "Source" }),
+    ).rejects.toThrow("Starter app is invalid");
+    await expect(
+      store.create({
+        name: "Unsupported form",
+        promptTemplate: "Prompt",
+        starterSource: "<!doctype html><html><body><form><button>Save</button></form></body></html>",
+      }),
+    ).rejects.toThrow("instead of forms");
   });
 
   it("ignores malformed and unsupported stored versions", async () => {

@@ -72,6 +72,18 @@ export function resolveBuilderProfilePrompt(promptTemplate: string, appName: str
   return promptTemplate.split(BUILDER_APP_NAME_PLACEHOLDER).join(appName);
 }
 
+export function resolveActiveBuilderProfile(
+  profiles: readonly BuilderProfile[],
+  activeProfileId: string,
+): BuilderProfile | null {
+  return (
+    profiles.find((profile) => profile.profileId === activeProfileId) ??
+    profiles.find((profile) => profile.profileId === MINIMAL_BUILDER_PROFILE_ID) ??
+    profiles[0] ??
+    null
+  );
+}
+
 function createMinimalProfilePrompt(): string {
   return `You are BuilderAI, helping edit the active App Lab app named "${BUILDER_APP_NAME_PLACEHOLDER}".
 

@@ -3,7 +3,7 @@ import {
   addAiUsage,
   createEmptyAiUsage,
   DEFAULT_BUILDER_PREFERENCES,
-  MINIMAL_BUILDER_PROFILE_ID,
+  resolveActiveBuilderProfile,
   type AiActions,
   type AiChatMessage,
   type AiConfig,
@@ -117,11 +117,7 @@ export function WorkspaceShell({ aiActions, core, syncActions }: WorkspaceShellP
   }, [aiActions]);
 
   const activeBuilderProfile = useMemo(
-    () =>
-      builderProfiles.find((profile) => profile.profileId === builderPreferences.activeProfileId) ??
-      builderProfiles.find((profile) => profile.profileId === MINIMAL_BUILDER_PROFILE_ID) ??
-      builderProfiles[0] ??
-      null,
+    () => resolveActiveBuilderProfile(builderProfiles, builderPreferences.activeProfileId),
     [builderPreferences.activeProfileId, builderProfiles],
   );
 
@@ -326,7 +322,23 @@ export function WorkspaceShell({ aiActions, core, syncActions }: WorkspaceShellP
   }
 
   async function createApp() {
-    await createAppFromInput(createAlpineExampleAppInput());
+    const [profiles, preferences] = await Promise.all([
+      aiActions.listBuilderProfiles(),
+      aiActions.getBuilderPreferences(),
+    ]);
+    setBuilderProfiles(profiles);
+    setBuilderPreferences(preferences);
+    const profile = resolveActiveBuilderProfile(profiles, preferences.activeProfileId);
+    const fallbackInput = createAlpineExampleAppInput();
+    await createAppFromInput(
+      profile
+        ? {
+            description: `Created from the ${profile.name} Builder profile.`,
+            name: "New App",
+            sourceCode: profile.starterSource,
+          }
+        : fallbackInput,
+    );
   }
 
   async function saveAppSource(appId: string, sourceCode: string): Promise<AppRecord> {

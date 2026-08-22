@@ -234,8 +234,18 @@ test.describe("@firebase synced app persistence", () => {
 });
 
 async function createExampleApp(page: Page) {
+  await selectGuidedBuilderProfile(page);
   await page.getByRole("button", { name: "Create new app" }).click();
   await expect(page.getByRole("button", { name: "Toggle source" })).toBeVisible({ timeout: 30_000 });
+}
+
+async function selectGuidedBuilderProfile(page: Page) {
+  await page.evaluate(() => {
+    localStorage.setItem(
+      "app-lab-builder-preferences-v1",
+      JSON.stringify({ activeProfileId: "builtin-guided-v1", conversationMemory: "short", version: 1 }),
+    );
+  });
 }
 
 async function addExampleItem(page: Page, title: string, description = "") {

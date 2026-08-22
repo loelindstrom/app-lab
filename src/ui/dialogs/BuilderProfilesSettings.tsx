@@ -148,49 +148,40 @@ export function BuilderProfilesSettings({
       </header>
 
       <section className="grid gap-4" aria-labelledby="profile-section-title">
-        <div className="flex items-center gap-2">
-          <h4 className="text-base font-bold text-app-ink" id="profile-section-title">Profile</h4>
-          {isLocked ? <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-semibold text-app-muted">Built-in</span> : null}
-        </div>
+        <h4 className="text-base font-bold text-app-ink" id="profile-section-title">Profile</h4>
 
-        <div className="flex flex-wrap items-end gap-2">
-          <label className="grid min-w-[min(100%,18rem)] flex-1 gap-1.5 text-sm font-normal text-app-muted">
-            Selected profile
-            <select
-              className="min-h-10 rounded-md border border-app-line bg-white px-3 font-normal text-app-ink outline-none focus:border-app-accent"
-              value={selectedProfile.profileId}
-              onChange={(event) => {
-                void selectProfile(event.target.value);
-              }}
-            >
-              {profiles.map((profile) => (
-                <option key={profile.profileId} value={profile.profileId}>
-                  {profile.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button
-            className="min-h-10 rounded-md px-3 text-sm font-semibold text-app-accent hover:bg-app-accent/10"
-            type="button"
-            onClick={() => void createProfile(profiles[0], "Custom profile")}
+        <label className="grid gap-1.5 text-sm font-normal text-app-muted">
+          Active profile
+          <select
+            className="min-h-10 rounded-md border border-app-line bg-white px-3 font-normal text-app-ink outline-none focus:border-app-accent"
+            value={selectedProfile.profileId}
+            onChange={(event) => {
+              void selectProfile(event.target.value);
+            }}
           >
-            + New
+            {profiles.map((profile) => (
+              <option key={profile.profileId} value={profile.profileId}>
+                {profile.name}
+                {profile.builtIn ? " (Built-in)" : ""}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-app-muted">
+            {isLocked ? "Built-in profiles are read-only." : "Create another profile from these settings."}
+          </p>
+          <button
+            className="min-h-9 rounded-md border border-app-line bg-white px-3 text-sm font-semibold text-app-ink hover:border-app-accent hover:text-app-accent"
+            type="button"
+            onClick={() => void createProfile(selectedProfile, `${selectedProfile.name} copy`)}
+          >
+            {isLocked ? "Create editable copy" : "Duplicate profile"}
           </button>
         </div>
 
-        {isLocked ? (
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-sm text-app-muted">Duplicate this profile to edit it.</p>
-            <button
-              className="min-h-9 rounded-md px-3 text-sm font-semibold text-app-accent hover:bg-app-accent/10"
-              type="button"
-              onClick={() => void createProfile(selectedProfile, `${selectedProfile.name} copy`)}
-            >
-              Duplicate
-            </button>
-          </div>
-        ) : (
+        {!isLocked ? (
           <label className="grid gap-1.5 text-sm font-normal text-app-muted">
             Name
             <input
@@ -200,7 +191,7 @@ export function BuilderProfilesSettings({
               onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
             />
           </label>
-        )}
+        ) : null}
       </section>
 
       <section className="grid gap-3" aria-labelledby="instructions-section-title">
