@@ -1,5 +1,8 @@
 import type { BuilderConversationMemory, BuilderPreferences } from "./types";
-import { MINIMAL_BUILDER_PROFILE_ID } from "./profiles";
+import {
+  LEGACY_GUIDED_BUILDER_PROFILE_ID,
+  OPINIONATED_BUILDER_PROFILE_ID,
+} from "./profiles";
 
 const BUILDER_PREFERENCES_KEY = "app-lab-builder-preferences-v1";
 
@@ -15,7 +18,7 @@ export const BUILDER_MEMORY_MESSAGE_LIMITS: Record<BuilderConversationMemory, nu
 };
 
 export const DEFAULT_BUILDER_PREFERENCES: Readonly<BuilderPreferences> = {
-  activeProfileId: MINIMAL_BUILDER_PROFILE_ID,
+  activeProfileId: OPINIONATED_BUILDER_PROFILE_ID,
   conversationMemory: "short",
 };
 
@@ -62,5 +65,6 @@ function isConversationMemory(value: unknown): value is BuilderConversationMemor
 }
 
 function normalizeProfileId(value: unknown): string {
-  return typeof value === "string" && value.trim() ? value.trim() : MINIMAL_BUILDER_PROFILE_ID;
+  if (value === LEGACY_GUIDED_BUILDER_PROFILE_ID) return OPINIONATED_BUILDER_PROFILE_ID;
+  return typeof value === "string" && value.trim() ? value.trim() : OPINIONATED_BUILDER_PROFILE_ID;
 }

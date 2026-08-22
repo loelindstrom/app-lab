@@ -6,7 +6,7 @@ import { WorkspaceShell } from "./ui";
 
 export function App() {
   const aiActions = useMemo(
-    () => createBrowserAiActions({ guidedStarterSource: createAlpineExampleAppInput().sourceCode }),
+    () => createBrowserAiActions({ opinionatedStarterSource: createAlpineExampleAppInput().sourceCode }),
     [],
   );
   const core = useMemo(() => createIndexedDbCore(), []);

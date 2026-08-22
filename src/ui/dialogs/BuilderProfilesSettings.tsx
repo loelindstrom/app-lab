@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   BUILDER_TOOL_SUMMARIES,
+  MINIMAL_BUILDER_PROFILE_ID,
   type BuilderProfile,
   type BuilderProfileInput,
   type UpdateBuilderProfileInput,
@@ -136,6 +137,7 @@ export function BuilderProfilesSettings({
   }
 
   const isLocked = selectedProfile.builtIn;
+  const minimalProfile = profiles.find((profile) => profile.profileId === MINIMAL_BUILDER_PROFILE_ID) ?? profiles[0] ?? null;
   const fieldClassName = `w-full rounded-md border border-app-line px-3 py-2 font-normal text-app-ink outline-none focus:border-app-accent ${
     isLocked ? "bg-slate-50" : "bg-white"
   }`;
@@ -148,7 +150,34 @@ export function BuilderProfilesSettings({
       </header>
 
       <section className="grid gap-4" aria-labelledby="profile-section-title">
-        <h4 className="text-base font-bold text-app-ink" id="profile-section-title">Profile</h4>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h4 className="text-base font-bold text-app-ink" id="profile-section-title">Profile</h4>
+          <div className="flex flex-wrap gap-2" role="group" aria-label="Profile actions">
+            <button
+              className="min-h-9 rounded-md border border-app-line bg-white px-3 text-sm font-semibold text-app-ink hover:border-app-accent hover:text-app-accent"
+              type="button"
+              onClick={() => void createProfile(minimalProfile, "New profile")}
+            >
+              New
+            </button>
+            <button
+              className="min-h-9 rounded-md border border-app-line bg-white px-3 text-sm font-semibold text-app-ink hover:border-app-accent hover:text-app-accent"
+              type="button"
+              onClick={() => void createProfile(selectedProfile, `${selectedProfile.name} copy`)}
+            >
+              Duplicate
+            </button>
+            <button
+              className="min-h-9 rounded-md border border-transparent px-3 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:text-app-muted disabled:hover:bg-transparent"
+              type="button"
+              disabled={isLocked}
+              title={isLocked ? "Built-in profiles cannot be deleted" : "Delete profile"}
+              onClick={() => void deleteProfile()}
+            >
+              Delete
+            </button>
+          </div>
+        </div>
 
         <label className="grid gap-1.5 text-sm font-normal text-app-muted">
           Active profile
@@ -167,57 +196,47 @@ export function BuilderProfilesSettings({
             ))}
           </select>
         </label>
-
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm text-app-muted">
-            {isLocked ? "Built-in profiles are read-only." : "Create another profile from these settings."}
-          </p>
-          <button
-            className="min-h-9 rounded-md border border-app-line bg-white px-3 text-sm font-semibold text-app-ink hover:border-app-accent hover:text-app-accent"
-            type="button"
-            onClick={() => void createProfile(selectedProfile, `${selectedProfile.name} copy`)}
-          >
-            {isLocked ? "Create editable copy" : "Duplicate profile"}
-          </button>
-        </div>
-
-        {!isLocked ? (
-          <label className="grid gap-1.5 text-sm font-normal text-app-muted">
-            Name
-            <input
-              className={fieldClassName}
-              type="text"
-              value={draft.name}
-              onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
-            />
-          </label>
-        ) : null}
       </section>
 
-      <section className="grid gap-3" aria-labelledby="instructions-section-title">
-        <h4 className="text-base font-bold text-app-ink" id="instructions-section-title">Instructions</h4>
-        <p className="text-sm text-app-muted">These instructions guide how BuilderAI plans changes and writes App Lab code.</p>
-        <textarea
-          aria-label="Builder instructions"
-          className={`${fieldClassName} min-h-64 resize-y font-mono text-xs font-normal leading-relaxed`}
-          readOnly={isLocked}
-          spellCheck={false}
-          value={draft.promptTemplate}
-          onChange={(event) => setDraft((current) => ({ ...current, promptTemplate: event.target.value }))}
-        />
-      </section>
+      <section className="grid gap-8 border-t border-app-line pt-6" aria-labelledby="profile-details-title">
+        <h4 className="text-base font-bold text-app-ink" id="profile-details-title">Profile details</h4>
 
-      <section className="grid gap-3" aria-labelledby="starter-section-title">
-        <h4 className="text-base font-bold text-app-ink" id="starter-section-title">Starter app</h4>
-        <p className="text-sm text-app-muted">This source gives BuilderAI the app structure and patterns to start from.</p>
-        <textarea
-          aria-label="Starter app source"
-          className={`${fieldClassName} min-h-64 resize-y font-mono text-xs font-normal leading-relaxed`}
-          readOnly={isLocked}
-          spellCheck={false}
-          value={draft.starterSource}
-          onChange={(event) => setDraft((current) => ({ ...current, starterSource: event.target.value }))}
-        />
+        <label className="grid gap-1.5 text-sm font-normal text-app-muted">
+          Profile name
+          <input
+            className={fieldClassName}
+            readOnly={isLocked}
+            type="text"
+            value={draft.name}
+            onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
+          />
+        </label>
+
+        <section className="grid gap-3" aria-labelledby="instructions-section-title">
+          <h5 className="text-base font-bold text-app-ink" id="instructions-section-title">Instructions</h5>
+          <p className="text-sm text-app-muted">These instructions guide how BuilderAI plans changes and writes App Lab code.</p>
+          <textarea
+            aria-label="Builder instructions"
+            className={`${fieldClassName} min-h-64 resize-y font-mono text-xs font-normal leading-relaxed`}
+            readOnly={isLocked}
+            spellCheck={false}
+            value={draft.promptTemplate}
+            onChange={(event) => setDraft((current) => ({ ...current, promptTemplate: event.target.value }))}
+          />
+        </section>
+
+        <section className="grid gap-3" aria-labelledby="starter-section-title">
+          <h5 className="text-base font-bold text-app-ink" id="starter-section-title">Starter app</h5>
+          <p className="text-sm text-app-muted">This source becomes each new app created with the profile.</p>
+          <textarea
+            aria-label="Starter app source"
+            className={`${fieldClassName} min-h-64 resize-y font-mono text-xs font-normal leading-relaxed`}
+            readOnly={isLocked}
+            spellCheck={false}
+            value={draft.starterSource}
+            onChange={(event) => setDraft((current) => ({ ...current, starterSource: event.target.value }))}
+          />
+        </section>
       </section>
 
       <section className="grid gap-3" aria-labelledby="fixed-tools-section-title">
@@ -235,13 +254,6 @@ export function BuilderProfilesSettings({
 
       {!isLocked ? (
         <SettingsActionBar status={status}>
-          <button
-            className="min-h-9 rounded-md px-3 text-sm font-semibold text-red-700 hover:bg-red-50"
-            type="button"
-            onClick={() => void deleteProfile()}
-          >
-            Delete
-          </button>
           <button
             className="min-h-9 rounded-md bg-app-accent px-3 text-sm font-semibold text-white hover:bg-app-strong"
             type="button"

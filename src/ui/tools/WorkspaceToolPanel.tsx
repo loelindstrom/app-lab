@@ -8,6 +8,7 @@ type SourceExportKind = "data" | "source";
 
 interface WorkspaceToolPanelProps {
   activeApp: AppRecord;
+  activeBuilderProfileName: string | null;
   aiConfigured: boolean;
   builderActivity: string | null;
   builderError: string | null;
@@ -21,12 +22,14 @@ interface WorkspaceToolPanelProps {
   onClose: () => void;
   onLoadAppData: (appId: string) => Promise<JsonValue>;
   onOpenAiSettings: () => void;
+  onOpenBuilderProfileSettings: () => void;
   onSaveSource: (sourceCode: string) => Promise<AppRecord>;
   onSendBuilderMessage: (content: string) => Promise<void>;
 }
 
 export function WorkspaceToolPanel({
   activeApp,
+  activeBuilderProfileName,
   aiConfigured,
   builderActivity,
   builderError,
@@ -40,6 +43,7 @@ export function WorkspaceToolPanel({
   onClose,
   onLoadAppData,
   onOpenAiSettings,
+  onOpenBuilderProfileSettings,
   onSaveSource,
   onSendBuilderMessage,
 }: WorkspaceToolPanelProps) {
@@ -57,7 +61,20 @@ export function WorkspaceToolPanel({
       <header className="flex min-h-0 items-center justify-between gap-3 border-b border-app-line px-3">
         <div className="min-w-0">
           <p className="m-0 truncate text-[11px] font-extrabold uppercase text-app-muted">{activeApp.name}</p>
-          <h2 className="truncate text-base font-extrabold leading-tight">{title}</h2>
+          <div className="flex min-w-0 items-baseline gap-1.5">
+            <h2 className="shrink-0 truncate text-base font-extrabold leading-tight">{title}</h2>
+            {mode === "builder" && activeBuilderProfileName ? (
+              <button
+                className="min-w-0 truncate text-left text-xs font-bold text-app-accent hover:underline focus-visible:underline"
+                type="button"
+                aria-label={`Open Builder profile settings for ${activeBuilderProfileName}`}
+                title={`Active profile: ${activeBuilderProfileName}`}
+                onClick={onOpenBuilderProfileSettings}
+              >
+                (Profile: {activeBuilderProfileName})
+              </button>
+            ) : null}
+          </div>
         </div>
         <button
           className="min-h-8 w-8 rounded-full border border-transparent bg-transparent p-0 text-xl text-app-muted hover:bg-app-accent/10 hover:text-app-accent"

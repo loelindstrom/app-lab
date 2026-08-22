@@ -17,6 +17,7 @@ interface SettingsDialogProps {
   aiConfig: AiConfig;
   builderPreferences: BuilderPreferences;
   builderProfiles: BuilderProfile[];
+  initialAiTab?: AiTab;
   initialSection?: SettingsSection;
   isOpen: boolean;
   onClearAiConfig: () => Promise<void>;
@@ -52,6 +53,7 @@ export function SettingsDialog({
   aiConfig,
   builderPreferences,
   builderProfiles,
+  initialAiTab,
   initialSection,
   isOpen,
   onClearAiConfig,
@@ -123,6 +125,7 @@ export function SettingsDialog({
     if (wasOpenRef.current) return;
     wasOpenRef.current = true;
     if (initialSection) setSection(initialSection);
+    if (initialAiTab) setAiTab(initialAiTab);
     setMobileSectionOpen(Boolean(initialSection));
     setNotice(null);
     setRecoveryText("");
@@ -131,7 +134,7 @@ export function SettingsDialog({
     setMemoryStatus("Ready");
     setOpenSetupSection(storageProfile ? "connect" : "firebase");
     setSetupSteps(createSetupStepState());
-  }, [initialSection, isOpen, storageProfile]);
+  }, [initialAiTab, initialSection, isOpen, storageProfile]);
 
   const firebaseRules = createAuthFirebaseRules(ownerSetupSecret);
 

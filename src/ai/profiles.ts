@@ -2,6 +2,8 @@ import type { BuilderProfile } from "./types";
 
 export const BUILDER_APP_NAME_PLACEHOLDER = "{{appName}}";
 export const MINIMAL_BUILDER_PROFILE_ID = "builtin-minimal-v1";
+export const OPINIONATED_BUILDER_PROFILE_ID = "builtin-opinionated-v1";
+export const LEGACY_GUIDED_BUILDER_PROFILE_ID = "builtin-guided-v1";
 
 export const MINIMAL_BUILDER_STARTER_SOURCE = `<!doctype html>
 <html lang="en">
@@ -35,20 +37,13 @@ export const MINIMAL_BUILDER_STARTER_SOURCE = `<!doctype html>
   </body>
 </html>`;
 
-export function createBuiltInBuilderProfiles(guidedStarterSource: string): BuilderProfile[] {
+export function createBuiltInBuilderProfiles(opinionatedStarterSource: string): BuilderProfile[] {
   const minimalPrompt = createMinimalProfilePrompt();
   return [
     {
       builtIn: true,
-      name: "Minimal",
-      profileId: MINIMAL_BUILDER_PROFILE_ID,
-      promptTemplate: minimalPrompt,
-      starterSource: MINIMAL_BUILDER_STARTER_SOURCE,
-    },
-    {
-      builtIn: true,
-      name: "Guided",
-      profileId: "builtin-guided-v1",
+      name: "Opinionated",
+      profileId: OPINIONATED_BUILDER_PROFILE_ID,
       promptTemplate: `${minimalPrompt}
 
 App Lab best practices:
@@ -63,7 +58,14 @@ App Lab best practices:
 - Show unexpected runtime or save errors without adding noisy success-status UI.
 - Design shared state so occasional latest-local-wins overwrites remain understandable to users.
 - Follow the patterns demonstrated by the current starter source when they suit the user's request.`,
-      starterSource: guidedStarterSource,
+      starterSource: opinionatedStarterSource,
+    },
+    {
+      builtIn: true,
+      name: "Minimal",
+      profileId: MINIMAL_BUILDER_PROFILE_ID,
+      promptTemplate: minimalPrompt,
+      starterSource: MINIMAL_BUILDER_STARTER_SOURCE,
     },
   ];
 }
@@ -78,7 +80,7 @@ export function resolveActiveBuilderProfile(
 ): BuilderProfile | null {
   return (
     profiles.find((profile) => profile.profileId === activeProfileId) ??
-    profiles.find((profile) => profile.profileId === MINIMAL_BUILDER_PROFILE_ID) ??
+    profiles.find((profile) => profile.profileId === OPINIONATED_BUILDER_PROFILE_ID) ??
     profiles[0] ??
     null
   );

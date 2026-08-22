@@ -67,6 +67,7 @@ describe("WorkspaceToolPanel", () => {
 
   it("submits configured chat messages and renders conversation state", async () => {
     const onClearBuilderConversation = vi.fn();
+    const onOpenBuilderProfileSettings = vi.fn();
     const onSendBuilderMessage = vi.fn().mockResolvedValue(undefined);
     renderToolPanel({
       aiConfigured: true,
@@ -97,10 +98,13 @@ describe("WorkspaceToolPanel", () => {
       },
       mode: "builder",
       onClearBuilderConversation,
+      onOpenBuilderProfileSettings,
       onSendBuilderMessage,
     });
 
     expect(screen.getByText(/I can edit/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Open Builder profile settings for Opinionated" }));
+    expect(onOpenBuilderProfileSettings).toHaveBeenCalledTimes(1);
     expect(screen.getByText("Make it blue")).toBeTruthy();
     expect(screen.getByText("I updated the colors.")).toBeTruthy();
     expect(screen.getByText("Applying app source...")).toBeTruthy();
@@ -120,6 +124,7 @@ function renderToolPanel(overrides: Partial<ComponentProps<typeof WorkspaceToolP
   return render(
     <WorkspaceToolPanel
       activeApp={app}
+      activeBuilderProfileName="Opinionated"
       aiConfigured={false}
       builderActivity={null}
       builderError={null}
@@ -133,6 +138,7 @@ function renderToolPanel(overrides: Partial<ComponentProps<typeof WorkspaceToolP
       onClose={vi.fn()}
       onLoadAppData={vi.fn()}
       onOpenAiSettings={vi.fn()}
+      onOpenBuilderProfileSettings={vi.fn()}
       onSaveSource={vi.fn().mockResolvedValue(app)}
       onSendBuilderMessage={vi.fn().mockResolvedValue(undefined)}
       {...overrides}

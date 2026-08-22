@@ -5,6 +5,7 @@ export { createBuilderSystemPrompt, createPromptWithCode } from "./prompt";
 export {
   BUILDER_APP_NAME_PLACEHOLDER,
   MINIMAL_BUILDER_PROFILE_ID,
+  OPINIONATED_BUILDER_PROFILE_ID,
   resolveActiveBuilderProfile,
 } from "./profiles";
 export { addAiUsage, createEmptyAiUsage } from "./usage";

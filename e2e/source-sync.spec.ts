@@ -313,7 +313,7 @@ async function createExampleApp(page: Page) {
   await page.evaluate(() => {
     localStorage.setItem(
       "app-lab-builder-preferences-v1",
-      JSON.stringify({ activeProfileId: "builtin-guided-v1", conversationMemory: "short", version: 1 }),
+      JSON.stringify({ activeProfileId: "builtin-opinionated-v1", conversationMemory: "short", version: 1 }),
     );
   });
   await page.getByRole("button", { name: "Create new app" }).click();

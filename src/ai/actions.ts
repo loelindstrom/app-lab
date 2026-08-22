@@ -8,7 +8,7 @@ import type { AiActions } from "./types";
 
 interface BrowserAiActionsOptions {
   client?: OpenRouterClient;
-  guidedStarterSource: string;
+  opinionatedStarterSource: string;
   storage?: Storage;
 }
 
@@ -17,7 +17,7 @@ export function createBrowserAiActions(options: BrowserAiActionsOptions): AiActi
   const configStore = createAiConfigStore(storage);
   const preferencesStore = createBuilderPreferencesStore(storage);
   const profileStore = createBuilderProfileStore(storage, {
-    builtInProfiles: createBuiltInBuilderProfiles(options.guidedStarterSource),
+    builtInProfiles: createBuiltInBuilderProfiles(options.opinionatedStarterSource),
   });
   const client = options.client ?? createOpenRouterClient({ referer: window.location.origin });
   const agent = createBuilderAgent(client, configStore.get);

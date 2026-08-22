@@ -7,17 +7,17 @@ import { BuilderProfilesSettings } from "./BuilderProfilesSettings";
 const BUILT_INS: BuilderProfile[] = [
   {
     builtIn: true,
+    name: "Opinionated",
+    profileId: "builtin-opinionated-v1",
+    promptTemplate: "Opinionated prompt",
+    starterSource: "<!doctype html><title>Opinionated</title>",
+  },
+  {
+    builtIn: true,
     name: "Minimal",
     profileId: "builtin-minimal-v1",
     promptTemplate: "Minimal prompt",
     starterSource: "<!doctype html><title>Minimal</title>",
-  },
-  {
-    builtIn: true,
-    name: "Guided",
-    profileId: "builtin-guided-v1",
-    promptTemplate: "Guided prompt",
-    starterSource: "<!doctype html><title>Guided</title>",
   },
 ];
 
@@ -44,7 +44,7 @@ describe("BuilderProfilesSettings", () => {
       const [profiles, setProfiles] = useState(BUILT_INS);
       return (
         <BuilderProfilesSettings
-          activeProfileId="builtin-minimal-v1"
+          activeProfileId="builtin-opinionated-v1"
           profiles={profiles}
           onCreate={async (input) => {
             const created = await createProfile(input);
@@ -67,20 +67,24 @@ describe("BuilderProfilesSettings", () => {
 
     render(<Harness />);
 
-    expect(screen.queryByLabelText("Name")).toBeNull();
+    expect(screen.getByLabelText("Profile name")).toHaveProperty("readOnly", true);
+    expect(readControlValue("Profile name")).toBe("Opinionated");
     expect(screen.getByLabelText("Builder instructions")).toHaveProperty("readOnly", true);
-    expect(readControlValue("Builder instructions")).toBe("Minimal prompt");
+    expect(readControlValue("Builder instructions")).toBe("Opinionated prompt");
     expect(screen.queryByLabelText("Conversation memory")).toBeNull();
+    expect(screen.getByRole("option", { name: "Opinionated (Built-in)" })).toBeTruthy();
     expect(screen.getByRole("option", { name: "Minimal (Built-in)" })).toBeTruthy();
-    expect(screen.getByRole("option", { name: "Guided (Built-in)" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "New" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Delete" })).toHaveProperty("disabled", true);
 
-    fireEvent.click(screen.getByRole("button", { name: "Create editable copy" }));
-    await waitFor(() => expect(readControlValue("Name")).toBe("Minimal copy"));
-    expect(createProfile).toHaveBeenCalledWith(expect.objectContaining({ name: "Minimal copy" }));
+    fireEvent.click(screen.getByRole("button", { name: "Duplicate" }));
+    await waitFor(() => expect(readControlValue("Profile name")).toBe("Opinionated copy"));
+    expect(createProfile).toHaveBeenCalledWith(expect.objectContaining({ name: "Opinionated copy" }));
     expect(selectProfile).toHaveBeenCalledWith("custom-1");
-    expect(screen.getByLabelText("Name")).toHaveProperty("readOnly", false);
+    expect(screen.getByLabelText("Profile name")).toHaveProperty("readOnly", false);
+    expect(screen.getByRole("button", { name: "Delete" })).toHaveProperty("disabled", false);
 
-    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "My Builder" } });
+    fireEvent.change(screen.getByLabelText("Profile name"), { target: { value: "My Builder" } });
     fireEvent.click(screen.getByRole("button", { name: "Save profile" }));
 
     await waitFor(() =>

@@ -78,6 +78,7 @@ export function WorkspaceShell({ aiActions, core, syncActions }: WorkspaceShellP
   const [mode, setMode] = useState<WorkspaceMode>("launcher");
   const [activeTool, setActiveTool] = useState<ToolPanelMode | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsInitialAiTab, setSettingsInitialAiTab] = useState<"agent" | "connection" | undefined>();
   const [settingsInitialSection, setSettingsInitialSection] = useState<"ai" | "storage" | undefined>();
   const [sharingApp, setSharingApp] = useState<AppSummary | null>(null);
   const [pendingInvite, setPendingInvite] = useState<AppInvitePayload | null>(null);
@@ -538,6 +539,7 @@ export function WorkspaceShell({ aiActions, core, syncActions }: WorkspaceShellP
             type="button"
             aria-label="Open settings"
             onClick={() => {
+              setSettingsInitialAiTab(undefined);
               setSettingsInitialSection(undefined);
               setSettingsOpen(true);
             }}
@@ -613,6 +615,7 @@ export function WorkspaceShell({ aiActions, core, syncActions }: WorkspaceShellP
           </footer>
           <WorkspaceToolPanel
             activeApp={activeApp}
+            activeBuilderProfileName={activeBuilderProfile?.name ?? null}
             aiConfigured={Boolean(aiConfig.apiKey && aiConfig.model)}
             builderActivity={builderSessions[activeApp.appId]?.activity ?? null}
             builderError={builderSessions[activeApp.appId]?.error ?? null}
@@ -626,6 +629,12 @@ export function WorkspaceShell({ aiActions, core, syncActions }: WorkspaceShellP
             onClose={() => setActiveTool(null)}
             onLoadAppData={core.getAppData}
             onOpenAiSettings={() => {
+              setSettingsInitialAiTab("connection");
+              setSettingsInitialSection("ai");
+              setSettingsOpen(true);
+            }}
+            onOpenBuilderProfileSettings={() => {
+              setSettingsInitialAiTab("agent");
               setSettingsInitialSection("ai");
               setSettingsOpen(true);
             }}
@@ -650,6 +659,7 @@ export function WorkspaceShell({ aiActions, core, syncActions }: WorkspaceShellP
         aiConfig={aiConfig}
         builderPreferences={builderPreferences}
         builderProfiles={builderProfiles}
+        initialAiTab={settingsInitialAiTab}
         initialSection={settingsInitialSection}
         isOpen={settingsOpen}
         storageProfile={storageProfile}
@@ -707,6 +717,7 @@ export function WorkspaceShell({ aiActions, core, syncActions }: WorkspaceShellP
         onClose={() => setSharingApp(null)}
         onOpenStorageSettings={() => {
           setSharingApp(null);
+          setSettingsInitialAiTab(undefined);
           setSettingsInitialSection("storage");
           setSettingsOpen(true);
         }}
