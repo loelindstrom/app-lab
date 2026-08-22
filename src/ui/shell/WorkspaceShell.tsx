@@ -3,6 +3,7 @@ import {
   addAiUsage,
   createEmptyAiUsage,
   DEFAULT_BUILDER_PREFERENCES,
+  MINIMAL_BUILDER_PROFILE_ID,
   type AiActions,
   type AiChatMessage,
   type AiConfig,
@@ -114,6 +115,15 @@ export function WorkspaceShell({ aiActions, core, syncActions }: WorkspaceShellP
   useEffect(() => {
     void aiActions.getBuilderPreferences().then(setBuilderPreferences);
   }, [aiActions]);
+
+  const activeBuilderProfile = useMemo(
+    () =>
+      builderProfiles.find((profile) => profile.profileId === builderPreferences.activeProfileId) ??
+      builderProfiles.find((profile) => profile.profileId === MINIMAL_BUILDER_PROFILE_ID) ??
+      builderProfiles[0] ??
+      null,
+    [builderPreferences.activeProfileId, builderProfiles],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -371,6 +381,7 @@ export function WorkspaceShell({ aiActions, core, syncActions }: WorkspaceShellP
       const result = await aiActions.runBuilderTurn({
         appId: app.appId,
         appName: app.name,
+        conversationMemory: builderPreferences.conversationMemory,
         messages: requestMessages,
         onActivity: (activity) => {
           updateBuilderSession(app.appId, (session) => ({ ...session, activity }));
@@ -378,6 +389,7 @@ export function WorkspaceShell({ aiActions, core, syncActions }: WorkspaceShellP
         onUsage: (usage) => {
           updateBuilderSession(app.appId, (session) => ({ ...session, usage: addAiUsage(session.usage, usage) }));
         },
+        profile: activeBuilderProfile ?? undefined,
         tools: {
           readCurrentAppSource: async () => {
             const currentApp = await core.getApp(app.appId);

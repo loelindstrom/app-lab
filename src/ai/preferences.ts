@@ -1,4 +1,5 @@
 import type { BuilderConversationMemory, BuilderPreferences } from "./types";
+import { MINIMAL_BUILDER_PROFILE_ID } from "./profiles";
 
 const BUILDER_PREFERENCES_KEY = "app-lab-builder-preferences-v1";
 
@@ -14,6 +15,7 @@ export const BUILDER_MEMORY_MESSAGE_LIMITS: Record<BuilderConversationMemory, nu
 };
 
 export const DEFAULT_BUILDER_PREFERENCES: Readonly<BuilderPreferences> = {
+  activeProfileId: MINIMAL_BUILDER_PROFILE_ID,
   conversationMemory: "short",
 };
 
@@ -28,9 +30,12 @@ export function createBuilderPreferencesStore(storage: PreferencesStorage): Buil
       try {
         const parsed = JSON.parse(storage.getItem(BUILDER_PREFERENCES_KEY) ?? "null") as unknown;
         if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return createDefaultPreferences();
-        const stored = parsed as { conversationMemory?: unknown; version?: unknown };
+        const stored = parsed as { activeProfileId?: unknown; conversationMemory?: unknown; version?: unknown };
         if (stored.version !== 1 || !isConversationMemory(stored.conversationMemory)) return createDefaultPreferences();
-        return { conversationMemory: stored.conversationMemory };
+        return {
+          activeProfileId: normalizeProfileId(stored.activeProfileId),
+          conversationMemory: stored.conversationMemory,
+        };
       } catch (_) {
         return createDefaultPreferences();
       }
@@ -39,7 +44,9 @@ export function createBuilderPreferencesStore(storage: PreferencesStorage): Buil
       if (!isConversationMemory(preferences.conversationMemory)) {
         throw new Error("Conversation memory is invalid.");
       }
-      const saved = { conversationMemory: preferences.conversationMemory };
+      const activeProfileId = preferences.activeProfileId.trim();
+      if (!activeProfileId) throw new Error("Active Builder profile is invalid.");
+      const saved = { activeProfileId, conversationMemory: preferences.conversationMemory };
       storage.setItem(BUILDER_PREFERENCES_KEY, JSON.stringify({ ...saved, version: 1 }));
       return saved;
     },
@@ -52,4 +59,8 @@ function createDefaultPreferences(): BuilderPreferences {
 
 function isConversationMemory(value: unknown): value is BuilderConversationMemory {
   return value === "short" || value === "medium" || value === "long";
+}
+
+function normalizeProfileId(value: unknown): string {
+  return typeof value === "string" && value.trim() ? value.trim() : MINIMAL_BUILDER_PROFILE_ID;
 }

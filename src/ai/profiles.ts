@@ -1,6 +1,7 @@
 import type { BuilderProfile } from "./types";
 
 export const BUILDER_APP_NAME_PLACEHOLDER = "{{appName}}";
+export const MINIMAL_BUILDER_PROFILE_ID = "builtin-minimal-v1";
 
 export const MINIMAL_BUILDER_STARTER_SOURCE = `<!doctype html>
 <html lang="en">
@@ -40,7 +41,7 @@ export function createBuiltInBuilderProfiles(guidedStarterSource: string): Build
     {
       builtIn: true,
       name: "Minimal",
-      profileId: "builtin-minimal-v1",
+      profileId: MINIMAL_BUILDER_PROFILE_ID,
       promptTemplate: minimalPrompt,
       starterSource: MINIMAL_BUILDER_STARTER_SOURCE,
     },
@@ -65,6 +66,10 @@ App Lab best practices:
       starterSource: guidedStarterSource,
     },
   ];
+}
+
+export function resolveBuilderProfilePrompt(promptTemplate: string, appName: string): string {
+  return promptTemplate.split(BUILDER_APP_NAME_PLACEHOLDER).join(appName);
 }
 
 function createMinimalProfilePrompt(): string {

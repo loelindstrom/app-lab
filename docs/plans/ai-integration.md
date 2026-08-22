@@ -306,10 +306,9 @@ The six slices below are the working implementation plan. Each slice should be r
    - ✅ Bound tool rounds.
    - ✅ Reject malformed tool arguments, invalid HTML, forms, and submit controls.
    - ✅ Return compact write receipts and track session usage.
-   - ✅ Store Builder profiles and the global conversation-memory preference locally. Profile selection and memory limits are not yet
-     applied to agent requests.
+   - ✅ Store Builder profiles, the active profile, and the global conversation-memory preference locally.
+   - ✅ Apply the selected profile and conversation-memory limit to agent requests.
    - ✅ Test text-only answers, tool calls, provider failures, and malformed responses.
-   - Apply the selected profile and conversation-memory limit to agent requests.
    - Cancel or invalidate a request when its app session changes.
    - Test stale requests after cancellation is implemented.
    - Start non-streaming if that gets the vertical slice working sooner. Streaming can then be added without changing the agent

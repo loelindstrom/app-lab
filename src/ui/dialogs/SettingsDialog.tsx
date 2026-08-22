@@ -181,11 +181,15 @@ export function SettingsDialog({
   async function saveConversationMemory(conversationMemory: BuilderConversationMemory) {
     setMemoryStatus("Saving...");
     try {
-      await onSaveBuilderPreferences({ conversationMemory });
+      await onSaveBuilderPreferences({ ...builderPreferences, conversationMemory });
       setMemoryStatus("Saved");
     } catch (error) {
       setMemoryStatus(error instanceof Error ? error.message : "Could not save.");
     }
+  }
+
+  async function selectBuilderProfile(activeProfileId: string) {
+    await onSaveBuilderPreferences({ ...builderPreferences, activeProfileId });
   }
 
   async function clearAiConfig() {
@@ -455,9 +459,11 @@ export function SettingsDialog({
                       </section>
 
                       <BuilderProfilesSettings
+                        activeProfileId={builderPreferences.activeProfileId}
                         profiles={builderProfiles}
                         onCreate={onCreateBuilderProfile}
                         onDelete={onDeleteBuilderProfile}
+                        onSelect={selectBuilderProfile}
                         onUpdate={onUpdateBuilderProfile}
                       />
                     </div>

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createBuilderAgent } from "./agent";
 import type { OpenRouterClient, OpenRouterMessage } from "./openrouter";
-import type { AiUsage } from "./types";
+import type { AiChatMessage, AiUsage, BuilderProfile } from "./types";
 
 const CALL_USAGE: AiUsage = {
   completionTokens: 3,
@@ -28,6 +28,54 @@ describe("BuilderAI agent", () => {
     });
     expect(tools.readCurrentAppSource).not.toHaveBeenCalled();
     expect(tools.replaceCurrentAppSource).not.toHaveBeenCalled();
+  });
+
+  it("uses the selected profile prompt and sends only the configured recent messages", async () => {
+    const client = createClient([{ content: "Done.", role: "assistant" }]);
+    const agent = createBuilderAgent(client, async () => ({ apiKey: "sk-test", model: "provider/model" }));
+    const profile: BuilderProfile = {
+      builtIn: false,
+      name: "Focused",
+      profileId: "custom-focused",
+      promptTemplate: "Build {{appName}} carefully. The active app is {{appName}}.",
+      starterSource: "<!doctype html><html></html>",
+    };
+    const messages: AiChatMessage[] = Array.from({ length: 7 }, (_, index) => ({
+      appId: "app-1",
+      content: `Message ${index + 1}`,
+      createdAt: `2026-01-01T00:00:0${index}.000Z`,
+      messageId: `message-${index + 1}`,
+      role: index % 2 === 0 ? "user" : "assistant",
+    }));
+    messages.splice(5, 0, {
+      appId: "other-app",
+      content: "Other app message",
+      createdAt: "2026-01-01T00:00:08.000Z",
+      messageId: "other-message",
+      role: "user",
+    });
+
+    await agent.runTurn({
+      appId: "app-1",
+      appName: "Timer",
+      conversationMemory: "short",
+      messages,
+      profile,
+      tools: {
+        readCurrentAppSource: vi.fn(),
+        readRecentConsoleOutput: vi.fn(),
+        replaceCurrentAppSource: vi.fn(),
+      },
+    });
+
+    const sentMessages = vi.mocked(client.sendChat).mock.calls[0][0].messages;
+    expect(sentMessages).toEqual([
+      { content: "Build Timer carefully. The active app is Timer.", role: "system" },
+      { content: "Message 4", role: "assistant" },
+      { content: "Message 5", role: "user" },
+      { content: "Message 6", role: "assistant" },
+      { content: "Message 7", role: "user" },
+    ]);
   });
 
   it("reads and replaces only through host-supplied tools", async () => {

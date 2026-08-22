@@ -28,6 +28,7 @@ export interface AiUsage {
 export type BuilderConversationMemory = "long" | "medium" | "short";
 
 export interface BuilderPreferences {
+  activeProfileId: string;
   conversationMemory: BuilderConversationMemory;
 }
 
@@ -75,9 +76,11 @@ export interface BuilderAgentTools {
 export interface RunBuilderTurnInput {
   appId: string;
   appName: string;
+  conversationMemory?: BuilderConversationMemory;
   messages: AiChatMessage[];
   onActivity?: (message: string) => void;
   onUsage?: (usage: AiUsage) => void;
+  profile?: BuilderProfile;
   signal?: AbortSignal;
   tools: BuilderAgentTools;
 }

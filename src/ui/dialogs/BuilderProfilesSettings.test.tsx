@@ -38,11 +38,13 @@ describe("BuilderProfilesSettings", () => {
       builtIn: false,
     }));
     const deleteProfile = vi.fn().mockResolvedValue(undefined);
+    const selectProfile = vi.fn().mockResolvedValue(undefined);
 
     function Harness() {
       const [profiles, setProfiles] = useState(BUILT_INS);
       return (
         <BuilderProfilesSettings
+          activeProfileId="builtin-minimal-v1"
           profiles={profiles}
           onCreate={async (input) => {
             const created = await createProfile(input);
@@ -53,6 +55,7 @@ describe("BuilderProfilesSettings", () => {
             await deleteProfile(profileId);
             setProfiles((current) => current.filter((profile) => profile.profileId !== profileId));
           }}
+          onSelect={selectProfile}
           onUpdate={async (input) => {
             const updated = await updateProfile(input);
             setProfiles((current) => current.map((profile) => (profile.profileId === updated.profileId ? updated : profile)));
@@ -72,6 +75,7 @@ describe("BuilderProfilesSettings", () => {
     fireEvent.click(screen.getByRole("button", { name: "Duplicate" }));
     await waitFor(() => expect(readControlValue("Name")).toBe("Minimal copy"));
     expect(createProfile).toHaveBeenCalledWith(expect.objectContaining({ name: "Minimal copy" }));
+    expect(selectProfile).toHaveBeenCalledWith("custom-1");
     expect(screen.getByLabelText("Name")).toHaveProperty("readOnly", false);
 
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "My Builder" } });

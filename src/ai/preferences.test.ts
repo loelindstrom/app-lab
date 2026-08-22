@@ -1,14 +1,27 @@
 import { describe, expect, it } from "vitest";
 import { createBuilderPreferencesStore } from "./preferences";
+import { MINIMAL_BUILDER_PROFILE_ID } from "./profiles";
 
 describe("Builder preferences", () => {
   it("stores conversation memory independently from profiles", async () => {
     const storage = createMemoryStorage();
     const store = createBuilderPreferencesStore(storage);
 
-    await expect(store.get()).resolves.toEqual({ conversationMemory: "short" });
-    await expect(store.save({ conversationMemory: "long" })).resolves.toEqual({ conversationMemory: "long" });
-    await expect(store.get()).resolves.toEqual({ conversationMemory: "long" });
+    await expect(store.get()).resolves.toEqual({ activeProfileId: MINIMAL_BUILDER_PROFILE_ID, conversationMemory: "short" });
+    await expect(store.save({ activeProfileId: "custom-1", conversationMemory: "long" })).resolves.toEqual({
+      activeProfileId: "custom-1",
+      conversationMemory: "long",
+    });
+    await expect(store.get()).resolves.toEqual({ activeProfileId: "custom-1", conversationMemory: "long" });
+  });
+
+  it("adds the Minimal profile when loading preferences saved before profile selection existed", async () => {
+    const storage = createMemoryStorage();
+    const store = createBuilderPreferencesStore(storage);
+
+    storage.setItem("app-lab-builder-preferences-v1", JSON.stringify({ conversationMemory: "medium", version: 1 }));
+
+    await expect(store.get()).resolves.toEqual({ activeProfileId: MINIMAL_BUILDER_PROFILE_ID, conversationMemory: "medium" });
   });
 
   it("uses the default for malformed and unsupported stored values", async () => {
@@ -16,10 +29,10 @@ describe("Builder preferences", () => {
     const store = createBuilderPreferencesStore(storage);
 
     storage.setItem("app-lab-builder-preferences-v1", JSON.stringify({ conversationMemory: "long", version: 2 }));
-    await expect(store.get()).resolves.toEqual({ conversationMemory: "short" });
+    await expect(store.get()).resolves.toEqual({ activeProfileId: MINIMAL_BUILDER_PROFILE_ID, conversationMemory: "short" });
 
     storage.setItem("app-lab-builder-preferences-v1", "not-json");
-    await expect(store.get()).resolves.toEqual({ conversationMemory: "short" });
+    await expect(store.get()).resolves.toEqual({ activeProfileId: MINIMAL_BUILDER_PROFILE_ID, conversationMemory: "short" });
   });
 });
 

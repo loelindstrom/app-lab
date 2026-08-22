@@ -8,26 +8,40 @@ import {
 import { SettingsActionBar, SettingsSnackbar } from "./SettingsActions";
 
 interface BuilderProfilesSettingsProps {
+  activeProfileId: string;
   onCreate: (input: BuilderProfileInput) => Promise<BuilderProfile>;
   onDelete: (profileId: string) => Promise<void>;
+  onSelect: (profileId: string) => Promise<void>;
   onUpdate: (input: UpdateBuilderProfileInput) => Promise<BuilderProfile>;
   profiles: BuilderProfile[];
 }
 
 export function BuilderProfilesSettings({
+  activeProfileId,
   onCreate,
   onDelete,
+  onSelect,
   onUpdate,
   profiles,
 }: BuilderProfilesSettingsProps) {
-  const [selectedProfileId, setSelectedProfileId] = useState(profiles[0]?.profileId ?? "");
+  const [selectedProfileId, setSelectedProfileId] = useState(activeProfileId);
   const selectedProfile = useMemo(
-    () => profiles.find((profile) => profile.profileId === selectedProfileId) ?? profiles[0] ?? null,
-    [profiles, selectedProfileId],
+    () =>
+      profiles.find((profile) => profile.profileId === selectedProfileId) ??
+      profiles.find((profile) => profile.profileId === activeProfileId) ??
+      profiles[0] ??
+      null,
+    [activeProfileId, profiles, selectedProfileId],
   );
   const [draft, setDraft] = useState<BuilderProfileInput>(() => toProfileInput(selectedProfile));
   const [notice, setNotice] = useState<string | null>(null);
   const [status, setStatus] = useState("Ready");
+
+  useEffect(() => {
+    if (profiles.some((profile) => profile.profileId === activeProfileId)) {
+      setSelectedProfileId(activeProfileId);
+    }
+  }, [activeProfileId, profiles]);
 
   useEffect(() => {
     if (selectedProfile) {
@@ -44,15 +58,38 @@ export function BuilderProfilesSettings({
 
   async function createProfile(source: BuilderProfile | null, name: string) {
     setStatus("Creating profile...");
+    let created: BuilderProfile;
     try {
-      const created = await onCreate({ ...toProfileInput(source), name });
-      setSelectedProfileId(created.profileId);
-      setDraft(toProfileInput(created));
-      setStatus("Ready");
-      setNotice("Profile created.");
+      created = await onCreate({ ...toProfileInput(source), name });
     } catch (error) {
       setStatus("Ready");
       setNotice(error instanceof Error ? error.message : "Could not create profile.");
+      return;
+    }
+
+    setSelectedProfileId(created.profileId);
+    setDraft(toProfileInput(created));
+    try {
+      await onSelect(created.profileId);
+      setNotice("Profile created.");
+    } catch (_) {
+      setSelectedProfileId(activeProfileId);
+      setNotice("Profile created, but could not make it active.");
+    } finally {
+      setStatus("Ready");
+    }
+  }
+
+  async function selectProfile(profileId: string) {
+    setSelectedProfileId(profileId);
+    setStatus("Selecting profile...");
+    try {
+      await onSelect(profileId);
+      setStatus("Ready");
+    } catch (error) {
+      setSelectedProfileId(activeProfileId);
+      setStatus("Ready");
+      setNotice(error instanceof Error ? error.message : "Could not select profile.");
     }
   }
 
@@ -74,15 +111,23 @@ export function BuilderProfilesSettings({
     if (!selectedProfile || selectedProfile.builtIn) return;
     if (!window.confirm(`Delete the Builder profile "${selectedProfile.name}"?`)) return;
     setStatus("Deleting profile...");
+    const fallback = profiles.find((profile) => profile.profileId !== selectedProfile.profileId) ?? null;
     try {
       await onDelete(selectedProfile.profileId);
-      const fallback = profiles.find((profile) => profile.profileId !== selectedProfile.profileId) ?? null;
-      setSelectedProfileId(fallback?.profileId ?? "");
-      setStatus("Ready");
-      setNotice("Profile deleted.");
     } catch (error) {
       setStatus("Ready");
       setNotice(error instanceof Error ? error.message : "Could not delete profile.");
+      return;
+    }
+
+    setSelectedProfileId(fallback?.profileId ?? "");
+    try {
+      if (fallback) await onSelect(fallback.profileId);
+      setNotice("Profile deleted.");
+    } catch (_) {
+      setNotice("Profile deleted, but could not save the fallback selection.");
+    } finally {
+      setStatus("Ready");
     }
   }
 
@@ -115,8 +160,7 @@ export function BuilderProfilesSettings({
               className="min-h-10 rounded-md border border-app-line bg-white px-3 font-normal text-app-ink outline-none focus:border-app-accent"
               value={selectedProfile.profileId}
               onChange={(event) => {
-                setSelectedProfileId(event.target.value);
-                setStatus("Ready");
+                void selectProfile(event.target.value);
               }}
             >
               {profiles.map((profile) => (

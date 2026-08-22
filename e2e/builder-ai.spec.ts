@@ -42,6 +42,17 @@ test.describe("BuilderAI browser workflow", () => {
     await expect(page.getByText("I rebuilt the app in the sandbox.")).toBeVisible();
     await expect(page.frameLocator('iframe[sandbox="allow-scripts"]').getByRole("heading", { name: "AI Browser Test" })).toBeVisible();
     expect(requests).toHaveLength(3);
+    expect(readMessages(requests[0])[0]).toMatchObject({
+      content: expect.stringContaining('active App Lab app named "Example App"'),
+      role: "system",
+    });
+    expect(String(readMessages(requests[0])[0].content)).toContain("Runtime constraints:");
+    expect(String(readMessages(requests[0])[0].content)).not.toContain("App Lab best practices:");
+    expect(readToolNames(requests[0])).toEqual([
+      "read_current_app_source",
+      "read_recent_console_output",
+      "replace_current_app_source",
+    ]);
     expect(readMessages(requests[1])).toEqual(
       expect.arrayContaining([expect.objectContaining({ role: "tool", tool_call_id: "read-source" })]),
     );
@@ -74,6 +85,11 @@ test.describe("BuilderAI browser workflow", () => {
   });
 
   test("stores custom Builder profiles in this browser", async ({ page }) => {
+    const requests: Array<Record<string, unknown>> = [];
+    await page.route(CHAT_URL, async (route) => {
+      requests.push(readRequestBody(route.request()));
+      await fulfillAssistant(route, { content: "Used the active profile.", role: "assistant" });
+    });
     await page.setViewportSize({ height: 844, width: 390 });
     await page.goto("/");
     await page.getByRole("button", { name: "Open settings" }).click();
@@ -92,8 +108,9 @@ test.describe("BuilderAI browser workflow", () => {
     await page.getByRole("button", { name: "Save profile" }).click();
     await expect(page.getByText("Profile saved.")).toBeVisible();
 
-    const storedProfiles = await page.evaluate(() => localStorage.getItem("app-lab-builder-profiles-v1"));
-    expect(JSON.parse(storedProfiles ?? "null")).toMatchObject({
+    const storedProfilesText = await page.evaluate(() => localStorage.getItem("app-lab-builder-profiles-v1"));
+    const storedProfiles = JSON.parse(storedProfilesText ?? "null");
+    expect(storedProfiles).toMatchObject({
       profiles: [
         {
           builtIn: false,
@@ -104,6 +121,7 @@ test.describe("BuilderAI browser workflow", () => {
       version: 1,
     });
     expect(await page.evaluate(() => JSON.parse(localStorage.getItem("app-lab-builder-preferences-v1") ?? "null"))).toEqual({
+      activeProfileId: storedProfiles.profiles[0].profileId,
       conversationMemory: "long",
       version: 1,
     });
@@ -116,6 +134,20 @@ test.describe("BuilderAI browser workflow", () => {
     await expect(page.getByLabel("Conversation memory")).toHaveValue("long");
     await page.getByLabel("Selected profile").selectOption({ label: "Mobile Builder" });
     await expect(page.getByLabel("Builder instructions")).toHaveValue("Build one focused app.");
+
+    await page.evaluate(() => {
+      localStorage.setItem("app-lab-ai-config-v1", JSON.stringify({ apiKey: "sk-test-browser", model: "provider/model" }));
+    });
+    await page.reload();
+    await page.getByRole("button", { name: "Create new app" }).click();
+    await page.getByRole("button", { name: "Toggle BuilderAI" }).click();
+    await page.getByLabel("Message", { exact: true }).fill("Use my profile");
+    await page.getByRole("button", { name: "Send message" }).click();
+    await expect(page.getByText("Used the active profile.")).toBeVisible();
+    expect(readMessages(requests[0])).toEqual([
+      { content: "Build one focused app.", role: "system" },
+      { content: "Use my profile", role: "user" },
+    ]);
   });
 });
 
@@ -139,6 +171,20 @@ function readRequestBody(request: Request): Record<string, unknown> {
 function readMessages(request: Record<string, unknown>): Array<Record<string, unknown>> {
   if (!Array.isArray(request.messages)) throw new Error("Expected OpenRouter messages.");
   return request.messages as Array<Record<string, unknown>>;
+}
+
+function readToolNames(request: Record<string, unknown>): string[] {
+  if (!Array.isArray(request.tools)) throw new Error("Expected OpenRouter tools.");
+  return request.tools.map((tool) => {
+    if (!tool || typeof tool !== "object" || Array.isArray(tool)) throw new Error("Expected an OpenRouter tool object.");
+    const functionDefinition = (tool as Record<string, unknown>).function;
+    if (!functionDefinition || typeof functionDefinition !== "object" || Array.isArray(functionDefinition)) {
+      throw new Error("Expected an OpenRouter function definition.");
+    }
+    const name = (functionDefinition as Record<string, unknown>).name;
+    if (typeof name !== "string") throw new Error("Expected an OpenRouter tool name.");
+    return name;
+  });
 }
 
 function toolCall(id: string, name: string, args: Record<string, unknown>) {

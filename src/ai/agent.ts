@@ -1,4 +1,6 @@
 import { createBuilderSystemPrompt } from "./prompt";
+import { BUILDER_MEMORY_MESSAGE_LIMITS, DEFAULT_BUILDER_PREFERENCES } from "./preferences";
+import { resolveBuilderProfilePrompt } from "./profiles";
 import { validateBuilderSource } from "./sourceValidation";
 import type { OpenRouterClient, OpenRouterMessage, OpenRouterTool, OpenRouterToolCall } from "./openrouter";
 import type { AiConfig, BuilderAgentTools, BuilderToolSummary, BuilderTurnResult, RunBuilderTurnInput } from "./types";
@@ -55,18 +57,25 @@ export interface BuilderAgent {
 export function createBuilderAgent(client: OpenRouterClient, getConfig: () => Promise<AiConfig>): BuilderAgent {
   return {
     async runTurn(input) {
+      const conversationMemory = input.conversationMemory ?? DEFAULT_BUILDER_PREFERENCES.conversationMemory;
+      const recentMessages = input.messages
+        .filter((message) => message.appId === input.appId)
+        .slice(-BUILDER_MEMORY_MESSAGE_LIMITS[conversationMemory]);
       const messages: OpenRouterMessage[] = [
-        { content: createBuilderSystemPrompt(input.appName), role: "system" },
-        ...input.messages
-          .filter((message) => message.appId === input.appId)
-          .map((message) => ({ content: message.content, role: message.role })),
+        {
+          content: input.profile
+            ? resolveBuilderProfilePrompt(input.profile.promptTemplate, input.appName)
+            : createBuilderSystemPrompt(input.appName),
+          role: "system",
+        },
+        ...recentMessages.map((message) => ({ content: message.content, role: message.role })),
       ];
       const config = await getConfig();
       let usage = createEmptyAiUsage();
 
       for (let round = 0; round < MAX_BUILDER_TOOL_ROUNDS; round += 1) {
         input.onActivity?.("Thinking...");
-        const response = await client.sendChat({ config, messages, signal: input.signal, tools: BUILDER_TOOLS });
+        const response = await client.sendChat({ config, messages: [...messages], signal: input.signal, tools: BUILDER_TOOLS });
         const assistant = response.message;
         usage = addAiUsage(usage, response.usage);
         input.onUsage?.(response.usage);
