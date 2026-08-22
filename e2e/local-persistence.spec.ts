@@ -121,6 +121,24 @@ test.describe("local app persistence", () => {
     await expect(appFrame(page).getByText("Hello Ada")).toBeVisible();
     await expect(appFrame(page).locator("#name-status")).toHaveClass(/ready/);
   });
+
+  test("reports blocked form submissions in the App Lab console", async ({ page }) => {
+    await page.goto("/");
+    await page.evaluate(async () => {
+      indexedDB.deleteDatabase("app-lab-v2");
+      indexedDB.deleteDatabase("app-lab-sync-queue-v1");
+      localStorage.clear();
+    });
+    await page.reload();
+
+    await createOpinionatedBoard(page);
+    await saveSource(page, htmlWithUnsupportedForm());
+    await appFrame(page).getByRole("button", { name: "Submit" }).click();
+
+    await expect(page.getByRole("button", { name: "Toggle console" }).locator("span")).toHaveText("1");
+    await page.getByRole("button", { name: "Toggle console" }).click();
+    await expect(page.getByText("Form submission is blocked by the App Lab sandbox", { exact: false })).toBeVisible();
+  });
 });
 
 test.describe("@firebase synced app persistence", () => {
@@ -488,6 +506,22 @@ function htmlForNormalAlpine() {
         };
       }
     </script>
+  </body>
+</html>`;
+}
+
+function htmlWithUnsupportedForm() {
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Unsupported form</title>
+  </head>
+  <body>
+    <form>
+      <button type="submit">Submit</button>
+    </form>
   </body>
 </html>`;
 }

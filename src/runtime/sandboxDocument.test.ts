@@ -19,6 +19,9 @@ describe("prepareSandboxDocument", () => {
     expect(scripts[1]).toContain("APP_LAB_DATA_CHANGED");
     expect(scripts[1]).toContain("APP_LAB_DATA_HANDLER_STATUS");
     expect(scripts[1]).toContain("APP_LAB_CONSOLE");
+    expect(scripts[1]).toContain('window.addEventListener("submit"');
+    expect(scripts[1]).toContain('document.addEventListener("click"');
+    expect(scripts[1]).toContain("Form submission is blocked by the App Lab sandbox");
     expect(scripts[1]).toContain("toJsonValue");
     expect(scripts[2]).toContain("window.Alpine");
     expect(scripts[2]).not.toContain("queueMicrotask(() => {\n    src_default.start();");

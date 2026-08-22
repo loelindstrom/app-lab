@@ -199,6 +199,33 @@ export function prepareSandboxDocument(
     notifyError(event.reason);
   });
 
+  function reportUnsupportedFormSubmission() {
+    const error = new Error(
+      'Form submission is blocked by the App Lab sandbox. Use a button with type="button" and an explicit click handler instead.'
+    );
+    originalConsole.error(error.message);
+    postConsole("error", [error]);
+    notifyError(error);
+  }
+
+  window.addEventListener("submit", (event) => {
+    if (event.defaultPrevented) return;
+    event.preventDefault();
+    reportUnsupportedFormSubmission();
+  });
+
+  document.addEventListener("click", (event) => {
+    if (event.defaultPrevented) return;
+    const target = event.target instanceof Element ? event.target.closest("button, input") : null;
+    if (!(target instanceof HTMLButtonElement || target instanceof HTMLInputElement) || !target.form) return;
+
+    const type = (target.getAttribute("type") || (target instanceof HTMLButtonElement ? "submit" : "text")).toLowerCase();
+    if (type !== "submit" && type !== "image") return;
+
+    event.preventDefault();
+    reportUnsupportedFormSubmission();
+  });
+
   Object.defineProperty(window, "AppLab", {
     value: Object.freeze({
       getData: function (fallback) {
