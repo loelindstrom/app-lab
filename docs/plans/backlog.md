@@ -5,7 +5,7 @@ passes.
 
 ## Potential bugs
 
-**Console message not showing up in UI**  
+- [x] **Console message not showing up in UI**  
 There seems to be a bug which makes it so that certain console messages don't show up in the UI, only the console.
 For example this one:
 ```
@@ -34,7 +34,7 @@ And the code which caused it was probably this:
         </form>
 ```
 
-**In the "Opinionated Board" I often see sync error**  
+- [x] **In the "Opinionated Board" I often see sync error**  
 The error shown via the cloud icon in host's top bar is 
 "Could not retry pending sync: Remote room snapshot is older than the last seen version."
 It's unclear why this happens...
@@ -42,30 +42,30 @@ Same for "Minimal Board" starting app.
 
 ## Small fixes
 
-**FAB on launcher button should be more centered on desktop**  
+- [x] **FAB on launcher button should be more centered on desktop**  
 The Floating Action Button doesn't have to be all the way out to the side on very wide screens in the launcher menu of App Lab's shell/host
 
-**Change the pen edit icon for a cleaner one**  
+- [x] **Change the pen edit icon for a cleaner one**  
 This is for the icon on the apps in the App Lab host's launcher menu. Would be nicer with the one which is used in the "Opinionated Board" starting app
 
-**Put the "Opinionated Board" starting app in correct place**  
+- [x] **Put the "Opinionated Board" starting app in correct place**  
 The "Minimal Board" starting app lives inside the AI folder. I think the "Opinionated Board" belongs there too now when it's part of a AI profile
 
-**When one opens an invite one _has_ to preview it before importing. I think that shall be optional**  
+- [x] **When one opens an invite one _has_ to preview it before importing. I think that shall be optional**  
 Title describes well.
 
-**The Opinionated Board starting app drag and drop is not perfect**  
+- [x] **The Opinionated Board starting app drag and drop is not perfect**  
 If many items and one drag the top one to the bottom and aim too low, i.e. hold it on the host's bottom bar (mobile view), it doesn't get moved but isntead bounces back/stays in the top.  
 One needs to allow it to move as long as it's "south" of the last item even if it's "outside" the list of items
 
-**Show token usage/cost always**  
+- [x] **Show token usage/cost always**  
 Don't only show after first message is sent. Show from start but with 0 then if it hasn't been used yet
 
-**The 'Copy prompt+code' button does not look good**  
+- [x] **The 'Copy prompt+code' button does not look good**  
 I can't say exactly what it is, but something with its shape and placement. And the arrow in it is not good-looking.
 Also I think there shall be a short description when it's opened saying "Copy prompt and paste into external AI. Paste result back in '<>' - where the source code lives"
 
-**Also with OpenRouter connected the first message shall highlight the possibility to Copy prompt+code**  
+- [x] **Also with OpenRouter connected the first message shall highlight the possibility to Copy prompt+code**  
 The messages:
 If OpenRouter connected:
 - Hi,  
@@ -77,6 +77,16 @@ If OpenRouter not connected:
   Or set up your AI provider in ['Settings'](<link to settings ai connection page>) to be able to chat directly here.
 
 Btw, I suppose that this first message shall be included in the chat history as well sent to the LLM. That makes sense in my book, but open to change my mind.
+
+- [x] **Small description of Builder profile**
+It would be nice if there was a small description under the "Active profile" dropdown. Just text.  
+And then in the next section "Profile details", we could add a text area for changing the description (optional to have something in there).  
+But this would be a good way to describe the differences between the two profiles a bit more "Behind the scenes".
+
+- [x] **Add which model is used in chat window**  
+In the chat window it now says: "BuilderAI (Profile: Minimal)" But I think it shall say: "BuilderAI (Profile: Minimal Model: google/gemini-3.6-flash)"  
+And it's only "Minimal" and "google/gemini-3.6-flash" that shall be undelined with a link, not "Profile" and "Model". And clicking the "google/gemini-3.6-flash" shall take you to Settings -> Ai -> Connection
+
 
 ## Current Baseline
 
@@ -139,6 +149,16 @@ The order does not have any meaning, one needs to evaluate the priority when we 
    justify UI and safety checks.
 
 - When clicking the "+" button on the launcher to create a new app one could get the choice to decide which Agent profile one wants to be active. Maybe think a bit about how the user perceives this in regards to if they think that one chooses profile per app while perhaps one is changing globally? Trade-off desired functionality, implemention complexity and clarity for the user.
+
+- Large chunks when building the app. Perhaps something to take a look at:  
+  This warning shows:  
+  "(!) Some chunks are larger than 500 kB after minification. Consider:
+   - Using dynamic import() to code-split the application
+   - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+   - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit."  
+
+
+
 
 ## Explicit Non-Goals For Now
 
