@@ -1,9 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createMemorySyncProvider } from "../testing/memorySyncProvider";
 import { createMemorySyncQueueStore, enqueueSaveWorkspaceManifest } from "./syncQueue";
 import { configureTestStorageProfile } from "../testing/testStorageProfile";
 import { createMemoryWorkspaceSyncStore, createWorkspaceSyncRegistry } from "../workspace/workspaceSync";
-import { createWorkspaceRecoveryMaterial, loadWorkspaceManifest } from "../workspace/workspaceManifest";
+import {
+  createWorkspaceRecoveryMaterial,
+  loadLatestWorkspaceManifest,
+  loadWorkspaceManifest,
+} from "../workspace/workspaceManifest";
 import { processWorkspaceManifestQueue } from "./workspaceManifestWorker";
 
 describe("workspace manifest worker", () => {
@@ -91,5 +95,51 @@ describe("workspace manifest worker", () => {
     expect(mergedState.apps["remote-app"]).toMatchObject({ appId: "remote-app", kind: "owned" });
     expect(mergedState.apps["local-app"]).toMatchObject({ appId: "local-app", kind: "owned" });
     expect(mergedState.manifestRoom?.lastSeenVersion).toBe(3);
+  });
+
+  it("stores the exact manifest version after recreating a missing room", async () => {
+    const provider = createMemorySyncProvider();
+    const queueStore = createMemorySyncQueueStore();
+    const syncRegistry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
+    await configureTestStorageProfile(syncRegistry);
+    await syncRegistry.ensureWorkspaceManifestRoom();
+    let state = await syncRegistry.getState();
+
+    await enqueueSaveWorkspaceManifest(queueStore, state.workspaceId);
+    await processWorkspaceManifestQueue({
+      createProviderFromStorageProfile: () => provider,
+      queueStore,
+      syncRegistry,
+    });
+    await syncRegistry.ensureOwnedAppRooms("app-1");
+    state = await syncRegistry.getState();
+    await enqueueSaveWorkspaceManifest(queueStore, state.workspaceId);
+    await processWorkspaceManifestQueue({
+      createProviderFromStorageProfile: () => provider,
+      queueStore,
+      syncRegistry,
+    });
+
+    state = await syncRegistry.getState();
+    if (!state.manifestRoom) throw new Error("Manifest room was not created.");
+    await provider.deleteRoom({
+      roomId: state.manifestRoom.roomId,
+      writeToken: state.manifestRoom.writeToken,
+    });
+    await enqueueSaveWorkspaceManifest(queueStore, state.workspaceId);
+    const onSavedState = vi.fn(async () => {});
+    await processWorkspaceManifestQueue({
+      createProviderFromStorageProfile: () => provider,
+      onSavedState,
+      queueStore,
+      syncRegistry,
+    });
+
+    const repaired = await syncRegistry.getState();
+    expect(onSavedState).not.toHaveBeenCalled();
+    expect(repaired.manifestRoom?.lastSeenVersion).toBe(1);
+    await expect(loadLatestWorkspaceManifest({ provider, state: repaired })).resolves.toMatchObject({
+      apps: { "app-1": { appId: "app-1", kind: "owned" } },
+    });
   });
 });

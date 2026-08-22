@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createMemoryCore } from "../core/memoryCore";
 import { createMemorySyncQueueStore, enqueueSaveAppData, enqueueSaveSource, markQueueItemSyncing } from "./queue/syncQueue";
 import { isRemoteAppDeletedError, loadRemoteAppRooms, saveRemoteAppData, saveRemoteAppSource } from "./rooms/appRooms";
@@ -95,6 +95,81 @@ describe("workspace sync actions", () => {
 
     await expect(dataChange).resolves.toEqual({ count: 2 });
     await expect(joinedCore.getAppData(app.appId)).resolves.toEqual({ count: 2 });
+    unsubscribe();
+  });
+
+  it("does not apply a remote source load that began before a local edit", async () => {
+    const provider = createMemorySyncProvider();
+    const core = createMemoryCore();
+    const registry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
+    await configureTestStorageProfile(registry);
+
+    let delayedRoomId: string | null = null;
+    let releaseSourceLoad = () => {};
+    const sourceLoadGate = new Promise<void>((resolve) => {
+      releaseSourceLoad = resolve;
+    });
+    let markSourceLoadStarted = () => {};
+    const sourceLoadStarted = new Promise<void>((resolve) => {
+      markSourceLoadStarted = resolve;
+    });
+    const delayedProvider: RealtimeSyncProvider = {
+      ...provider,
+      async loadRoom(input) {
+        const snapshot = await provider.loadRoom(input);
+        if (input.roomId === delayedRoomId) {
+          delayedRoomId = null;
+          markSourceLoadStarted();
+          await sourceLoadGate;
+        }
+        return snapshot;
+      },
+    };
+    const actions = createWorkspaceSyncActions({
+      core,
+      createProviderFromReference: () => delayedProvider,
+      createProviderFromStorageProfile: () => delayedProvider,
+      queueStore: createMemorySyncQueueStore(),
+      syncRegistry: registry,
+    });
+    const app = await core.createApp({
+      description: "Source race test",
+      name: "Initial",
+      sourceCode: "<!doctype html><title>Initial</title>",
+    });
+    await actions.ensureAppBackedUp(app);
+    const record = await registry.getAppSyncRecord(app.appId);
+    if (!record) throw new Error("Expected app sync record.");
+
+    const onRemoteChange = vi.fn();
+    const unsubscribe = await actions.subscribeAppSource(app.appId, onRemoteChange, vi.fn());
+    delayedRoomId = record.sourceRoom.roomId;
+    await saveRemoteAppSource({
+      app: {
+        ...app,
+        name: "Remote",
+        sourceCode: "<!doctype html><title>Remote</title>",
+      },
+      provider,
+      syncRecord: record,
+    });
+    await sourceLoadStarted;
+
+    const finishLocalEdit = actions.beginLocalAppSourceEdit(app.appId);
+    await core.updateApp({
+      appId: app.appId,
+      name: "Local",
+      sourceCode: "<!doctype html><title>Local</title>",
+    });
+    releaseSourceLoad();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    finishLocalEdit();
+
+    await expect(core.getApp(app.appId)).resolves.toMatchObject({
+      name: "Local",
+      sourceCode: "<!doctype html><title>Local</title>",
+    });
+    expect(onRemoteChange).not.toHaveBeenCalled();
     unsubscribe();
   });
 

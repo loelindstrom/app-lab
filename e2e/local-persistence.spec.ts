@@ -207,6 +207,48 @@ test.describe("@firebase synced app persistence", () => {
     }
   });
 
+  test("repairs a local workspace manifest version that is ahead of Firebase", async () => {
+    if (!firebaseProfile) throw new Error("Auth-capable Firebase E2E profile is required.");
+
+    const context = requireContext(firebaseContext);
+    const page = await newCleanWorkspacePage(context);
+
+    try {
+      await configureStorage(page, firebaseProfile.config, firebaseProfile);
+      await createSyncTestApp(page);
+      await page.getByRole("button", { name: "‹ Apps" }).click();
+      await expect(page.getByTitle("Synced with remote storage.")).toBeVisible({ timeout: 15_000 });
+      await expect
+        .poll(() => readLocalManifestVersion(page), { timeout: 15_000 })
+        .toBeGreaterThan(0);
+
+      const poisonedVersion = await page.evaluate(() => {
+        const key = "app-lab-workspace-sync-v1";
+        const raw = localStorage.getItem(key);
+        if (!raw) throw new Error("Workspace sync state was not stored.");
+        const state = JSON.parse(raw);
+        if (!state.manifestRoom) throw new Error("Workspace manifest room was not stored.");
+        state.manifestRoom.lastSeenVersion += 5;
+        localStorage.setItem(key, JSON.stringify(state));
+        return state.manifestRoom.lastSeenVersion as number;
+      });
+
+      await page.getByRole("button", { name: "Create new app" }).click();
+      await expect(page.getByRole("button", { name: "Toggle source" })).toBeVisible({ timeout: 30_000 });
+      await page.getByRole("button", { name: "‹ Apps" }).click();
+      await expect(page.getByTitle("Synced with remote storage.")).toBeVisible({ timeout: 15_000 });
+      await expect
+        .poll(() => readLocalManifestVersion(page), { timeout: 15_000 })
+        .toBeLessThan(poisonedVersion);
+
+      await page.reload();
+      await expect(page.getByTitle("Synced with remote storage.").first()).toBeVisible({ timeout: 15_000 });
+    } finally {
+      await context.setOffline(false);
+      await closePages(page);
+    }
+  });
+
   test("keeps offline app data edits across repeated launcher re-entry with storage configured", async () => {
     if (!firebaseProfile) throw new Error("Auth-capable Firebase E2E profile is required.");
 
@@ -372,6 +414,15 @@ async function newCleanWorkspacePage(context: BrowserContext): Promise<Page> {
 
 async function closePages(...pages: Page[]): Promise<void> {
   await Promise.all(pages.map((page) => page.close().catch(() => {})));
+}
+
+async function readLocalManifestVersion(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const raw = localStorage.getItem("app-lab-workspace-sync-v1");
+    if (!raw) return 0;
+    const version = JSON.parse(raw).manifestRoom?.lastSeenVersion;
+    return typeof version === "number" ? version : 0;
+  });
 }
 
 async function configureStorage(page: Page, config: Record<string, string>, profile: FirebaseE2eProfile) {

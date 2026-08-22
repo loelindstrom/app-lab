@@ -111,6 +111,8 @@ export function createWorkspaceSyncActions(input: WorkspaceSyncActionsInput) {
   let deletionFlushAgain = false;
   let deletionFlushPromise: Promise<void> | null = null;
   const localAppDataWriteBarriers = new Map<string, number>();
+  const localAppSourceWriteBarriers = new Map<string, number>();
+  const localAppSourceRevisions = new Map<string, number>();
 
   async function initializeWorkspaceSync(): Promise<{ storageConfigured: boolean }> {
     await resetSyncingQueueItems(queueStore);
@@ -225,15 +227,20 @@ export function createWorkspaceSyncActions(input: WorkspaceSyncActionsInput) {
   }
 
   async function pushAppSource(app: AppRecord): Promise<void> {
-    const record = await syncRegistry.getAppSyncRecord(app.appId);
-    if (!record) {
-      const profile = await syncRegistry.getStorageProfile();
-      if (!profile) return;
-      await syncRegistry.ensureOwnedAppRooms(app.appId);
-      await enqueueEnsureAppRooms(queueStore, app.appId);
+    const finishLocalEdit = beginLocalAppSourceEdit(app.appId);
+    try {
+      const record = await syncRegistry.getAppSyncRecord(app.appId);
+      if (!record) {
+        const profile = await syncRegistry.getStorageProfile();
+        if (!profile) return;
+        await syncRegistry.ensureOwnedAppRooms(app.appId);
+        await enqueueEnsureAppRooms(queueStore, app.appId);
+      }
+      await enqueueSaveSource(queueStore, app);
+      void flushSourceSyncQueue();
+    } finally {
+      finishLocalEdit();
     }
-    await enqueueSaveSource(queueStore, app);
-    void flushSourceSyncQueue();
   }
 
   async function pushAppData(appId: string, data: JsonValue): Promise<void> {
@@ -442,11 +449,21 @@ export function createWorkspaceSyncActions(input: WorkspaceSyncActionsInput) {
       roomId: record.sourceRoom.roomId,
       onChange: (snapshot) => {
         void (async () => {
+          const sourceRevision = localAppSourceRevisions.get(appId) ?? 0;
           const latestRecord = await syncRegistry.getAppSyncRecord(appId);
           if (!latestRecord || snapshot.version <= latestRecord.sourceRoom.lastSeenVersion) return;
           try {
-            if (await hasPendingLocalAppSource(appId)) return;
+            if (await shouldPreferLocalAppSource(appId)) return;
             const loaded = await loadRemoteAppSource({ provider, syncRecord: latestRecord });
+            const currentRecord = await syncRegistry.getAppSyncRecord(appId);
+            if (
+              sourceRevision !== (localAppSourceRevisions.get(appId) ?? 0) ||
+              (await shouldPreferLocalAppSource(appId)) ||
+              !currentRecord ||
+              loaded.sourceRoom.lastSeenVersion <= currentRecord.sourceRoom.lastSeenVersion
+            ) {
+              return;
+            }
             await core.upsertApp(loaded.app);
             await syncRegistry.rememberAppRoomVersions({
               appId: loaded.app.appId,
@@ -687,6 +704,19 @@ export function createWorkspaceSyncActions(input: WorkspaceSyncActionsInput) {
     markRecentLocalAppDataWrite(appId);
   }
 
+  function beginLocalAppSourceEdit(appId: string): () => void {
+    localAppSourceRevisions.set(appId, (localAppSourceRevisions.get(appId) ?? 0) + 1);
+    localAppSourceWriteBarriers.set(appId, (localAppSourceWriteBarriers.get(appId) ?? 0) + 1);
+    let finished = false;
+    return () => {
+      if (finished) return;
+      finished = true;
+      const nextCount = (localAppSourceWriteBarriers.get(appId) ?? 1) - 1;
+      if (nextCount > 0) localAppSourceWriteBarriers.set(appId, nextCount);
+      else localAppSourceWriteBarriers.delete(appId);
+    };
+  }
+
   async function flushWorkspaceManifestQueue(options: { throwOnError?: boolean } = {}): Promise<void> {
     if (manifestFlushPromise) {
       manifestFlushAgain = true;
@@ -728,6 +758,10 @@ export function createWorkspaceSyncActions(input: WorkspaceSyncActionsInput) {
 
   async function shouldPreferLocalAppData(appId: string): Promise<boolean> {
     return (await hasPendingLocalAppData(appId)) || hasRecentLocalAppDataWrite(appId);
+  }
+
+  async function shouldPreferLocalAppSource(appId: string): Promise<boolean> {
+    return (await hasPendingLocalAppSource(appId)) || localAppSourceWriteBarriers.has(appId);
   }
 
   function markRecentLocalAppDataWrite(appId: string) {
@@ -787,6 +821,7 @@ export function createWorkspaceSyncActions(input: WorkspaceSyncActionsInput) {
     getWorkspaceSyncOverview,
     importInvite,
     initializeWorkspaceSync,
+    beginLocalAppSourceEdit,
     noteLocalAppDataEdit,
     previewInvite,
     pullLatestAppRooms,

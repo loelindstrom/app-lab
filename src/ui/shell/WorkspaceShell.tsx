@@ -360,14 +360,22 @@ export function WorkspaceShell({ aiActions, core, syncActions }: WorkspaceShellP
       compileWarning = `Source saved without compiled Tailwind CSS: ${detail}`;
     }
 
-    const updated = await core.updateApp({ appId, sourceCode, ...compiledStyles });
     let syncWarning: string | null = null;
-    try {
-      await syncActions.pushAppSource(updated);
-    } catch (error) {
-      const detail = error instanceof Error ? error.message : "Unknown sync error.";
-      syncWarning = `Source saved locally. Remote source sync failed: ${detail}`;
-    }
+    const finishLocalEdit = syncActions.beginLocalAppSourceEdit(appId);
+    const updated = await (async () => {
+      try {
+        const nextApp = await core.updateApp({ appId, sourceCode, ...compiledStyles });
+        try {
+          await syncActions.pushAppSource(nextApp);
+        } catch (error) {
+          const detail = error instanceof Error ? error.message : "Unknown sync error.";
+          syncWarning = `Source saved locally. Remote source sync failed: ${detail}`;
+        }
+        return nextApp;
+      } finally {
+        finishLocalEdit();
+      }
+    })();
 
     refreshWhenSettled(syncActions.flushSourceSyncQueue());
     if (activeAppIdRef.current === appId) {

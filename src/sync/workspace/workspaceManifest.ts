@@ -69,7 +69,10 @@ export async function saveWorkspaceManifest(input: {
 
   return {
     ...saved.state,
-    manifestRoom: rememberSnapshotVersion(saved.state.manifestRoom ?? capability, saved.snapshot),
+    manifestRoom: {
+      ...(saved.state.manifestRoom ?? capability),
+      lastSeenVersion: saved.snapshot.version,
+    },
     updatedAt: new Date().toISOString(),
   };
 }
@@ -200,6 +203,16 @@ async function saveManifestRoom(
     if (isRoomNotFoundError(error)) return createManifestRoom(provider, capability, state);
     if (!isRoomVersionConflictError(error)) throw error;
     const current = await provider.loadRoom({ readToken: roomReadToken(capability), roomId: capability.roomId });
+    if (current.version < expectedVersion) {
+      // Repair a provider-side reset from trusted local state without accepting the older payload.
+      const snapshot = await provider.saveRoom({
+        encryptedPayload: await encryptWorkspaceManifest(capability, state, current.version + 1),
+        expectedVersion: current.version,
+        roomId: capability.roomId,
+        writeToken: roomWriteToken(capability),
+      });
+      return { snapshot, state };
+    }
     const currentState = await readWorkspaceManifestSnapshot({ snapshot: current, state });
     const mergedState = mergeWorkspaceManifestStates(currentState, state);
     const snapshot = await provider.saveRoom({

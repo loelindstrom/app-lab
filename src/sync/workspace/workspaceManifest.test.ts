@@ -139,22 +139,47 @@ describe("workspace manifest sync", () => {
     expect(mergedSaved.deletedApps["deleted-app"]).toMatchObject({ appId: "deleted-app" });
   });
 
-  it("recreates a missing manifest room when the local state remembers a version", async () => {
+  it("recreates a missing manifest room without retaining its obsolete version", async () => {
     const provider = createMemorySyncProvider();
     const registry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
     await configureTestStorageProfile(registry);
     await registry.ensureWorkspaceManifestRoom();
-    await registry.rememberWorkspaceManifestVersion(1);
+    const first = await saveWorkspaceManifest({ provider, state: await registry.getState() });
+    await registry.replaceState(first);
     await registry.ensureOwnedAppRooms("app-1");
+    const second = await saveWorkspaceManifest({ provider, state: await registry.getState() });
+    await registry.replaceState(second);
+
+    if (!second.manifestRoom) throw new Error("Manifest room was not created.");
+    await provider.deleteRoom({
+      roomId: second.manifestRoom.roomId,
+      writeToken: second.manifestRoom.writeToken,
+    });
 
     const savedState = await saveWorkspaceManifest({ provider, state: await registry.getState() });
 
     expect(savedState.manifestRoom?.lastSeenVersion).toBe(1);
-    const restored = await loadWorkspaceManifest({
-      provider,
-      recoveryMaterial: createWorkspaceRecoveryMaterial(savedState),
+    await expect(loadLatestWorkspaceManifest({ provider, state: savedState })).resolves.toMatchObject({
+      apps: { "app-1": { appId: "app-1", kind: "owned" } },
     });
-    expect(restored.apps["app-1"]).toMatchObject({ appId: "app-1", kind: "owned" });
+  });
+
+  it("repairs a manifest room that is older than the local high-water mark", async () => {
+    const provider = createMemorySyncProvider();
+    const registry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
+    await configureTestStorageProfile(registry);
+    await registry.ensureWorkspaceManifestRoom();
+    await registry.ensureOwnedAppRooms("app-1");
+    const remote = await saveWorkspaceManifest({ provider, state: await registry.getState() });
+    await registry.replaceState(remote);
+    await registry.rememberWorkspaceManifestVersion(4);
+
+    const repaired = await saveWorkspaceManifest({ provider, state: await registry.getState() });
+
+    expect(repaired.manifestRoom?.lastSeenVersion).toBe(2);
+    await expect(loadLatestWorkspaceManifest({ provider, state: repaired })).resolves.toMatchObject({
+      apps: { "app-1": { appId: "app-1", kind: "owned" } },
+    });
   });
 
   it("rejects invalid recovery material", () => {

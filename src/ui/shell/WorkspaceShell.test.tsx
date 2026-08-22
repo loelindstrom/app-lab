@@ -805,6 +805,7 @@ function createSyncActionsStub(
       await resetSyncingQueueItems(queueStore);
       return { storageConfigured: Boolean(await syncRegistry.getStorageProfile()) };
     }),
+    beginLocalAppSourceEdit: vi.fn(() => () => {}),
     noteLocalAppDataEdit: vi.fn(),
     previewInvite: vi.fn(),
     pullLatestAppRooms: vi.fn().mockResolvedValue({}),

@@ -47,11 +47,28 @@ async function processSaveWorkspaceManifestItem(input: WorkspaceManifestWorkerIn
       provider: input.createProviderFromStorageProfile(profile),
       state,
     });
-    if (input.onSavedState) await input.onSavedState(savedState);
+    if (manifestVersionWasReset(state, savedState)) {
+      const latestState = await input.syncRegistry.getState();
+      if (latestState.manifestRoom?.roomId === state.manifestRoom?.roomId) {
+        await input.syncRegistry.replaceState({
+          ...latestState,
+          manifestRoom: savedState.manifestRoom,
+        });
+      }
+    } else if (input.onSavedState) await input.onSavedState(savedState);
     else await input.syncRegistry.replaceState(savedState);
     await input.queueStore.removeItem(item.id);
   } catch (error) {
     await markQueueItemFailed(input.queueStore, syncingItem, error);
     if (input.throwOnError) throw error;
   }
+}
+
+function manifestVersionWasReset(previous: WorkspaceSyncState, saved: WorkspaceSyncState): boolean {
+  return Boolean(
+    previous.manifestRoom &&
+      saved.manifestRoom &&
+      previous.manifestRoom.roomId === saved.manifestRoom.roomId &&
+      saved.manifestRoom.lastSeenVersion < previous.manifestRoom.lastSeenVersion,
+  );
 }
