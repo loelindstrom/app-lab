@@ -8,6 +8,7 @@ type SourceExportKind = "data" | "source";
 
 interface WorkspaceToolPanelProps {
   activeApp: AppRecord;
+  activeBuilderModel: string | null;
   activeBuilderProfileName: string | null;
   aiConfigured: boolean;
   builderActivity: string | null;
@@ -29,6 +30,7 @@ interface WorkspaceToolPanelProps {
 
 export function WorkspaceToolPanel({
   activeApp,
+  activeBuilderModel,
   activeBuilderProfileName,
   aiConfigured,
   builderActivity,
@@ -64,15 +66,33 @@ export function WorkspaceToolPanel({
           <div className="flex min-w-0 items-baseline gap-1.5">
             <h2 className="shrink-0 truncate text-base font-extrabold leading-tight">{title}</h2>
             {mode === "builder" && activeBuilderProfileName ? (
-              <button
-                className="min-w-0 truncate text-left text-xs font-bold text-app-accent hover:underline focus-visible:underline"
-                type="button"
-                aria-label={`Open Builder profile settings for ${activeBuilderProfileName}`}
-                title={`Active profile: ${activeBuilderProfileName}`}
-                onClick={onOpenBuilderProfileSettings}
-              >
-                (Profile: {activeBuilderProfileName})
-              </button>
+              <div className="flex min-w-0 items-baseline gap-1 text-xs font-bold text-app-muted">
+                <span className="shrink-0">(Profile:</span>
+                <button
+                  className="max-w-[32%] truncate text-left text-app-accent underline underline-offset-2"
+                  type="button"
+                  aria-label={`Open Builder profile settings for ${activeBuilderProfileName}`}
+                  title={`Active profile: ${activeBuilderProfileName}`}
+                  onClick={onOpenBuilderProfileSettings}
+                >
+                  {activeBuilderProfileName}
+                </button>
+                {activeBuilderModel ? (
+                  <>
+                    <span className="shrink-0">Model:</span>
+                    <button
+                      className="min-w-0 truncate text-left text-app-accent underline underline-offset-2"
+                      type="button"
+                      aria-label={`Open AI connection settings for ${activeBuilderModel}`}
+                      title={`Active model: ${activeBuilderModel}`}
+                      onClick={onOpenAiSettings}
+                    >
+                      {activeBuilderModel}
+                    </button>
+                  </>
+                ) : null}
+                <span className="-ml-1 shrink-0">)</span>
+              </div>
             ) : null}
           </div>
         </div>

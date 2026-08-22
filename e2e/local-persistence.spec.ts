@@ -6,6 +6,7 @@ const firebaseProfile = readFirebaseE2eProfile();
 
 test.describe("local app persistence", () => {
   test("keeps the built-in board data after returning to the launcher", async ({ page }) => {
+    await page.setViewportSize({ height: 844, width: 390 });
     await page.goto("/");
     await page.evaluate(async () => {
       indexedDB.deleteDatabase("app-lab-v2");
@@ -26,6 +27,12 @@ test.describe("local app persistence", () => {
     await shareDragHandle.dragTo(boardViewport, {
       targetPosition: { x: viewportBounds.width - 2, y: viewportBounds.height - 2 }
     });
+    await expect(frame.locator("article h3").last()).toHaveText("Share live updates");
+
+    await shareDragHandle.dragTo(boardViewport, { targetPosition: { x: 2, y: 2 } });
+    await expect(frame.locator("article h3").first()).toHaveText("Share live updates");
+
+    await shareDragHandle.dragTo(page.locator("footer").getByRole("group", { name: "App tools" }));
     await expect(frame.locator("article h3").last()).toHaveText("Share live updates");
 
     await shareDragHandle.dragTo(boardViewport, { targetPosition: { x: 2, y: 2 } });

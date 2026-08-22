@@ -59,7 +59,7 @@ export const OPINIONATED_BOARD_SOURCE = `<!doctype html>
                       title="Drag to reorder. Arrow keys also work."
                       x-show="ui.tab === 'active'"
                       @dragstart="startNoteDrag(note.id, $event)"
-                      @dragend="finishNoteDrag()"
+                      @dragend="endNoteDrag($event)"
                       @keydown.arrow-up.prevent="moveNote(note.id, -1)"
                       @keydown.arrow-down.prevent="moveNote(note.id, 1)"
                     >
@@ -210,6 +210,7 @@ export const OPINIONATED_BOARD_SOURCE = `<!doctype html>
           queuedRemoteData: undefined,
           dragScrollFrame: null,
           dragScrollSpeed: 0,
+          externalDropIndex: null,
 
           async init() {
             AppLab.onError((message) => { this.ui.error = String(message || "Unknown App Lab error"); });
@@ -341,16 +342,33 @@ export const OPINIONATED_BOARD_SOURCE = `<!doctype html>
           },
           startNoteDrag(noteId, event) {
             this.ui.draggedNoteId = noteId;
+            this.externalDropIndex = null;
             event.dataTransfer.effectAllowed = "move";
             event.dataTransfer.setData("text/plain", noteId);
           },
           handleBoardDragOver(event) {
             if (!this.ui.draggedNoteId) return;
+            this.externalDropIndex = null;
             event.dataTransfer.dropEffect = "move";
             this.updateDragAutoScroll(event.clientY);
           },
           handleBoardDragLeave(event) {
-            if (!event.currentTarget.contains(event.relatedTarget)) this.stopDragAutoScroll();
+            const nextTarget = event.relatedTarget;
+            if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) return;
+            const cards = [...this.$refs.scrollViewport.querySelectorAll("[data-note-id]")];
+            const viewportBounds = this.$refs.scrollViewport.getBoundingClientRect();
+            const firstBounds = cards[0]?.getBoundingClientRect();
+            const lastBounds = cards[cards.length - 1]?.getBoundingClientRect();
+            this.externalDropIndex = event.clientY <= viewportBounds.top + 4
+              ? 0
+              : event.clientY >= viewportBounds.bottom - 4
+                ? cards.length
+                : firstBounds && event.clientY < firstBounds.top
+                  ? 0
+                  : lastBounds && event.clientY > lastBounds.bottom
+                    ? cards.length
+                    : null;
+            this.stopDragAutoScroll();
           },
           updateDragAutoScroll(clientY) {
             const viewport = this.$refs.scrollViewport;
@@ -387,7 +405,19 @@ export const OPINIONATED_BOARD_SOURCE = `<!doctype html>
           },
           finishNoteDrag() {
             this.ui.draggedNoteId = null;
+            this.externalDropIndex = null;
             this.stopDragAutoScroll();
+          },
+          endNoteDrag(event) {
+            const draggedNoteId = this.ui.draggedNoteId;
+            let dropIndex = this.externalDropIndex;
+            if (draggedNoteId && dropIndex === null) {
+              const bounds = this.$refs.scrollViewport.getBoundingClientRect();
+              if (event.clientY >= bounds.bottom - 4) dropIndex = this.visibleNotes.length;
+              if (event.clientY > 0 && event.clientY <= bounds.top + 4) dropIndex = 0;
+            }
+            this.finishNoteDrag();
+            if (draggedNoteId && dropIndex !== null) this.placeDraggedNote(draggedNoteId, dropIndex);
           },
           getDropIndex(clientY) {
             const cards = [...this.$refs.scrollViewport.querySelectorAll("[data-note-id]")];
@@ -399,10 +429,13 @@ export const OPINIONATED_BOARD_SOURCE = `<!doctype html>
           },
           dropNoteAtPointer(event) {
             const draggedNoteId = this.ui.draggedNoteId || event.dataTransfer.getData("text/plain");
-            const visible = [...this.visibleNotes];
-            const draggedIndex = visible.findIndex((note) => note.id === draggedNoteId);
             const dropIndex = this.getDropIndex(event.clientY);
             this.finishNoteDrag();
+            this.placeDraggedNote(draggedNoteId, dropIndex);
+          },
+          placeDraggedNote(draggedNoteId, dropIndex) {
+            const visible = [...this.visibleNotes];
+            const draggedIndex = visible.findIndex((note) => note.id === draggedNoteId);
             if (draggedIndex < 0) return;
             const [moved] = visible.splice(draggedIndex, 1);
             const adjustedIndex = Math.max(

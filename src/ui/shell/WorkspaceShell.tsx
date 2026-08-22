@@ -620,6 +620,7 @@ export function WorkspaceShell({ aiActions, core, syncActions }: WorkspaceShellP
           </footer>
           <WorkspaceToolPanel
             activeApp={activeApp}
+            activeBuilderModel={aiConfig.apiKey && aiConfig.model ? aiConfig.model : null}
             activeBuilderProfileName={activeBuilderProfile?.name ?? null}
             aiConfigured={Boolean(aiConfig.apiKey && aiConfig.model)}
             builderActivity={builderSessions[activeApp.appId]?.activity ?? null}
@@ -1436,9 +1437,8 @@ function InviteImportDialog({
               Preview app
             </button>
             <button
-              className="min-h-9 rounded-md border border-app-accent bg-app-accent px-3 text-sm font-extrabold text-white hover:bg-app-strong disabled:opacity-50"
+              className="min-h-9 rounded-md border border-app-accent bg-app-accent px-3 text-sm font-extrabold text-white hover:bg-app-strong"
               type="button"
-              disabled={!preview}
               onClick={importInvite}
             >
               Import

@@ -40,6 +40,7 @@ test.describe("BuilderAI browser workflow", () => {
     await page.getByRole("button", { name: "Create new app" }).click();
     await page.getByRole("button", { name: "Toggle BuilderAI" }).click();
     await expect(page.getByText(/Describe how you want to edit Opinionated Board/)).toBeVisible();
+    await expect(page.getByRole("button", { name: "Open AI connection settings for provider/model" })).toBeVisible();
 
     await page.getByLabel("Message", { exact: true }).fill("Replace this with the browser test app");
     await page.getByRole("button", { name: "Send message" }).click();

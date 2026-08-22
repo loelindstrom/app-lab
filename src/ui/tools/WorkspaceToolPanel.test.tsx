@@ -68,10 +68,12 @@ describe("WorkspaceToolPanel", () => {
 
   it("submits configured chat messages and renders conversation state", async () => {
     const onClearBuilderConversation = vi.fn();
+    const onOpenAiSettings = vi.fn();
     const onOpenBuilderProfileSettings = vi.fn();
     const onSendBuilderMessage = vi.fn().mockResolvedValue(undefined);
     renderToolPanel({
       aiConfigured: true,
+      activeBuilderModel: "provider/model",
       builderActivity: "Applying app source...",
       builderError: "The model could not finish.",
       builderMessages: [
@@ -99,6 +101,7 @@ describe("WorkspaceToolPanel", () => {
       },
       mode: "builder",
       onClearBuilderConversation,
+      onOpenAiSettings,
       onOpenBuilderProfileSettings,
       onSendBuilderMessage,
     });
@@ -106,6 +109,8 @@ describe("WorkspaceToolPanel", () => {
     expect(screen.getByText(/Describe how you want to edit Exportable App/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Open Builder profile settings for Opinionated" }));
     expect(onOpenBuilderProfileSettings).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "Open AI connection settings for provider/model" }));
+    expect(onOpenAiSettings).toHaveBeenCalledTimes(1);
     expect(screen.getByText("Make it blue")).toBeTruthy();
     expect(screen.getByText("I updated the colors.")).toBeTruthy();
     expect(screen.getByText("Applying app source...")).toBeTruthy();
@@ -125,6 +130,7 @@ function renderToolPanel(overrides: Partial<ComponentProps<typeof WorkspaceToolP
   return render(
     <WorkspaceToolPanel
       activeApp={app}
+      activeBuilderModel={null}
       activeBuilderProfileName="Opinionated"
       aiConfigured={false}
       builderActivity={null}

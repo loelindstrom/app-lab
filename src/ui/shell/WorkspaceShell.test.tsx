@@ -668,7 +668,7 @@ describe("WorkspaceShell sync wake-ups", () => {
     expect(syncActions.restoreWorkspaceRecovery).not.toHaveBeenCalled();
   });
 
-  it("requires a shared app preview before importing invite source", async () => {
+  it("allows importing a shared app without previewing it first", async () => {
     const syncActions = createSyncActionsStub();
     const invite = {
       createdAt: "2026-08-07T12:00:00.000Z",
@@ -686,15 +686,6 @@ describe("WorkspaceShell sync wake-ups", () => {
       schemaVersion: 1 as const,
       sourceRoom: createRoomCapability(),
     };
-    vi.mocked(syncActions.previewInvite).mockResolvedValue({
-      appId: "shared-app",
-      dataRoomId: invite.dataRoom.roomId,
-      description: "Preview description",
-      name: "Preview title",
-      providerDatabaseUrl: invite.provider.databaseUrl,
-      sourceRoomId: invite.sourceRoom.roomId,
-      updatedAt: "2026-08-07T12:30:00.000Z",
-    });
     window.location.hash = encodeAppInvite(invite);
 
     render(
@@ -706,13 +697,8 @@ describe("WorkspaceShell sync wake-ups", () => {
 
     const dialog = await screen.findByRole("dialog", { name: "Import shared app" });
     const importButton = within(dialog).getByRole("button", { name: "Import" }) as HTMLButtonElement;
-    expect(importButton.disabled).toBe(true);
-
-    fireEvent.click(within(dialog).getByRole("button", { name: "Preview app" }));
-
-    expect(await within(dialog).findByText("Preview title")).toBeTruthy();
-    expect(within(dialog).getByText("Preview description")).toBeTruthy();
     expect(importButton.disabled).toBe(false);
+    expect(within(dialog).getByRole("button", { name: "Preview app" })).toBeTruthy();
 
     fireEvent.click(importButton);
 
@@ -725,6 +711,7 @@ describe("WorkspaceShell sync wake-ups", () => {
         }),
       ),
     );
+    expect(syncActions.previewInvite).not.toHaveBeenCalled();
   });
 
   it("lets storage guide sections all close and marks completed steps", async () => {
