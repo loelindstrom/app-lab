@@ -39,7 +39,7 @@ test.describe("BuilderAI browser workflow", () => {
     await configureTestAi(page);
     await page.getByRole("button", { name: "Create new app" }).click();
     await page.getByRole("button", { name: "Toggle BuilderAI" }).click();
-    await expect(page.getByText(/I can edit Opinionated Board/)).toBeVisible();
+    await expect(page.getByText(/Describe how you want to edit Opinionated Board/)).toBeVisible();
 
     await page.getByLabel("Message", { exact: true }).fill("Replace this with the browser test app");
     await page.getByRole("button", { name: "Send message" }).click();
@@ -83,7 +83,7 @@ test.describe("BuilderAI browser workflow", () => {
     await page.goto("/");
     await page.getByRole("button", { name: "Create new app" }).click();
     await page.getByRole("button", { name: "Toggle BuilderAI" }).click();
-    await page.getByRole("button", { name: "Set up OpenRouter" }).click();
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
 
     await expect(page.getByRole("dialog", { name: "Settings" })).toBeVisible();
     await expect(page.getByLabel("OpenRouter API key")).toBeVisible();
@@ -101,7 +101,7 @@ test.describe("BuilderAI browser workflow", () => {
     await page.getByRole("button", { name: "Create new app" }).click();
     const frame = page.frameLocator('iframe[sandbox="allow-scripts"]');
     await expect(page.getByText("Minimal Board", { exact: true }).first()).toBeVisible();
-    await expect(frame.getByText(/This example app shows you and the AI/)).toBeVisible();
+    await expect(frame.getByText(/This example app shows you \(the user\) and the AI/)).toBeVisible();
 
     await frame.getByLabel("Note", { exact: true }).fill("Temporary board note");
     await frame.getByRole("button", { name: "Post" }).click();

@@ -53,14 +53,15 @@ describe("WorkspaceToolPanel", () => {
     const onOpenAiSettings = vi.fn();
     renderToolPanel({ mode: "builder", onOpenAiSettings });
 
-    expect(screen.getByText(/Start with any AI chat/)).toBeTruthy();
+    expect(screen.getByText(/Use the button below to work in an external AI chat/)).toBeTruthy();
+    expect(screen.getByLabelText("Builder session usage").textContent).toBe("Session: $0.0000 · 0 tokens");
     expect(screen.queryByRole("button", { name: /Export/ })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Set up OpenRouter" }));
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
     expect(onOpenAiSettings).toHaveBeenCalledTimes(1);
 
     fireEvent.click(screen.getByRole("button", { name: /^Copy prompt \+ code$/ }));
 
-    expect(screen.getByRole("button", { name: "Copy prompt + code ↓" })).toBeTruthy();
+    expect(screen.getByText(/Copy this prompt into an external AI/)).toBeTruthy();
     expect(getTextarea("Prompt and code").value).toContain('You are helping me edit an App Lab sandbox app named "Exportable App".');
     expect(getTextarea("Prompt and code").value).toContain(app.sourceCode);
   });
@@ -102,7 +103,7 @@ describe("WorkspaceToolPanel", () => {
       onSendBuilderMessage,
     });
 
-    expect(screen.getByText(/I can edit/)).toBeTruthy();
+    expect(screen.getByText(/Describe how you want to edit Exportable App/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Open Builder profile settings for Opinionated" }));
     expect(onOpenBuilderProfileSettings).toHaveBeenCalledTimes(1);
     expect(screen.getByText("Make it blue")).toBeTruthy();

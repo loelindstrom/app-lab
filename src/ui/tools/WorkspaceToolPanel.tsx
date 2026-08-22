@@ -365,14 +365,14 @@ function BuilderView({
   const conversationEndRef = useRef<HTMLLIElement>(null);
   const [draft, setDraft] = useState("");
   const [promptOpen, setPromptOpen] = useState(false);
-  const [status, setStatus] = useState("Ready");
+  const [status, setStatus] = useState("");
   const promptText = useMemo(() => createPromptWithCode(app.name, app.sourceCode), [app.name, app.sourceCode]);
   const promptPanelId = "builder-prompt-code";
 
   useEffect(() => {
     setDraft("");
     setPromptOpen(false);
-    setStatus("Ready");
+    setStatus("");
   }, [app.appId]);
 
   useEffect(() => {
@@ -402,31 +402,41 @@ function BuilderView({
     <div className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto]">
       <div className="min-h-0 overflow-auto">
         <ol className="flex flex-col gap-3 p-3" aria-live="polite">
-          {configured ? (
-            <li className="mr-auto max-w-[92%] rounded-lg border border-app-line bg-white px-3 py-2 text-sm leading-relaxed text-app-muted">
-              I can edit <strong className="text-app-ink">{app.name}</strong>. Describe what you want to create or change, and I can read this app's source and recent console output before applying an update.
-            </li>
-          ) : (
-            <li className="grid gap-3 rounded-lg border border-app-line bg-white px-3 py-3 text-sm leading-relaxed text-app-muted">
-              <p>Start with any AI chat by copying App Lab's prompt and current source, or connect OpenRouter to work here.</p>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  className="min-h-9 rounded-md border border-app-accent bg-app-accent px-3 text-sm font-bold text-white hover:bg-app-strong"
-                  type="button"
-                  onClick={() => setPromptOpen(true)}
-                >
-                  Copy prompt + code
-                </button>
-                <button
-                  className="min-h-9 rounded-md border border-app-line bg-white px-3 text-sm font-bold text-app-ink hover:border-app-accent"
-                  type="button"
-                  onClick={onOpenAiSettings}
-                >
-                  Set up OpenRouter
-                </button>
-              </div>
-            </li>
-          )}
+          <li className="mr-auto grid max-w-[92%] gap-2 rounded-lg border border-app-line bg-white px-3 py-3 text-sm leading-relaxed text-app-muted">
+            <p className="font-bold text-app-ink">Hi,</p>
+            {configured ? (
+              <>
+                <p>Describe how you want to edit {app.name}.</p>
+                <p>Or use the button below to work in an external AI chat.</p>
+              </>
+            ) : (
+              <>
+                <p>Use the button below to work in an external AI chat.</p>
+                <p>
+                  Or set up your AI provider in{" "}
+                  <button className="font-bold text-app-accent underline underline-offset-2" type="button" onClick={onOpenAiSettings}>
+                    Settings
+                  </button>{" "}
+                  to chat directly here.
+                </p>
+              </>
+            )}
+            <div>
+              <button
+                aria-controls={promptPanelId}
+                aria-expanded={promptOpen}
+                className="inline-flex min-h-9 items-center gap-2 rounded-md border border-app-line bg-app-panel px-3 text-sm font-bold text-app-ink hover:border-app-accent hover:text-app-accent"
+                type="button"
+                onClick={() => {
+                  setPromptOpen(true);
+                  setStatus("");
+                }}
+              >
+                <CopyPromptIcon className="h-4 w-4" />
+                Copy prompt + code
+              </button>
+            </div>
+          </li>
           {messages.map((message) => (
             <li
               className={`max-w-[92%] whitespace-pre-wrap break-words rounded-lg px-3 py-2 text-sm leading-relaxed ${
@@ -460,11 +470,9 @@ function BuilderView({
           void sendMessage();
         }}
       >
-        {usage.totalTokens > 0 ? (
-          <p aria-label="Builder session usage" className="text-right text-xs font-bold text-app-muted">
-            Session: {formatBuilderUsage(usage)}
-          </p>
-        ) : null}
+        <p aria-label="Builder session usage" className="text-right text-xs font-bold text-app-muted">
+          Session: {formatBuilderUsage(usage)}
+        </p>
         {configured ? (
           <div className="grid grid-cols-[minmax(0,1fr)_40px] items-end gap-2">
             <label className="sr-only" htmlFor="builder-message">
@@ -496,13 +504,27 @@ function BuilderView({
         ) : null}
         {promptOpen ? (
           <div className="grid gap-2 rounded-md border border-app-line bg-app-panel p-2" id={promptPanelId}>
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="text-xs font-bold text-app-muted">{status}</div>
+            <div className="flex items-start justify-between gap-3">
+              <p className="text-sm leading-relaxed text-app-muted">
+                Copy this prompt into an external AI. Paste the returned HTML into <span className="font-mono text-app-ink">&lt;&gt;</span> and save.
+              </p>
               <button
-                className="min-h-8 rounded-md border border-app-line bg-white px-3 text-sm font-bold text-app-ink hover:border-app-accent"
+                aria-label="Close prompt and code"
+                className="grid h-8 min-h-8 w-8 shrink-0 place-items-center rounded-full text-xl text-app-muted hover:bg-app-accent/10 hover:text-app-accent"
+                type="button"
+                onClick={() => setPromptOpen(false)}
+              >
+                ×
+              </button>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="text-xs font-bold text-app-muted" role="status">{status}</div>
+              <button
+                className="inline-flex min-h-8 items-center gap-2 rounded-md border border-app-accent bg-app-accent px-3 text-sm font-bold text-white hover:bg-app-strong"
                 type="button"
                 onClick={copyPromptText}
               >
+                <CopyPromptIcon className="h-4 w-4" />
                 Copy
               </button>
             </div>
@@ -515,7 +537,7 @@ function BuilderView({
             />
           </div>
         ) : null}
-        <div className="flex flex-wrap justify-between gap-2">
+        <div className="flex flex-wrap justify-start gap-2">
           {messages.length || error ? (
             <button
               className="min-h-9 rounded-md border border-app-line bg-white px-3 text-sm font-bold text-app-muted hover:border-red-300 hover:text-red-700 disabled:opacity-50"
@@ -525,24 +547,19 @@ function BuilderView({
             >
               Clear chat
             </button>
-          ) : (
-            <span />
-          )}
-          <button
-            aria-controls={promptPanelId}
-            aria-expanded={promptOpen}
-            className="min-h-9 rounded-md border border-app-line bg-white px-3 text-sm font-bold text-app-ink hover:border-app-accent"
-            type="button"
-            onClick={() => {
-              setPromptOpen((isOpen) => !isOpen);
-              setStatus("Ready");
-            }}
-          >
-            Copy prompt + code {promptOpen ? "↓" : "↑"}
-          </button>
+          ) : null}
         </div>
       </form>
     </div>
+  );
+}
+
+function CopyPromptIcon({ className }: { className: string }) {
+  return (
+    <svg className={className} aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
+      <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+    </svg>
   );
 }
 
