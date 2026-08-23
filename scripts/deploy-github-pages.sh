@@ -4,7 +4,7 @@ set -euo pipefail
 REMOTE="${DEPLOY_REMOTE:-origin}"
 PAGES_BRANCH="${DEPLOY_BRANCH:-gh-pages}"
 WORKTREE_DIR="${DEPLOY_WORKTREE:-dist}"
-BASE_PATH="${DEPLOY_BASE:-/app-lab/}"
+TARGET="${DEPLOY_TARGET:-production}"
 SOURCE_REF="${DEPLOY_REF:-HEAD}"
 REQUESTED_VERSION="${DEPLOY_VERSION:-}"
 INSTALL_DEPS="${DEPLOY_INSTALL:-0}"
@@ -17,6 +17,7 @@ Usage:
 
 Options:
   --ref <ref>          Commit, branch, or tag to deploy. Defaults to HEAD.
+  --target <target>    Deployment target: production or staging. Defaults to production.
   --version <vX.Y.Z>  Create or reuse a semver release tag for the deployed commit.
   --dry-run           Resolve, validate, and build without tagging or publishing.
   --help              Show this help text.
@@ -25,7 +26,8 @@ Environment:
   DEPLOY_REMOTE       Git remote to push to. Defaults to origin.
   DEPLOY_BRANCH       Pages branch to publish. Defaults to gh-pages.
   DEPLOY_WORKTREE     Local Pages worktree path. Defaults to dist.
-  DEPLOY_BASE         Vite base path. Defaults to /app-lab/.
+  DEPLOY_TARGET       Deployment target: production or staging. Defaults to production.
+  DEPLOY_BASE         Override the Vite base path derived from the target.
   DEPLOY_INSTALL=1    Run pnpm install in the temp source tree instead of reusing node_modules.
   ALLOW_VERSION_REGRESSION=1
                       Allow creating a version lower than the highest local semver tag.
@@ -50,6 +52,14 @@ while [ "$#" -gt 0 ]; do
       REQUESTED_VERSION="$2"
       shift 2
       ;;
+    --target)
+      if [ "$#" -lt 2 ]; then
+        echo "--target requires a value." >&2
+        exit 1
+      fi
+      TARGET="$2"
+      shift 2
+      ;;
     --dry-run)
       DRY_RUN=1
       shift
@@ -68,6 +78,28 @@ while [ "$#" -gt 0 ]; do
       ;;
   esac
 done
+
+case "$TARGET" in
+  production|prod)
+    TARGET="production"
+    DEFAULT_BASE_PATH="/app-lab/"
+    PUBLISH_DIR=""
+    ;;
+  staging)
+    DEFAULT_BASE_PATH="/app-lab/staging/"
+    PUBLISH_DIR="staging"
+    if [ -n "$REQUESTED_VERSION" ]; then
+      echo "Release tags are production-only; deploy staging with --ref instead of --version." >&2
+      exit 1
+    fi
+    ;;
+  *)
+    echo "Target must be production or staging." >&2
+    exit 1
+    ;;
+esac
+
+BASE_PATH="${DEPLOY_BASE:-$DEFAULT_BASE_PATH}"
 
 SEMVER_TAG_REGEX='^v[0-9]+\.[0-9]+\.[0-9]+$'
 
@@ -179,8 +211,9 @@ echo "Building App Lab for GitHub Pages..."
 touch "$BUILD_DIR/.nojekyll"
 
 DEPLOYED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-node -e 'const fs = require("fs"); const [file, version, ref, commit, shortCommit, deployedAt, base] = process.argv.slice(1); fs.writeFileSync(file, JSON.stringify({ version: version || null, ref, commit, shortCommit, deployedAt, base }, null, 2) + "\n");' \
+node -e 'const fs = require("fs"); const [file, target, version, ref, commit, shortCommit, deployedAt, base] = process.argv.slice(1); fs.writeFileSync(file, JSON.stringify({ target, version: version || null, ref, commit, shortCommit, deployedAt, base }, null, 2) + "\n");' \
   "$BUILD_DIR/deploy.json" \
+  "$TARGET" \
   "$DEPLOY_VERSION" \
   "$SOURCE_REF" \
   "$TARGET_COMMIT" \
@@ -188,8 +221,12 @@ node -e 'const fs = require("fs"); const [file, version, ref, commit, shortCommi
   "$DEPLOYED_AT" \
   "$BASE_PATH"
 
+node -e 'const fs = require("fs"); const [file, base] = process.argv.slice(1); fs.writeFileSync(file, JSON.stringify({ name: "App Lab", short_name: "App Lab", start_url: base, scope: base, display: "standalone", background_color: "#ffffff", theme_color: "#111827", icons: [{ src: `${base}icons/icon-192.png`, sizes: "192x192", type: "image/png", purpose: "any maskable" }, { src: `${base}icons/icon-512.png`, sizes: "512x512", type: "image/png", purpose: "any maskable" }] }, null, 2) + "\n");' \
+  "$BUILD_DIR/manifest.webmanifest" \
+  "$BASE_PATH"
+
 if [ "$DRY_RUN" -eq 1 ]; then
-  echo "Dry run complete. Built $TARGET_SHORT${DEPLOY_VERSION:+ as $DEPLOY_VERSION}; no tag or Pages branch was changed."
+  echo "Dry run complete for $TARGET. Built $TARGET_SHORT${DEPLOY_VERSION:+ as $DEPLOY_VERSION}; no tag or Pages branch was changed."
   exit 0
 fi
 
@@ -239,9 +276,15 @@ fi
 echo "Publishing $DEPLOY_LABEL to $PAGES_BRANCH..."
 (
   cd "$WORKTREE_DIR"
-  git rm -rf --ignore-unmatch .
-  find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
-  cp -R "$BUILD_DIR"/. .
+  if [ -n "$PUBLISH_DIR" ]; then
+    rm -rf "$PUBLISH_DIR"
+    mkdir -p "$PUBLISH_DIR"
+    cp -R "$BUILD_DIR"/. "$PUBLISH_DIR"/
+  else
+    find . -mindepth 1 -maxdepth 1 ! -name .git ! -name staging -exec rm -rf {} +
+    cp -R "$BUILD_DIR"/. .
+  fi
+  touch .nojekyll
   git add -A
 
   if git diff --cached --quiet --ignore-submodules --; then
@@ -252,7 +295,7 @@ echo "Publishing $DEPLOY_LABEL to $PAGES_BRANCH..."
     exit 0
   fi
 
-  git commit -m "Deploy $DEPLOY_LABEL to GitHub Pages" -m "Source: $TARGET_COMMIT"
+  git commit -m "Deploy $TARGET $DEPLOY_LABEL to GitHub Pages" -m "Source: $TARGET_COMMIT"
 
   if [ -n "$DEPLOY_VERSION" ]; then
     git push --atomic "$REMOTE" "$PAGES_BRANCH" "$DEPLOY_VERSION"
