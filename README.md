@@ -42,12 +42,12 @@ Open your workspace here: [App Lab](https://loelindstrom.github.io/app-lab/) ðŸ§
 <table>
   <tr>
     <td align="center">
-      <video src="https://github.com/user-attachments/assets/d1f698fd-3ac6-4d20-b170-87a096da676c" controls width="100%"></video>
+      <video src="https://github.com/user-attachments/assets/df4e0859-b91f-44bf-8847-42e26be08549" controls width="100%"></video>
       <br />
       <sub>Create an app</sub>
     </td>
     <td align="center">
-      <video src="https://github.com/user-attachments/assets/df4e0859-b91f-44bf-8847-42e26be08549" controls width="100%"></video>
+      <video src="https://github.com/user-attachments/assets/d1f698fd-3ac6-4d20-b170-87a096da676c" controls width="100%"></video>
       <br />
       <sub>Share an app</sub>
     </td>
