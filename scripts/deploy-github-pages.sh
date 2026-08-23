@@ -288,14 +288,11 @@ echo "Publishing $DEPLOY_LABEL to $PAGES_BRANCH..."
   git add -A
 
   if git diff --cached --quiet --ignore-submodules --; then
-    echo "No GitHub Pages changes to publish."
-    if [ -n "$DEPLOY_VERSION" ]; then
-      git push "$REMOTE" "$DEPLOY_VERSION"
-    fi
-    exit 0
+    echo "Generated output is unchanged; creating a Pages deployment marker commit."
+    git commit --allow-empty -m "Deploy $TARGET $DEPLOY_LABEL to GitHub Pages" -m "Source: $TARGET_COMMIT"
+  else
+    git commit -m "Deploy $TARGET $DEPLOY_LABEL to GitHub Pages" -m "Source: $TARGET_COMMIT"
   fi
-
-  git commit -m "Deploy $TARGET $DEPLOY_LABEL to GitHub Pages" -m "Source: $TARGET_COMMIT"
 
   if [ -n "$DEPLOY_VERSION" ]; then
     git push --atomic "$REMOTE" "$PAGES_BRANCH" "$DEPLOY_VERSION"
