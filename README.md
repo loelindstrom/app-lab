@@ -39,14 +39,20 @@ Open your workspace here: [App Lab](https://loelindstrom.github.io/app-lab/) ðŸ§
 
 ## Demos
 
-## Demos
-
-<a href="https://www.youtube.com/shorts/iXdwRqmup-M">
-  <img src="https://img.youtube.com/vi/iXdwRqmup-M/hqdefault.jpg" width="45%" alt="Create an app">
-</a>
-<a href="https://www.youtube.com/shorts/NbD40OALmZE">
-  <img src="https://img.youtube.com/vi/NbD40OALmZE/hqdefault.jpg" width="45%" alt="Share an app">
-</a>
+<table>
+  <tr>
+    <td align="center">
+      <video src="https://github.com/user-attachments/assets/d1f698fd-3ac6-4d20-b170-87a096da676c" controls width="100%"></video>
+      <br />
+      <sub>Create an app</sub>
+    </td>
+    <td align="center">
+      <video src="https://github.com/user-attachments/assets/df4e0859-b91f-44bf-8847-42e26be08549" controls width="100%"></video>
+      <br />
+      <sub>Share an app</sub>
+    </td>
+  </tr>
+</table>
 
 
 ## ðŸ“„ License
