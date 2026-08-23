@@ -39,8 +39,14 @@ Open your workspace here: [App Lab](https://loelindstrom.github.io/app-lab/) ðŸ§
 
 ## Demos
 
-[![Create an app](https://img.youtube.com/vi/iXdwRqmup-M/maxresdefault.jpg)](://www.youtube.com/shorts/iXdwRqmup-M)
-[![Share an app](https://img.youtube.com/vi/NbD40OALmZE/maxresdefault.jpg)](://youtube.com/shorts/NbD40OALmZE)
+## Demos
+
+<a href="https://www.youtube.com/shorts/iXdwRqmup-M">
+  <img src="https://img.youtube.com/vi/iXdwRqmup-M/hqdefault.jpg" width="45%" alt="Create an app">
+</a>
+<a href="https://www.youtube.com/shorts/NbD40OALmZE">
+  <img src="https://img.youtube.com/vi/NbD40OALmZE/hqdefault.jpg" width="45%" alt="Share an app">
+</a>
 
 
 ## ðŸ“„ License
