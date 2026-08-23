@@ -86,9 +86,9 @@ export function WorkspaceToolPanel({
                 </button>
                 {activeBuilderModel ? (
                   <>
-                    <span aria-hidden="true" className="hidden shrink-0 sm:inline">·</span>
+                    <span aria-hidden="true" className="shrink-0">·</span>
                     <button
-                      className="hidden min-w-0 truncate text-left text-app-accent underline underline-offset-2 sm:block"
+                      className="min-w-0 truncate text-left text-app-accent underline underline-offset-2"
                       type="button"
                       aria-label={`Open AI connection settings for ${activeBuilderModel}`}
                       title={`Active model: ${activeBuilderModel}`}
