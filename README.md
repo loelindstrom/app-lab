@@ -37,6 +37,11 @@ Open your workspace here: [App Lab](https://loelindstrom.github.io/app-lab/) �
 * 🔐 **[Security Model & Threat Brief](./SECURITY.md)**
 
 
+## Demos
+
+[![Create an app](https://img.youtube.com/vi/iXdwRqmup-M/maxresdefault.jpg)](://www.youtube.com/shorts/iXdwRqmup-M)
+[![Share an app](https://img.youtube.com/vi/NbD40OALmZE/maxresdefault.jpg)](://youtube.com/shorts/NbD40OALmZE)
+
 
 ## 📄 License
 
