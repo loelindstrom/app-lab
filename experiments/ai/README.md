@@ -13,8 +13,8 @@ under ignored `artifacts/ai-evals/`.
 
 ## Profiles
 
-1. `baseline`: current production prompt and full Opinionated Board source.
-2. `restrained`: Copy-prompt-aligned scope guidance and the full Opinionated Board source.
+1. `baseline`: current production prompt and full Minimal Board source.
+2. `restrained`: Copy-prompt-aligned scope guidance and the full Minimal Board source.
 3. `compact-starter`: the restrained prompt and a minimal starter showing only App Lab-specific integration.
 4. `strict-compact`: the compact starter plus an explicit prohibition on common speculative secondary workflows.
 

@@ -61,24 +61,6 @@ describe("app invite encoding", () => {
     expect(readInviteFromHash(`#${encoded}`)?.sourceRoom.roomId).toBe(invite.sourceRoom.roomId);
   });
 
-  it("still decodes legacy verbose invite links", () => {
-    const invite: AppInvitePayload = {
-      createdAt: "2026-01-01T00:00:00.000Z",
-      dataRoom: createRoomCapability(),
-      kind: "app-lab-invite",
-      provider: {
-        databaseUrl: "https://example.firebaseio.com",
-        firebaseConfig: { apiKey: "key", databaseURL: "https://example.firebaseio.com" },
-        provider: "firebase-rtdb",
-      },
-      schemaVersion: 1,
-      sourceRoom: createRoomCapability(),
-    };
-    const legacyEncoded = `applab-invite=${encodeURIComponent(btoa(JSON.stringify(invite)))}`;
-
-    expect(decodeAppInvite(legacyEncoded).sourceRoom.roomId).toBe(invite.sourceRoom.roomId);
-  });
-
   it("refuses to encode auth invites without a Firebase apiKey", () => {
     const invite: AppInvitePayload = {
       createdAt: "2026-01-01T00:00:00.000Z",
@@ -99,6 +81,6 @@ describe("app invite encoding", () => {
 
   it("rejects invites without provider config", () => {
     const broken = btoa(JSON.stringify({ kind: "app-lab-invite", schemaVersion: 1 }));
-    expect(() => decodeAppInvite(`applab-invite=${broken}`)).toThrow(/unsupported|malformed/i);
+    expect(() => decodeAppInvite(`applab-invite=${broken}`)).toThrow(/unsupported/i);
   });
 });

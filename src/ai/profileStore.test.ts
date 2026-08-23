@@ -33,8 +33,8 @@ describe("Builder profile store", () => {
     await expect(store.list()).resolves.toEqual(builtIns);
   });
 
-  it("puts Opinionated first while keeping additional guidance out of Minimal", () => {
-    const [opinionated, minimal] = createBuiltInBuilderProfiles();
+  it("puts Minimal first while keeping its prompt free of additional guidance", () => {
+    const [minimal, opinionated] = createBuiltInBuilderProfiles();
 
     expect(minimal.promptTemplate).toContain("Runtime constraints:");
     expect(minimal.promptTemplate).toContain("Persistence and live data:");
@@ -56,8 +56,8 @@ describe("Builder profile store", () => {
     expect(opinionated.starterSource).toContain("Drag to reorder");
     expect(opinionated.starterSource).toContain("toggleNoteCollapsed");
     expect(minimal.description).toContain("essential App Lab constraints");
-    expect(resolveActiveBuilderProfile([opinionated, minimal], opinionated.profileId)).toBe(opinionated);
-    expect(resolveActiveBuilderProfile([opinionated, minimal], "missing-profile")).toBe(opinionated);
+    expect(resolveActiveBuilderProfile([minimal, opinionated], opinionated.profileId)).toBe(opinionated);
+    expect(resolveActiveBuilderProfile([minimal, opinionated], "missing-profile")).toBe(minimal);
   });
 
   it("rejects changes to built-ins and invalid custom input", async () => {
@@ -89,16 +89,16 @@ describe("Builder profile store", () => {
 
     storage.setItem("app-lab-builder-profiles-v1", JSON.stringify({
       profiles: [{
-        name: "Legacy profile",
-        profileId: "legacy-profile",
-        promptTemplate: "Legacy prompt",
-        starterSource: "<!doctype html><title>Legacy</title>",
+        name: "Stored profile",
+        profileId: "stored-profile",
+        promptTemplate: "Stored prompt",
+        starterSource: "<!doctype html><title>Stored</title>",
       }],
       version: 1,
     }));
     await expect(store.list()).resolves.toEqual([
       ...builtIns,
-      expect.objectContaining({ description: "", name: "Legacy profile", profileId: "legacy-profile" }),
+      expect.objectContaining({ description: "", name: "Stored profile", profileId: "stored-profile" }),
     ]);
 
     storage.setItem("app-lab-builder-profiles-v1", JSON.stringify({ profiles: [], version: 2 }));

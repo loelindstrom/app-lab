@@ -3,8 +3,8 @@ import {
   addAiUsage,
   createEmptyAiUsage,
   DEFAULT_BUILDER_PREFERENCES,
-  OPINIONATED_BOARD_DESCRIPTION,
-  OPINIONATED_BOARD_SOURCE,
+  MINIMAL_BOARD_DESCRIPTION,
+  MINIMAL_BUILDER_STARTER_SOURCE,
   resolveActiveBuilderProfile,
   type AiActions,
   type AiChatMessage,
@@ -335,9 +335,9 @@ export function WorkspaceShell({ aiActions, core, syncActions }: WorkspaceShellP
     setBuilderPreferences(preferences);
     const profile = resolveActiveBuilderProfile(profiles, preferences.activeProfileId);
     const fallbackInput: CreateAppInput = {
-      description: OPINIONATED_BOARD_DESCRIPTION,
-      name: "Opinionated Board",
-      sourceCode: OPINIONATED_BOARD_SOURCE,
+      description: MINIMAL_BOARD_DESCRIPTION,
+      name: "Minimal Board",
+      sourceCode: MINIMAL_BUILDER_STARTER_SOURCE,
     };
     await createAppFromInput(
       profile

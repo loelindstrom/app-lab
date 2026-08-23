@@ -4,7 +4,6 @@ import { OPINIONATED_BOARD_SOURCE } from "./opinionatedBoardApp";
 export const BUILDER_APP_NAME_PLACEHOLDER = "{{appName}}";
 export const MINIMAL_BUILDER_PROFILE_ID = "builtin-minimal-v1";
 export const OPINIONATED_BUILDER_PROFILE_ID = "builtin-opinionated-v1";
-export const LEGACY_GUIDED_BUILDER_PROFILE_ID = "builtin-guided-v1";
 export const MINIMAL_BOARD_DESCRIPTION =
   "A small example app that showcases App Lab's runtime, persistence, and live updates while leaving design and behavior to the user and AI.";
 
@@ -198,6 +197,14 @@ export function createBuiltInBuilderProfiles(): BuilderProfile[] {
   return [
     {
       builtIn: true,
+      description: "Uses only the essential App Lab constraints, with a small starter that leaves the rest to you and the AI.",
+      name: "Minimal",
+      profileId: MINIMAL_BUILDER_PROFILE_ID,
+      promptTemplate: minimalPrompt,
+      starterSource: MINIMAL_BUILDER_STARTER_SOURCE,
+    },
+    {
+      builtIn: true,
       description: "Adds App Lab UI and data best practices, with a richer starter that demonstrates reusable patterns.",
       name: "Opinionated",
       profileId: OPINIONATED_BUILDER_PROFILE_ID,
@@ -217,14 +224,6 @@ App Lab best practices:
 - Follow the patterns demonstrated by the current starter source when they suit the user's request.`,
       starterSource: OPINIONATED_BOARD_SOURCE,
     },
-    {
-      builtIn: true,
-      description: "Uses only the essential App Lab constraints, with a small starter that leaves the rest to you and the AI.",
-      name: "Minimal",
-      profileId: MINIMAL_BUILDER_PROFILE_ID,
-      promptTemplate: minimalPrompt,
-      starterSource: MINIMAL_BUILDER_STARTER_SOURCE,
-    },
   ];
 }
 
@@ -238,7 +237,7 @@ export function resolveActiveBuilderProfile(
 ): BuilderProfile | null {
   return (
     profiles.find((profile) => profile.profileId === activeProfileId) ??
-    profiles.find((profile) => profile.profileId === OPINIONATED_BUILDER_PROFILE_ID) ??
+    profiles.find((profile) => profile.profileId === MINIMAL_BUILDER_PROFILE_ID) ??
     profiles[0] ??
     null
   );

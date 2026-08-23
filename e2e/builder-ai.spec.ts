@@ -39,7 +39,7 @@ test.describe("BuilderAI browser workflow", () => {
     await configureTestAi(page);
     await page.getByRole("button", { name: "Create new app" }).click();
     await page.getByRole("button", { name: "Toggle BuilderAI" }).click();
-    await expect(page.getByText(/Describe how you want to edit Opinionated Board/)).toBeVisible();
+    await expect(page.getByText(/Describe how you want to edit Minimal Board/)).toBeVisible();
     await expect(page.getByRole("button", { name: "Open AI connection settings for provider/model" })).toBeVisible();
 
     await page.getByLabel("Message", { exact: true }).fill("Replace this with the browser test app");
@@ -49,11 +49,11 @@ test.describe("BuilderAI browser workflow", () => {
     await expect(page.frameLocator('iframe[sandbox="allow-scripts"]').getByRole("heading", { name: "AI Browser Test" })).toBeVisible();
     expect(requests).toHaveLength(3);
     expect(readMessages(requests[0])[0]).toMatchObject({
-      content: expect.stringContaining('active App Lab app named "Opinionated Board"'),
+      content: expect.stringContaining('active App Lab app named "Minimal Board"'),
       role: "system",
     });
     expect(String(readMessages(requests[0])[0].content)).toContain("Runtime constraints:");
-    expect(String(readMessages(requests[0])[0].content)).toContain("App Lab best practices:");
+    expect(String(readMessages(requests[0])[0].content)).not.toContain("App Lab best practices:");
     expect(readToolNames(requests[0])).toEqual([
       "read_current_app_source",
       "read_recent_console_output",
@@ -136,10 +136,10 @@ test.describe("BuilderAI browser workflow", () => {
     await page.getByLabel("Conversation memory").selectOption("long");
     await expect(page.getByText("Saved", { exact: true })).toBeVisible();
 
-    await expect(page.getByLabel("Active profile")).toHaveValue("builtin-opinionated-v1");
+    await expect(page.getByLabel("Active profile")).toHaveValue("builtin-minimal-v1");
     await expect(page.getByLabel("Builder instructions")).not.toBeEditable();
     await page.getByRole("button", { name: "Duplicate" }).click();
-    await expect(page.getByLabel("Profile name", { exact: true })).toHaveValue("Opinionated copy");
+    await expect(page.getByLabel("Profile name", { exact: true })).toHaveValue("Minimal copy");
 
     await page.getByLabel("Profile name", { exact: true }).fill("Mobile Builder");
     await page.getByLabel("Builder instructions").fill("Build one focused app.");

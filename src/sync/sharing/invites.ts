@@ -30,11 +30,7 @@ export function decodeAppInvite(value: string): AppInvitePayload {
   try {
     parsed = JSON.parse(base64UrlDecode(encoded));
   } catch (_) {
-    try {
-      parsed = JSON.parse(atob(decodeURIComponent(encoded)));
-    } catch (_) {
-      throw new Error("App invite is not valid.");
-    }
+    throw new Error("App invite is not valid.");
   }
   return parseInvitePayload(parsed);
 }
@@ -46,31 +42,8 @@ export function readInviteFromHash(hash: string): AppInvitePayload | null {
 }
 
 function parseInvitePayload(value: unknown): AppInvitePayload {
-  if (isCompactInvitePayload(value)) return fromCompactInvite(value);
-  if (!value || typeof value !== "object") throw new Error("App invite is malformed.");
-  const invite = value as Partial<AppInvitePayload>;
-  if (
-    invite.kind !== "app-lab-invite" ||
-    invite.schemaVersion !== 1 ||
-    !invite.provider ||
-    invite.provider.provider !== "firebase-rtdb" ||
-    typeof invite.provider.databaseUrl !== "string" ||
-    !invite.provider.firebaseConfig?.databaseURL ||
-    typeof invite.provider.firebaseConfig.apiKey !== "string" ||
-    !invite.sourceRoom ||
-    !invite.dataRoom ||
-    typeof invite.createdAt !== "string"
-  ) {
-    throw new Error("App invite is unsupported.");
-  }
-  const provider = invite.provider as AppInvitePayload["provider"];
-  return {
-    ...invite,
-    provider: {
-      ...provider,
-      accessModel: "auth-v1",
-    },
-  } as AppInvitePayload;
+  if (!isCompactInvitePayload(value)) throw new Error("App invite is unsupported.");
+  return fromCompactInvite(value);
 }
 
 function toCompactInvite(invite: AppInvitePayload): CompactInvitePayload {

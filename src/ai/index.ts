@@ -5,7 +5,9 @@ export { createBuilderSystemPrompt, createPromptWithCode } from "./prompt";
 export { OPINIONATED_BOARD_DESCRIPTION, OPINIONATED_BOARD_SOURCE } from "./opinionatedBoardApp";
 export {
   BUILDER_APP_NAME_PLACEHOLDER,
+  MINIMAL_BOARD_DESCRIPTION,
   MINIMAL_BUILDER_PROFILE_ID,
+  MINIMAL_BUILDER_STARTER_SOURCE,
   OPINIONATED_BUILDER_PROFILE_ID,
   resolveActiveBuilderProfile,
 } from "./profiles";

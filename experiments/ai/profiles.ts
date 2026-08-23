@@ -1,7 +1,7 @@
 import { APP_LAB_RUNTIME_GUIDANCE } from "../../src/ai/prompt.ts";
 import {
   createBuiltInBuilderProfiles,
-  OPINIONATED_BUILDER_PROFILE_ID,
+  MINIMAL_BUILDER_PROFILE_ID,
   resolveBuilderProfilePrompt,
 } from "../../src/ai/profiles.ts";
 
@@ -51,19 +51,19 @@ const COMPACT_STARTER_SOURCE = `<!doctype html>
 </html>`;
 
 const productionProfile = createBuiltInBuilderProfiles().find(
-  (profile) => profile.profileId === OPINIONATED_BUILDER_PROFILE_ID,
+  (profile) => profile.profileId === MINIMAL_BUILDER_PROFILE_ID,
 );
-if (!productionProfile) throw new Error("The production Opinionated Builder profile is missing.");
+if (!productionProfile) throw new Error("The production Minimal Builder profile is missing.");
 
 export const AI_EVALUATION_PROFILES: AiEvaluationProfile[] = [
   {
-    description: "Current production prompt and full Opinionated Board source.",
+    description: "Current production prompt and full Minimal Board source.",
     id: "baseline",
     sourceCode: productionProfile.starterSource,
     systemPrompt: (appName) => resolveBuilderProfilePrompt(productionProfile.promptTemplate, appName),
   },
   {
-    description: "Copy-prompt-aligned, scope-conscious prompt with the full Opinionated Board source.",
+    description: "Copy-prompt-aligned, scope-conscious prompt with the full Minimal Board source.",
     id: "restrained",
     sourceCode: productionProfile.starterSource,
     systemPrompt: createRestrainedBuilderPrompt,
