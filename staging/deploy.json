@@ -2,8 +2,8 @@
   "target": "staging",
   "version": null,
   "ref": "HEAD",
-  "commit": "14e570ad8138b9aa4fc3be7ff97996f979b4d3a3",
-  "shortCommit": "14e570ad8138",
-  "deployedAt": "2026-08-23T08:27:08Z",
+  "commit": "5dcce3ae91a12fa04181e75b5e4fac1e5b4aab2c",
+  "shortCommit": "5dcce3ae91a1",
+  "deployedAt": "2026-08-23T08:56:19Z",
   "base": "/app-lab/staging/"
 }
