@@ -4,6 +4,12 @@
 [![Local-First](https://img.shields.io/badge/Architecture-Local--First-blue?style=for-the-badge)](https://en.wikipedia.org/wiki/Local-first_software) 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](./LICENSE)
 
+
+
+https://github.com/user-attachments/assets/27b2dabf-8f50-4026-8310-8b2664e362e6
+
+
+
 > **The home for your AI-made apps**
 
 Create, run, and edit small apps in seconds. ❤️‍🔥<br>
