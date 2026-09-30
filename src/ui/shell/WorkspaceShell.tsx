@@ -105,6 +105,20 @@ export function WorkspaceShell({ aiActions, core, syncActions }: WorkspaceShellP
     return browserOnlineRef.current && providerOnlineRef.current !== false;
   }
 
+  async function saveAppData(appId: string, data: JsonValue) {
+    setRemoteDataChange(null);
+    syncActions.noteLocalAppDataEdit(appId);
+    await core.saveAppData(appId, data);
+    await trySync("App data saved locally. Remote data sync failed", () => syncActions.pushAppData(appId, data));
+    refreshWhenSettled(syncActions.flushAppDataSyncQueue());
+    await refreshApps();
+  }
+
+  async function importAppData(appId: string, data: JsonValue) {
+    await saveAppData(appId, data);
+    setSandboxReloadKey((key) => key + 1);
+  }
+
   useEffect(() => {
     void refreshApps(isSyncReachable());
   }, []);
@@ -615,14 +629,7 @@ export function WorkspaceShell({ aiActions, core, syncActions }: WorkspaceShellP
             onConsoleEntry={(entry) => {
               setConsoleEntries((entries) => [...entries.slice(-199), entry]);
             }}
-            onSaveAppData={async (appId, data) => {
-              setRemoteDataChange(null);
-              syncActions.noteLocalAppDataEdit(appId);
-              await core.saveAppData(appId, data);
-              await trySync("App data saved locally. Remote data sync failed", () => syncActions.pushAppData(appId, data));
-              refreshWhenSettled(syncActions.flushAppDataSyncQueue());
-              await refreshApps();
-            }}
+            onSaveAppData={saveAppData}
             onUnhandledRemoteDataChange={() => {
               setSyncStatus("Remote data changed. This app does not handle live updates yet; reopen it to reload latest data.");
             }}
@@ -659,6 +666,7 @@ export function WorkspaceShell({ aiActions, core, syncActions }: WorkspaceShellP
             onClearBuilderConversation={() => clearBuilderConversation(activeApp.appId)}
             onClearConsole={() => setConsoleEntries([])}
             onClose={() => setActiveTool(null)}
+            onImportAppData={importAppData}
             onLoadAppData={core.getAppData}
             onOpenAiSettings={() => {
               setSettingsInitialAiTab("connection");

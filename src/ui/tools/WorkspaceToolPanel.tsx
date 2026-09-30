@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { createPromptWithCode, type AiChatMessage, type AiUsage } from "../../ai";
-import type { AppRecord, JsonValue } from "../../core";
+import { normalizeJsonValue, type AppRecord, type JsonValue } from "../../core";
 import type { SandboxConsoleEntry } from "../../runtime";
 import { MarkdownMessage } from "./MarkdownMessage";
 
@@ -25,6 +25,7 @@ interface WorkspaceToolPanelProps {
   onClearBuilderConversation: () => void;
   onClearConsole: () => void;
   onClose: () => void;
+  onImportAppData: (appId: string, data: JsonValue) => Promise<void>;
   onLoadAppData: (appId: string) => Promise<JsonValue>;
   onOpenAiSettings: () => void;
   onOpenBuilderProfileSettings: () => void;
@@ -50,6 +51,7 @@ export function WorkspaceToolPanel({
   onClearBuilderConversation,
   onClearConsole,
   onClose,
+  onImportAppData,
   onLoadAppData,
   onOpenAiSettings,
   onOpenBuilderProfileSettings,
@@ -113,7 +115,7 @@ export function WorkspaceToolPanel({
       </header>
 
       {mode === "source" ? (
-        <SourceView app={activeApp} onLoadAppData={onLoadAppData} onSaveSource={onSaveSource} />
+        <SourceView app={activeApp} onImportAppData={onImportAppData} onLoadAppData={onLoadAppData} onSaveSource={onSaveSource} />
       ) : mode === "console" ? (
         <ConsoleView entries={consoleEntries} onClear={onClearConsole} />
       ) : (
@@ -139,15 +141,18 @@ export function WorkspaceToolPanel({
 
 function SourceView({
   app,
+  onImportAppData,
   onLoadAppData,
   onSaveSource,
 }: {
   app: AppRecord;
+  onImportAppData: (appId: string, data: JsonValue) => Promise<void>;
   onLoadAppData: (appId: string) => Promise<JsonValue>;
   onSaveSource: (sourceCode: string) => Promise<AppRecord>;
 }) {
   const [sourceCode, setSourceCode] = useState(app.sourceCode);
   const [exportOpen, setExportOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [includeSourceExport, setIncludeSourceExport] = useState(true);
   const [includeDataExport, setIncludeDataExport] = useState(false);
   const [appDataText, setAppDataText] = useState("");
@@ -155,12 +160,17 @@ function SourceView({
   const [manualCopyLabel, setManualCopyLabel] = useState("");
   const [status, setStatus] = useState("Ready");
   const [exportStatus, setExportStatus] = useState("Ready");
+  const [importText, setImportText] = useState("");
+  const [importStatus, setImportStatus] = useState("Ready");
 
   useEffect(() => {
     setSourceCode(app.sourceCode);
     setStatus("Ready");
     setIncludeSourceExport(true);
     setIncludeDataExport(false);
+    setImportOpen(false);
+    setImportText("");
+    setImportStatus("Ready");
     setAppDataText("");
     setManualCopyText("");
     setManualCopyLabel("");
@@ -236,6 +246,40 @@ function SourceView({
 
     const downloadCount = downloads.filter((download) => downloadTextFile(download.contents, getExportFilename(app.name, download.kind), getExportMimeType(download.kind))).length;
     setExportStatus(downloadCount === downloads.length ? "Download started." : "Download is unavailable.");
+  }
+
+  async function importAppData() {
+    if (!importText.trim()) {
+      setImportStatus("Paste JSON or choose a file first.");
+      return;
+    }
+
+    let data: JsonValue;
+    try {
+      data = normalizeJsonValue(JSON.parse(importText));
+    } catch (error) {
+      setImportStatus(error instanceof Error ? error.message : "Could not parse app data JSON.");
+      return;
+    }
+
+    setImportStatus("Importing...");
+    try {
+      await onImportAppData(app.appId, data);
+      setImportText("");
+      setImportStatus("Imported.");
+    } catch (error) {
+      setImportStatus(error instanceof Error ? error.message : "Could not import app data.");
+    }
+  }
+
+  async function loadImportFile(file: File | undefined) {
+    if (!file) return;
+    try {
+      setImportText(await file.text());
+      setImportStatus(`${file.name} loaded. Review and import.`);
+    } catch (_) {
+      setImportStatus("Could not read the JSON file.");
+    }
   }
 
   return (
@@ -314,15 +358,71 @@ function SourceView({
           <div className="text-xs font-bold text-app-muted">{exportStatus}</div>
         </div>
       ) : null}
+      {importOpen ? (
+        <div className="grid gap-3 border-t border-app-line bg-app-panel p-3">
+          <label className="grid gap-1.5 text-sm font-bold text-app-ink">
+            Paste app data JSON
+            <textarea
+              aria-label="App data JSON"
+              className="min-h-32 w-full resize-y rounded-md border border-app-line bg-white p-3 font-mono text-xs leading-relaxed text-app-ink outline-none focus:border-app-accent"
+              placeholder='{"items": []}'
+              value={importText}
+              onChange={(event) => {
+                setImportText(event.target.value);
+                setImportStatus("Ready");
+              }}
+            />
+          </label>
+          <label className="grid gap-1.5 text-sm font-bold text-app-ink">
+            Or upload a JSON file
+            <input
+              accept=".json,application/json"
+              aria-label="Upload app data JSON"
+              className="block w-full rounded-md border border-app-line bg-white px-3 py-2 text-sm font-normal text-app-ink file:mr-3 file:rounded-md file:border-0 file:bg-app-accent file:px-3 file:py-1.5 file:font-bold file:text-white"
+              type="file"
+              onChange={(event) => {
+                const input = event.currentTarget;
+                void loadImportFile(input.files?.[0]).finally(() => {
+                  input.value = "";
+                });
+              }}
+            />
+          </label>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <button
+              className="min-h-8 rounded-md border border-app-accent bg-app-accent px-3 text-sm font-bold text-white hover:bg-app-strong disabled:cursor-not-allowed disabled:opacity-50"
+              type="button"
+              disabled={!importText.trim()}
+              onClick={() => void importAppData()}
+            >
+              Import data
+            </button>
+            <div className="text-xs font-bold text-app-muted">{importStatus}</div>
+          </div>
+        </div>
+      ) : null}
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-app-line bg-slate-50 px-3 py-2">
         <div className="text-xs font-bold text-app-muted">{status}</div>
         <div className="flex gap-2">
           <button
             className="min-h-8 rounded-md border border-app-line bg-white px-3 text-sm font-bold text-app-ink hover:border-app-accent"
             type="button"
-            onClick={() => setExportOpen((isOpen) => !isOpen)}
+            onClick={() => {
+              setExportOpen((isOpen) => !isOpen);
+              setImportOpen(false);
+            }}
           >
             Export {exportOpen ? "↓" : "↑"}
+          </button>
+          <button
+            className="min-h-8 rounded-md border border-app-line bg-white px-3 text-sm font-bold text-app-ink hover:border-app-accent"
+            type="button"
+            onClick={() => {
+              setImportOpen((isOpen) => !isOpen);
+              setExportOpen(false);
+            }}
+          >
+            Import {importOpen ? "↓" : "↑"}
           </button>
           <button
             className="min-h-8 rounded-md border border-app-accent bg-app-accent px-3 text-sm font-bold text-white hover:bg-app-strong"

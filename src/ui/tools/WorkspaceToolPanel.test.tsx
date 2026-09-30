@@ -49,6 +49,40 @@ describe("WorkspaceToolPanel", () => {
     expect(HTMLAnchorElement.prototype.click).toHaveBeenCalledTimes(2);
   });
 
+  it("imports pasted JSON data into the active app", async () => {
+    const onImportAppData = vi.fn().mockResolvedValue(undefined);
+    renderToolPanel({ mode: "source", onImportAppData });
+
+    fireEvent.click(screen.getByRole("button", { name: "Import ↑" }));
+    fireEvent.change(screen.getByLabelText("App data JSON"), {
+      target: { value: '{"items":[{"title":"Imported item"}]}' },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Import data" }));
+
+    await waitFor(() =>
+      expect(onImportAppData).toHaveBeenCalledWith("app-export", {
+        items: [{ title: "Imported item" }],
+      }),
+    );
+    expect(screen.getByText("Imported.")).toBeTruthy();
+  });
+
+  it("loads JSON files into the import editor and rejects malformed JSON", async () => {
+    const onImportAppData = vi.fn().mockResolvedValue(undefined);
+    renderToolPanel({ mode: "source", onImportAppData });
+
+    fireEvent.click(screen.getByRole("button", { name: "Import ↑" }));
+    const file = new File(['{"from":"file"}'], "backup.data.json", { type: "application/json" });
+    Object.defineProperty(file, "text", { value: async () => '{"from":"file"}' });
+    fireEvent.change(screen.getByLabelText("Upload app data JSON"), { target: { files: [file] } });
+    await waitFor(() => expect(getTextarea("App data JSON").value).toBe('{"from":"file"}'));
+
+    fireEvent.change(screen.getByLabelText("App data JSON"), { target: { value: "not-json" } });
+    fireEvent.click(screen.getByRole("button", { name: "Import data" }));
+    await waitFor(() => expect(screen.getByText(/not valid JSON|Unexpected token/)).toBeTruthy());
+    expect(onImportAppData).not.toHaveBeenCalled();
+  });
+
   it("offers copy-prompt and AI setup paths when OpenRouter is not configured", () => {
     const onOpenAiSettings = vi.fn();
     renderToolPanel({ mode: "builder", onOpenAiSettings });
@@ -183,6 +217,7 @@ function renderToolPanel(overrides: Partial<ComponentProps<typeof WorkspaceToolP
       onClearBuilderConversation={vi.fn()}
       onClearConsole={vi.fn()}
       onClose={vi.fn()}
+      onImportAppData={vi.fn().mockResolvedValue(undefined)}
       onLoadAppData={vi.fn()}
       onOpenAiSettings={vi.fn()}
       onOpenBuilderProfileSettings={vi.fn()}
