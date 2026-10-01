@@ -1,9 +1,9 @@
 {
   "target": "production",
-  "version": null,
+  "version": "v0.5.0",
   "ref": "HEAD",
   "commit": "ce897ba67d086cb6a4ea9f05ca814dbe22ae42df",
   "shortCommit": "ce897ba67d08",
-  "deployedAt": "2026-10-01T08:14:13Z",
+  "deployedAt": "2026-10-01T08:15:59Z",
   "base": "/app-lab/"
 }
