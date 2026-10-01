@@ -364,6 +364,45 @@ export function WorkspaceShell({ aiActions, core, syncActions }: WorkspaceShellP
     );
   }
 
+  async function copyApp(appId: string, includeData: boolean) {
+    const [original, appSummaries] = await Promise.all([core.getApp(appId), core.listApps()]);
+    if (!original) throw new Error("App not found.");
+
+    const appData = includeData ? await core.getAppData(appId) : null;
+    const copyName = createAppCopyName(original.name, appSummaries);
+    const copy = await core.createApp({
+      compiledCss: original.compiledCss,
+      description: original.description,
+      name: copyName,
+      sourceCode: replaceAppTitle(original.sourceCode, copyName),
+    });
+
+    if (includeData) {
+      try {
+        await core.saveAppData(copy.appId, appData);
+      } catch (error) {
+        try {
+          await core.deleteApp(copy.appId);
+        } catch {
+          // Preserve the data-copy error that caused the rollback.
+        }
+        throw error;
+      }
+    }
+
+    setSyncStatus(null);
+    void syncActions.ensureAppBackedUp(copy, { flush: isSyncReachable() }).then(
+      () => refreshApps(),
+      (error) => {
+        const detail = error instanceof Error ? error.message : "Unknown sync error.";
+        setSyncStatus(`App copied locally. Remote backup failed: ${detail}`);
+        void refreshApps(false);
+      },
+    );
+    refreshWhenSettled(syncActions.flushRoomLifecycleQueue());
+    await refreshApps();
+  }
+
   async function saveAppSource(appId: string, sourceCode: string): Promise<AppRecord> {
     assertCompleteAppSource(sourceCode);
 
@@ -606,6 +645,7 @@ export function WorkspaceShell({ aiActions, core, syncActions }: WorkspaceShellP
         {mode === "launcher" ? (
           <LauncherView
             apps={apps}
+            onCopyApp={copyApp}
             onDeleteApp={async (appId) => {
               await syncActions.deleteSyncedAppRooms(appId);
               await core.deleteApp(appId);
@@ -824,8 +864,54 @@ function assertCompleteAppSource(sourceCode: string): void {
   }
 }
 
+function createAppCopyName(originalName: string, apps: AppSummary[]): string {
+  const existingNames = new Set(apps.map((app) => app.name.toLocaleLowerCase()));
+  const baseName = originalName.replace(/ \(copy(?: \d+)?\)$/i, "");
+  let copyNumber = 1;
+  let candidate = `${baseName} (copy)`;
+
+  while (existingNames.has(candidate.toLocaleLowerCase())) {
+    copyNumber += 1;
+    candidate = `${baseName} (copy ${copyNumber})`;
+  }
+
+  return candidate;
+}
+
+function replaceAppTitle(sourceCode: string, title: string): string {
+  const titleMarkup = `<title>${escapeHtmlText(title)}</title>`;
+  const titlePattern = /<title(?:\s[^>]*)?>[\s\S]*?<\/title\s*>/i;
+  const completeHeadPattern = /<head(?:\s[^>]*)?>[\s\S]*?<\/head\s*>/i;
+  const headMatch = completeHeadPattern.exec(sourceCode);
+  if (headMatch) {
+    const updatedHead = titlePattern.test(headMatch[0])
+      ? headMatch[0].replace(titlePattern, titleMarkup)
+      : headMatch[0].replace(/<head(?:\s[^>]*)?>/i, (head) => `${head}\n    ${titleMarkup}`);
+    return `${sourceCode.slice(0, headMatch.index)}${updatedHead}${sourceCode.slice(headMatch.index + headMatch[0].length)}`;
+  }
+
+  const bodyIndex = sourceCode.search(/<body(?:\s|>)/i);
+  const metadataRegion = bodyIndex === -1 ? sourceCode : sourceCode.slice(0, bodyIndex);
+  if (titlePattern.test(metadataRegion)) {
+    return `${metadataRegion.replace(titlePattern, titleMarkup)}${bodyIndex === -1 ? "" : sourceCode.slice(bodyIndex)}`;
+  }
+
+  const headPattern = /<head(?:\s[^>]*)?>/i;
+  if (headPattern.test(sourceCode)) return sourceCode.replace(headPattern, (head) => `${head}\n    ${titleMarkup}`);
+
+  const htmlPattern = /<html(?:\s[^>]*)?>/i;
+  if (htmlPattern.test(sourceCode)) return sourceCode.replace(htmlPattern, (html) => `${html}\n  <head>${titleMarkup}</head>`);
+
+  return `${titleMarkup}\n${sourceCode}`;
+}
+
+function escapeHtmlText(value: string): string {
+  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+}
+
 interface LauncherViewProps {
   apps: AppSummary[];
+  onCopyApp: (appId: string, includeData: boolean) => Promise<void>;
   onDeleteApp: (appId: string) => Promise<void>;
   onOpenApp: (appId: string) => void;
   onShareApp: (app: AppSummary) => void;
@@ -906,7 +992,7 @@ function ToolSwitch({ activeTool, aiAttentionDismissed, aiAttentionKey, consoleC
   );
 }
 
-function LauncherView({ apps, onDeleteApp, onOpenApp, onShareApp, storageProfile, syncBadges, syncHealth }: LauncherViewProps) {
+function LauncherView({ apps, onCopyApp, onDeleteApp, onOpenApp, onShareApp, storageProfile, syncBadges, syncHealth }: LauncherViewProps) {
   const [selectedApp, setSelectedApp] = useState<AppSummary | null>(null);
 
   return (
@@ -946,6 +1032,10 @@ function LauncherView({ apps, onDeleteApp, onOpenApp, onShareApp, storageProfile
       <LauncherAppActionsDialog
         app={selectedApp}
         onClose={() => setSelectedApp(null)}
+        onCopyApp={async (appId, includeData) => {
+          await onCopyApp(appId, includeData);
+          setSelectedApp(null);
+        }}
         onDeleteApp={async (appId) => {
           await onDeleteApp(appId);
           setSelectedApp(null);
@@ -1492,18 +1582,24 @@ function shortFingerprint(value: string): string {
 function LauncherAppActionsDialog({
   app,
   onClose,
+  onCopyApp,
   onDeleteApp,
   syncBadge,
 }: {
   app: AppSummary | null;
   onClose: () => void;
+  onCopyApp: (appId: string, includeData: boolean) => Promise<void>;
   onDeleteApp: (appId: string) => Promise<void>;
   syncBadge?: AppSyncBadge;
 }) {
   const [status, setStatus] = useState("");
+  const [isCopying, setIsCopying] = useState(false);
+  const [view, setView] = useState<"actions" | "copy">("actions");
 
   useEffect(() => {
     setStatus("");
+    setIsCopying(false);
+    setView("actions");
   }, [app]);
 
   if (!app) return null;
@@ -1520,15 +1616,28 @@ function LauncherAppActionsDialog({
     }
   }
 
+  async function copyApp(includeData: boolean) {
+    if (!app || isCopying) return;
+    setIsCopying(true);
+    setStatus("Copying...");
+    try {
+      await onCopyApp(app.appId, includeData);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Could not copy app.");
+      setIsCopying(false);
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-40 grid place-items-center bg-black/35 px-4" role="dialog" aria-modal="true" aria-label="App actions">
       <div className="grid w-full max-w-md gap-4 rounded-xl border border-app-line bg-app-panel p-4 shadow-panel">
         <div className="flex items-center justify-between gap-3">
-          <h2 className="text-lg font-extrabold">App actions</h2>
+          <h2 className="text-lg font-extrabold">{view === "copy" ? "Copy app" : "App actions"}</h2>
           <button
             className="grid h-8 min-h-8 w-8 place-items-center rounded-full text-xl text-app-muted hover:bg-app-accent/10 hover:text-app-accent"
             type="button"
             aria-label="Close app actions"
+            disabled={isCopying}
             onClick={onClose}
           >
             ×
@@ -1539,25 +1648,82 @@ function LauncherAppActionsDialog({
           <p className="truncate text-base font-extrabold text-app-ink">{app.name}</p>
           {app.description ? <p className="line-clamp-3 text-sm leading-snug text-app-muted">{app.description}</p> : null}
         </div>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <button
-            className="min-h-9 rounded-md border border-red-200 bg-red-50 px-3 text-sm font-bold text-red-700 hover:bg-red-100"
-            type="button"
-            onClick={deleteApp}
-          >
-            Delete
-          </button>
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-app-muted">{status}</span>
-            <button
-              className="min-h-9 rounded-md border border-app-line bg-white px-3 text-sm font-bold text-app-ink hover:border-app-accent"
-              type="button"
-              onClick={onClose}
-            >
-              Cancel
-            </button>
+        {view === "copy" ? (
+          <div className="grid gap-3">
+            <p className="text-sm text-app-muted">Should the copy include this app's saved data?</p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button
+                className="grid min-h-14 content-center rounded-md border border-app-line bg-white px-3 text-left hover:border-app-accent"
+                type="button"
+                disabled={isCopying}
+                onClick={() => copyApp(false)}
+              >
+                <strong className="text-sm text-app-ink">Without data</strong>
+                <span className="text-xs text-app-muted">Copy source only</span>
+              </button>
+              <button
+                className="grid min-h-14 content-center rounded-md border border-app-accent bg-app-accent/5 px-3 text-left hover:bg-app-accent/10"
+                type="button"
+                disabled={isCopying}
+                onClick={() => copyApp(true)}
+              >
+                <strong className="text-sm text-app-ink">With data</strong>
+                <span className="text-xs text-app-muted">Copy source and saved data</span>
+              </button>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-xs font-bold text-app-muted">{status}</span>
+              <div className="flex gap-2">
+                <button
+                  className="min-h-9 rounded-md border border-app-line bg-white px-3 text-sm font-bold text-app-ink hover:border-app-accent"
+                  type="button"
+                  disabled={isCopying}
+                  onClick={() => {
+                    setStatus("");
+                    setView("actions");
+                  }}
+                >
+                  Back
+                </button>
+                <button
+                  className="min-h-9 rounded-md border border-app-line bg-white px-3 text-sm font-bold text-app-ink hover:border-app-accent"
+                  type="button"
+                  disabled={isCopying}
+                  onClick={onClose}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <button
+              className="min-h-9 rounded-md border border-red-200 bg-red-50 px-3 text-sm font-bold text-red-700 hover:bg-red-100"
+              type="button"
+              onClick={deleteApp}
+            >
+              Delete
+            </button>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-app-muted">{status}</span>
+              <button
+                className="min-h-9 rounded-md border border-app-line bg-white px-3 text-sm font-bold text-app-ink hover:border-app-accent"
+                type="button"
+                onClick={() => setView("copy")}
+              >
+                Copy
+              </button>
+              <button
+                className="min-h-9 rounded-md border border-app-line bg-white px-3 text-sm font-bold text-app-ink hover:border-app-accent"
+                type="button"
+                onClick={onClose}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -251,6 +251,75 @@ describe("WorkspaceShell sync wake-ups", () => {
     );
   });
 
+  it("copies an app with its saved data into a new local and sync identity", async () => {
+    const core = createMemoryCore();
+    const syncActions = createSyncActionsStub();
+    const original = await core.createApp({
+      compiledCss: ".note { color: rebeccapurple; }",
+      compiledCssSourceHash: "original-source-hash",
+      description: "A journal app.",
+      name: "Journal",
+      sourceCode: "<!doctype html><html><head><title>Journal</title></head><body><main class=\"note\">Journal</main></body></html>",
+    });
+    await core.saveAppData(original.appId, { entries: [{ text: "Keep this" }] });
+
+    render(<WorkspaceShell core={core} syncActions={syncActions} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open app actions for Journal" }));
+    const actionsDialog = await screen.findByRole("dialog", { name: "App actions" });
+    fireEvent.click(within(actionsDialog).getByRole("button", { name: "Copy" }));
+    fireEvent.click(within(actionsDialog).getByRole("button", { name: /^With data/ }));
+
+    expect(await screen.findByText("Journal (copy)")).toBeTruthy();
+    const summaries = await core.listApps();
+    const copiedSummary = summaries.find((app) => app.appId !== original.appId);
+    expect(copiedSummary).toBeDefined();
+    const copied = await core.getApp(copiedSummary!.appId);
+    expect(copied).toMatchObject({
+      appId: copiedSummary!.appId,
+      compiledCss: original.compiledCss,
+      description: original.description,
+      name: "Journal (copy)",
+    });
+    expect(copied?.appId).not.toBe(original.appId);
+    expect(copied?.compiledCssSourceHash).toBeUndefined();
+    expect(copied?.sourceCode).toContain("<title>Journal (copy)</title>");
+    await expect(core.getAppData(copiedSummary!.appId)).resolves.toEqual({ entries: [{ text: "Keep this" }] });
+    expect(syncActions.ensureAppBackedUp).toHaveBeenCalledWith(
+      expect.objectContaining({ appId: copiedSummary!.appId, name: "Journal (copy)" }),
+      expect.any(Object),
+    );
+  });
+
+  it("copies an app without data and chooses the next available copy name", async () => {
+    const core = createMemoryCore();
+    const syncActions = createSyncActionsStub();
+    const original = await core.createApp({
+      description: "A journal app.",
+      name: "Journal",
+      sourceCode: "<!doctype html><html><head><title>Journal</title></head><body></body></html>",
+    });
+    await core.createApp({
+      description: "An earlier copy.",
+      name: "Journal (copy)",
+      sourceCode: "<!doctype html><html><head><title>Journal (copy)</title></head><body></body></html>",
+    });
+    await core.saveAppData(original.appId, { entries: ["Do not copy this"] });
+
+    render(<WorkspaceShell core={core} syncActions={syncActions} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open app actions for Journal" }));
+    const actionsDialog = await screen.findByRole("dialog", { name: "App actions" });
+    fireEvent.click(within(actionsDialog).getByRole("button", { name: "Copy" }));
+    fireEvent.click(within(actionsDialog).getByRole("button", { name: /^Without data/ }));
+
+    expect(await screen.findByText("Journal (copy 2)")).toBeTruthy();
+    const copiedSummary = (await core.listApps()).find((app) => app.name === "Journal (copy 2)");
+    expect(copiedSummary).toBeDefined();
+    await expect(core.getAppData(copiedSummary!.appId)).resolves.toBeNull();
+    await expect(core.getAppData(original.appId)).resolves.toEqual({ entries: ["Do not copy this"] });
+  });
+
   it("updates launcher metadata from the saved source HTML head", async () => {
     const syncActions = createSyncActionsStub();
     const core = createMemoryCore();

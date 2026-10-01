@@ -93,6 +93,33 @@ test.describe("local app persistence", () => {
     await expect(appFrame(page).getByText("Persisted item")).toBeVisible();
   });
 
+  test("copies launcher apps with or without their IndexedDB data", async ({ page }) => {
+    await page.goto("/");
+    await page.evaluate(async () => {
+      indexedDB.deleteDatabase("app-lab-v2");
+      indexedDB.deleteDatabase("app-lab-sync-queue-v1");
+      localStorage.clear();
+    });
+    await page.reload();
+
+    await createOpinionatedBoard(page);
+    await saveSource(page, htmlForChecklistTitle("Copyable Checklist"));
+    await appFrame(page).getByLabel("New item").fill("Copied item");
+    await appFrame(page).getByRole("button", { name: "Add" }).click();
+    await expect(appFrame(page).locator("#status")).toHaveText("Saved.");
+    await page.getByRole("button", { name: "‹ Apps" }).click();
+
+    await copyLauncherApp(page, "Copyable Checklist", "With data");
+    await openLauncherApp(page, "Copyable Checklist (copy)");
+    await expect(appFrame(page).getByText("Copied item", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "‹ Apps" }).click();
+
+    await copyLauncherApp(page, "Copyable Checklist", "Without data");
+    await openLauncherApp(page, "Copyable Checklist (copy 2)");
+    await expect(appFrame(page).locator("#status")).toHaveText("Loaded.");
+    await expect(appFrame(page).getByText("Copied item", { exact: true })).toHaveCount(0);
+  });
+
   test("runs normal Alpine expressions and saves Alpine state objects", async ({ page }) => {
     await page.goto("/");
     await page.evaluate(async () => {
@@ -363,6 +390,20 @@ async function archiveBoardNote(page: Page, title: string) {
   const frame = appFrame(page);
   await frame.getByRole("button", { name: `Archive ${title}` }).click();
   await frame.getByRole("button", { name: "Archive", exact: true }).click();
+}
+
+async function copyLauncherApp(page: Page, appName: string, dataChoice: "With data" | "Without data") {
+  await page.getByRole("button", { name: `Open app actions for ${appName}`, exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "App actions" });
+  await dialog.getByRole("button", { name: "Copy", exact: true }).click();
+  await dialog.getByRole("button", { name: new RegExp(`^${dataChoice}`) }).click();
+  await expect(dialog).toBeHidden();
+}
+
+async function openLauncherApp(page: Page, appName: string) {
+  const actionsButton = page.getByRole("button", { name: `Open app actions for ${appName}`, exact: true });
+  await expect(actionsButton).toBeVisible();
+  await actionsButton.locator("xpath=ancestor::article").getByRole("button", { name: "Open", exact: true }).click();
 }
 
 function requireContext(context: BrowserContext | null): BrowserContext {
