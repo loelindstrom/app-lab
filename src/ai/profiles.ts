@@ -237,7 +237,7 @@ export function resolveActiveBuilderProfile(
 ): BuilderProfile | null {
   return (
     profiles.find((profile) => profile.profileId === activeProfileId) ??
-    profiles.find((profile) => profile.profileId === MINIMAL_BUILDER_PROFILE_ID) ??
+    profiles.find((profile) => profile.profileId === OPINIONATED_BUILDER_PROFILE_ID) ??
     profiles[0] ??
     null
   );

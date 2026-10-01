@@ -598,7 +598,7 @@ describe("WorkspaceShell sync wake-ups", () => {
     const turn = vi.mocked(aiActions.runBuilderTurn).mock.calls[0][0];
     expect(turn.appId).toBe(originalApp.appId);
     expect(turn.conversationMemory).toBe("short");
-    expect(turn.profile?.profileId).toBe("builtin-minimal-v1");
+    expect(turn.profile?.profileId).toBe("builtin-opinionated-v1");
     expect(turn.messages).toHaveLength(1);
     expect(turn.messages[0]).toMatchObject({
       appId: originalApp.appId,
@@ -816,7 +816,7 @@ function createAiActionsStub(config: AiConfig = { apiKey: "", model: "" }): AiAc
     clearConfig: vi.fn().mockResolvedValue(undefined),
     createBuilderProfile: vi.fn(async (input) => ({ ...input, builtIn: false, profileId: "custom-profile" })),
     deleteBuilderProfile: vi.fn().mockResolvedValue(undefined),
-    getBuilderPreferences: vi.fn().mockResolvedValue({ activeProfileId: "builtin-minimal-v1", conversationMemory: "short" }),
+    getBuilderPreferences: vi.fn().mockResolvedValue({ activeProfileId: "builtin-opinionated-v1", conversationMemory: "short" }),
     getConfig: vi.fn().mockResolvedValue(config),
     listBuilderProfiles: vi.fn().mockResolvedValue(TEST_BUILDER_PROFILES),
     runBuilderTurn: vi.fn().mockResolvedValue({ content: "Done.", toolRounds: 0, usage: TEST_AI_USAGE }),
@@ -838,6 +838,14 @@ const TEST_BUILDER_PROFILES: BuilderProfile[] = [
     profileId: "builtin-minimal-v1",
     promptTemplate: "Build the requested app.",
     starterSource: "<!doctype html><html><body><main></main></body></html>",
+  },
+  {
+    builtIn: true,
+    description: "Opinionated test profile.",
+    name: "Opinionated",
+    profileId: "builtin-opinionated-v1",
+    promptTemplate: "Build the requested app using App Lab best practices.",
+    starterSource: "<!doctype html><html><head><title>Opinionated Test</title></head><body><main></main></body></html>",
   },
 ];
 

@@ -57,7 +57,7 @@ describe("Builder profile store", () => {
     expect(opinionated.starterSource).toContain("toggleNoteCollapsed");
     expect(minimal.description).toContain("essential App Lab constraints");
     expect(resolveActiveBuilderProfile([minimal, opinionated], opinionated.profileId)).toBe(opinionated);
-    expect(resolveActiveBuilderProfile([minimal, opinionated], "missing-profile")).toBe(minimal);
+    expect(resolveActiveBuilderProfile([minimal, opinionated], "missing-profile")).toBe(opinionated);
   });
 
   it("rejects changes to built-ins and invalid custom input", async () => {
