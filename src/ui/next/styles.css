@@ -1,0 +1,75 @@
+@import "./theme/tokens.css";
+@import "./theme/appearance.css";
+@import "./components/components.css";
+@import "./screens/screens.css";
+
+:root { font-family: var(--font-ui); font-size: var(--text-body); font-synthesis: none; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; color: var(--ink); background: var(--canvas); }
+body { margin: 0; background: var(--canvas); color: var(--ink); font-family: var(--font-ui); }
+button, input, textarea, select { font: inherit; letter-spacing: 0; -webkit-tap-highlight-color: transparent; outline-offset: 4px; }
+button { cursor: pointer; color: inherit; }
+button:disabled { cursor: default; }
+:focus-visible { outline: 2px solid var(--accent); }
+button svg { flex-shrink: 0; }
+.workspace-app-identity strong { font-size: 17px; font-weight: 600; }
+.workspace-app { height: 100dvh; min-height: 0; overflow: hidden; }
+.live-runtime { flex: 1; min-height: 0; }
+.live-runtime > iframe { height: 100%; width: 100%; display: block; border: 0; background: white; }
+.live-notice { position: fixed; bottom: 12px; left: 12px; z-index: 20; max-width: min(560px, calc(100% - 24px)); display: flex; align-items: center; gap: 6px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font-size: 13px; box-shadow: var(--shadow-preview); }
+.live-notice > span { min-width: 0; overflow-wrap: anywhere; }
+.live-share { display: grid; gap: 18px; }
+.sheet-error { padding: 8px 24px; margin: 0; }
+.toast { pointer-events: none; }
+.launcher-open:disabled { opacity: .55; cursor: not-allowed; }
+.app-action-list > button:disabled { opacity: .45; cursor: not-allowed; }
+.launcher-app-initials { font-size: 28px; line-height: 1; font-weight: 550; }
+.launcher-app-icon[data-custom-color="true"] { background: color-mix(in srgb, var(--app-icon-color) 15%, var(--surface)); color: color-mix(in srgb, var(--app-icon-color) 80%, var(--ink)); }
+.app-details-name { display: flex; align-items: center; gap: 16px; margin-top: 8px; }
+.app-details-name > .launcher-app-icon { width: 60px; height: 60px; border-radius: 16px; flex-shrink: 0; }
+.app-details-name .launcher-app-initials { font-size: 24px; }
+.app-details-name .field-group { flex: 1; min-width: 0; margin: 0; }
+.app-color-picker { margin: 24px 0 12px; border: 0; padding: 0; }
+.app-color-picker legend { margin-bottom: 8px; color: var(--muted); font-size: 13px; }
+.app-color-choices { display: flex; flex-wrap: wrap; gap: 4px; }
+.app-color-choice > span { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--swatch); color: white; }
+.app-color-choice[aria-pressed="true"] { background: var(--inset); }
+.live-share > h3 { font-size: 16px; font-weight: 600; }
+.live-share > .button { justify-self: start; }
+.sheet-scroll--chat { display: flex; min-height: 0; overflow: hidden; }
+.sheet-scroll--chat > .tool-panel { flex: 1; min-height: 0; padding: 0; }
+.live-chat { display: flex; flex-direction: column; height: 100%; min-width: 0; }
+.live-chat-heading { display: grid; gap: 4px; padding: 16px 24px 8px; font-size: 12px; color: var(--muted); }
+.live-chat-heading > button { justify-self: start; border: 0; padding: 0; background: none; color: var(--accent); text-align: left; text-decoration: underline; text-underline-offset: 3px; }
+.live-chat-heading > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.live-chat .chat-messages { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 24px; }
+.chat-message > div { min-width: 0; overflow-wrap: anywhere; }
+.chat-message--assistant > div { max-width: calc(100% - 32px); padding: 10px 14px; background: var(--inset); border-radius: var(--radius-control); }
+.chat-message p { white-space: pre-wrap; }
+.chat-reasoning { font-size: 12px; color: var(--muted); list-style: none; }
+.chat-reasoning summary { cursor: pointer; padding: 8px 0; }
+.chat-reasoning p { white-space: pre-wrap; overflow-wrap: anywhere; padding: 12px; background: var(--inset); border-radius: 6px; }
+.live-chat-footer { flex-shrink: 0; padding: 8px 24px max(16px, env(safe-area-inset-bottom)); border-top: 1px solid var(--line); }
+.live-chat-usage { display: flex; align-items: center; justify-content: space-between; color: var(--muted); font-size: 11px; }
+.live-chat .chat-composer { display: flex; align-items: flex-end; gap: 8px; }
+.live-chat .chat-composer .text-field { resize: vertical; max-height: 140px; }
+.embedded-settings { --app-ink: var(--ink); color: var(--ink); }
+.embedded-settings .bg-white, .embedded-settings .bg-white\/95 { background-color: var(--surface); }
+.embedded-settings .bg-app-panel, .embedded-settings .bg-app-surface { background-color: var(--surface); }
+.embedded-settings .bg-slate-50, .embedded-settings .bg-slate-100 { background-color: var(--inset); }
+.embedded-settings .text-app-ink, .live-chat .text-app-ink { color: var(--ink); }
+.embedded-settings .text-app-muted, .live-chat .text-app-muted { color: var(--muted); }
+.embedded-settings .border-app-line { border-color: var(--line); }
+.embedded-settings .text-app-accent, .live-chat .text-app-accent { color: var(--accent); }
+.live-chat code { background: var(--inset); color: var(--ink); }
+.live-chat pre code { background: transparent; color: inherit; }
+.embedded-settings .bg-app-accent { background-color: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.embedded-settings .peer:checked + .setup-step-check { background-color: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.embedded-settings input, .embedded-settings textarea, .embedded-settings select { background: var(--surface); color: var(--ink); font-weight: 400; }
+.embedded-settings > section > div > div > div > div > header { display: none; }
+.embedded-settings h3, .embedded-settings h4 { font-weight: 600; }
+.embedded-settings .fixed > .max-w-5xl { max-width: 1120px; }
+@media (min-width: 768px) and (max-width: 1023px) { .embedded-settings .fixed > .max-w-5xl { padding-left: 24px; } }
+@media (min-width: 1024px) { .embedded-settings .fixed > .max-w-5xl { padding-left: 292px; padding-right: 48px; } }
+@media (max-width: 1023px) {
+  .settings-page-header { position: sticky; top: 0; z-index: 20; background: var(--canvas); }
+  .settings-screen { padding-top: env(safe-area-inset-top, 0px); }
+}

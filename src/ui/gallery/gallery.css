@@ -1,0 +1,26 @@
+.component-gallery { max-width: 1120px; margin: 0 auto; padding: 0 32px 48px; }
+.gallery-header { display: flex; align-items: center; gap: 16px; min-height: 88px; }
+.gallery-header h1 { display: flex; align-items: center; gap: 12px; margin-right: auto; font-size: 20px; font-weight: 600; }
+.gallery-header h1 svg { color: var(--accent); }
+.gallery-sections { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 40px 56px; align-items: start; }
+.gallery-section { min-width: 0; }
+.gallery-section > h2 { margin-bottom: 18px; color: var(--muted); font-size: 14px; font-weight: 500; }
+.gallery-header-example { grid-column: 1 / -1; }
+.gallery-header-example > .workspace-app-toolbar { padding: 6px 16px; border-radius: 8px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
+.gallery-sync-states { display: flex; justify-content: space-between; gap: 8px; }
+.gallery-sync-state { display: grid; justify-items: center; gap: 8px; }
+.gallery-sync-state > span { color: var(--muted); font-size: 12px; }
+.gallery-sync-states .workspace-sync-button { --sync-icon-surface: var(--canvas); }
+.gallery-sync-states .workspace-sync-popover { position: fixed; top: auto; right: auto; left: 24px; margin-top: 8px; }
+.gallery-editor { display: flex; flex-direction: column; min-height: 340px; padding-top: 16px; }
+.gallery-section .tabs--underline { margin-left: 0; margin-right: 0; }
+.gallery-notice { margin-top: 12px; color: var(--muted); font-size: 12px; }
+.gallery-panel-editor { display: flex; flex: 1; flex-direction: column; min-height: 0; padding: 24px; }
+@media (min-width: 1024px) { body:has(.tools-sheet[data-state="open"]) .component-gallery { margin-right: var(--desktop-tool-width); } }
+@media (max-width: 760px) {
+  .component-gallery { padding: 0 20px 32px; }
+  .gallery-header { min-height: 76px; flex-wrap: wrap; gap: 8px; padding: 12px 0; }
+  .gallery-header h1 { font-size: 18px; }
+  .gallery-header > a { margin-left: auto; }
+  .gallery-sections { grid-template-columns: minmax(0, 1fr); gap: 32px; }
+}

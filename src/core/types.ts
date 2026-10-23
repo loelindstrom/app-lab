@@ -8,6 +8,7 @@ export interface AppSummary {
   appId: AppId;
   name: string;
   description: string;
+  themeColor?: string;
   updatedAt: string;
 }
 

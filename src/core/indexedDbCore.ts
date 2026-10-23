@@ -23,7 +23,7 @@ export function createIndexedDbCore(): AppLabCore {
   async function listApps(): Promise<AppSummary[]> {
     const records = await requestToPromise<AppRecord[]>((await db()).transaction("apps_registry").objectStore("apps_registry").getAll());
     return records
-      .map(({ appId, name, description, updatedAt }) => ({ appId, name, description, updatedAt }))
+      .map(({ appId, name, description, themeColor, updatedAt }) => ({ appId, name, description, ...(themeColor ? { themeColor } : {}), updatedAt }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }
 
@@ -40,6 +40,7 @@ export function createIndexedDbCore(): AppLabCore {
       compiledCssSourceHash: input.compiledCssSourceHash,
       name: metadata.name,
       description: metadata.description,
+      themeColor: metadata.themeColor,
       sourceCode: input.sourceCode,
       createdAt: now,
       updatedAt: now,
@@ -83,8 +84,9 @@ export function createIndexedDbCore(): AppLabCore {
   }
 
   async function upsertApp(record: AppRecord): Promise<AppRecord> {
-    await putRecord("apps_registry", record);
-    return record;
+    const restored = { ...record, themeColor: readAppHtmlMetadata(record.sourceCode).themeColor };
+    await putRecord("apps_registry", restored);
+    return restored;
   }
 
   async function getAppData(appId: string): Promise<JsonValue> {

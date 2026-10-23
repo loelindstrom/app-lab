@@ -4,7 +4,7 @@ UI renders the App Lab host and coordinates actions across core, runtime, sync, 
 
 ## Summary
 
-- **Entry point:** `WorkspaceShell` from `src/ui/index.ts`.
+- **Entry points:** `WorkspaceShell` (`/`) and `NextWorkspaceShell` (`/next/`), from `src/ui/index.ts`.
 - **Owns:** React state, launcher and app views, tools, dialogs, and workflow ordering.
 - **Depends on:** public module contracts supplied by the composition root.
 
@@ -17,16 +17,20 @@ owns that ordering so core stays persistence-focused, runtime stays callback-dri
 
 ```text
 App.tsx
-  -> WorkspaceShell(core, syncActions, ...)
-       -> LauncherView
-       -> AppView
-            -> SandboxFrame
-            -> WorkspaceToolPanel
-       -> SettingsDialog
+  -> WorkspaceShell or NextWorkspaceShell
+       -> useWorkspace(core, syncActions, aiActions)
+       -> Launcher, SandboxFrame, tools, and settings
 ```
 
-`WorkspaceShell` is the application coordinator as well as the top-level rendered shell. Smaller components own presentation and
-transient interaction state.
+`useWorkspace` owns the shared workflows, AI sessions, and sync subscriptions. Both shells use that controller; neither duplicates
+core, runtime, AI, or sync logic. Smaller components own presentation and transient interaction state.
+
+`/next/` is a live, parallel UI, not a separate workspace. On the same browser origin it uses the existing IndexedDB databases,
+provider configuration, and Builder profiles. Refresh or reopen an app when switching between UI tabs. Conversations still live in
+each page's React memory, so they do not transfer between tabs or survive reloads.
+
+`/gallery/` is a development-only catalog of the actual UI components. It uses temporary preview state, no app records or provider
+services, and is excluded from the production build. The earlier app-shaped mock and its duplicate dependencies have been removed.
 
 ## Main Flows
 
@@ -66,8 +70,12 @@ transient interaction state.
 
 ```text
 src/ui/
-├── index.ts                    Public export
-├── shell/WorkspaceShell.tsx    Host shell and workflow coordination
+├── index.ts / index.css        Public components / new-shell styles
+├── shell/useWorkspace.ts       Shared workflow coordination
+├── shell/WorkspaceShell.tsx    Original shell
+├── shell/WorkspaceSettings.tsx Shared settings actions
+├── next/                      Parallel shell, controls, and theme
+├── gallery/                   Development-only component catalog
 ├── tools/WorkspaceToolPanel.tsx
 └── dialogs/SettingsDialog.tsx
 ```
@@ -75,6 +83,9 @@ src/ui/
 ## Verification
 
 `WorkspaceShell.test.tsx` covers orchestration and sync wake-ups. `WorkspaceToolPanel.test.tsx` covers tool behavior.
+`e2e/next-ui.spec.ts` checks both phone and desktop layouts, shared persistence across shells, sandbox execution, data import,
+copy/delete, settings, and the agent tool loop with a mocked provider. It needs no credentials or paid API calls.
+`e2e/gallery.spec.ts` checks the shared controls, sync icons, themes, and responsive tool panel.
 
 ```bash
 pnpm test

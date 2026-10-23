@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AiActions, AiConfig, AiUsage, BuilderProfile } from "../../ai";
 import type { AppLabCore } from "../../core";
@@ -10,6 +10,7 @@ import { configureTestStorageProfile } from "../../sync/testing/testStorageProfi
 import { createMemoryWorkspaceSyncStore, createWorkspaceSyncRegistry, type WorkspaceSyncRegistry } from "../../sync/workspace/workspaceSync";
 import type { WorkspaceSyncActions } from "../../sync";
 import { WorkspaceShell as ProductionWorkspaceShell } from "./WorkspaceShell";
+import { useWorkspace } from "./useWorkspace";
 
 const TEST_AI_USAGE: AiUsage = {
   completionTokens: 600,
@@ -30,6 +31,39 @@ describe("WorkspaceShell sync wake-ups", () => {
     history.replaceState(null, "", window.location.pathname + window.location.search);
   });
 
+  it("ignores a slow app load after a different app has been opened", async () => {
+    const core = createMemoryCore();
+    const first = await core.createApp({ name: "First", description: "", sourceCode: "<!doctype html><html><head><title>First</title></head><body></body></html>" });
+    await core.createApp({ name: "Second", description: "", sourceCode: "<!doctype html><html><head><title>Second</title></head><body></body></html>" });
+    const getApp = core.getApp;
+    let release!: (app: typeof first) => void;
+    vi.spyOn(core, "getApp").mockImplementation((id) => id === first.appId ? new Promise((resolve) => { release = resolve; }) : getApp(id));
+    render(<WorkspaceShell core={core} syncActions={createSyncActionsStub()} />);
+    fireEvent.click(await screen.findByRole("button", { name: "First" }));
+    fireEvent.click(screen.getByRole("button", { name: "Second" }));
+    expect(await screen.findByTitle("Second app")).toBeTruthy();
+    await act(async () => release(first));
+    expect(screen.getByTitle("Second app")).toBeTruthy();
+    expect(screen.queryByTitle("First app")).toBeNull();
+  });
+
+  it("does not replace the active app with a late remote pull for an earlier app", async () => {
+    const core = createMemoryCore();
+    const first = await core.createApp({ name: "First", description: "", sourceCode: "<!doctype html><html><head><title>First</title></head><body></body></html>" });
+    await core.createApp({ name: "Second", description: "", sourceCode: "<!doctype html><html><head><title>Second</title></head><body></body></html>" });
+    const sync = createSyncActionsStub();
+    let release!: (result: { app: typeof first }) => void;
+    vi.mocked(sync.pullLatestAppRooms).mockImplementation((id) => id === first.appId ? new Promise((resolve) => { release = resolve; }) : Promise.resolve({}));
+    render(<WorkspaceShell core={core} syncActions={sync} />);
+    fireEvent.click(await screen.findByRole("button", { name: "First" }));
+    await screen.findByTitle("First app");
+    fireEvent.click(screen.getByRole("button", { name: "‹ Apps" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Second" }));
+    await screen.findByTitle("Second app");
+    await act(async () => release({ app: first }));
+    expect(screen.getByTitle("Second app")).toBeTruthy();
+  });
+
   it("drains queued room and source sync on startup", async () => {
     const syncActions = createSyncActionsStub();
 
@@ -45,6 +79,71 @@ describe("WorkspaceShell sync wake-ups", () => {
     expect(syncActions.flushAppDataSyncQueue).toHaveBeenCalledTimes(1);
     expect(syncActions.flushOwnedAppDeletionQueue).toHaveBeenCalledTimes(1);
     expect(syncActions.flushWorkspaceManifestQueue).toHaveBeenCalledTimes(1);
+  });
+
+  it("resubscribes the open app when storage setup creates its sync relationship", async () => {
+    const core = createMemoryCore();
+    const app = await core.createBlankApp();
+    const registry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
+    const syncActions = createSyncActionsStub({ syncRegistry: registry });
+    const aiActions = createAiActionsStub();
+    const unsubscribeData = vi.fn();
+    const unsubscribeSource = vi.fn();
+    vi.mocked(syncActions.subscribeAppData).mockResolvedValue(unsubscribeData);
+    vi.mocked(syncActions.subscribeAppSource).mockResolvedValue(unsubscribeSource);
+    const { result } = renderHook(() => useWorkspace({ aiActions, core, syncActions }));
+    await waitFor(() => expect(result.current.apps).toHaveLength(1));
+    await act(() => result.current.openApp(app.appId));
+    await waitFor(() => expect(syncActions.subscribeAppSource).toHaveBeenCalled());
+    const dataCalls = vi.mocked(syncActions.subscribeAppData).mock.calls.length;
+    const sourceCalls = vi.mocked(syncActions.subscribeAppSource).mock.calls.length;
+    await act(async () => {
+      await configureTestStorageProfile(registry);
+      await registry.ensureOwnedAppRooms(app.appId);
+      await result.current.refreshApps();
+    });
+    await waitFor(() => expect(vi.mocked(syncActions.subscribeAppData).mock.calls.length).toBeGreaterThan(dataCalls));
+    expect(vi.mocked(syncActions.subscribeAppSource).mock.calls.length).toBeGreaterThan(sourceCalls);
+    expect(unsubscribeData).toHaveBeenCalled();
+    expect(unsubscribeSource).toHaveBeenCalled();
+    const onData = vi.mocked(syncActions.subscribeAppData).mock.lastCall![1];
+    await act(async () => onData({ data: { note: "Remote update" }, version: 2 }));
+    expect(result.current.remoteDataChange?.data).toEqual({ note: "Remote update" });
+  });
+
+  it("resubscribes when room creation finishes after the app has already opened", async () => {
+    const core = createMemoryCore();
+    const app = await core.createBlankApp();
+    const registry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
+    await configureTestStorageProfile(registry);
+    const syncActions = createSyncActionsStub({ syncRegistry: registry });
+    const aiActions = createAiActionsStub();
+    const { result } = renderHook(() => useWorkspace({ aiActions, core, syncActions }));
+    await waitFor(() => expect(result.current.storageProfile).toBeTruthy());
+    await act(() => result.current.openApp(app.appId));
+    await waitFor(() => expect(syncActions.subscribeAppSource).toHaveBeenCalled());
+    const calls = vi.mocked(syncActions.subscribeAppSource).mock.calls.length;
+    await act(async () => {
+      await registry.ensureOwnedAppRooms(app.appId);
+      await result.current.refreshApps();
+    });
+    await waitFor(() => expect(vi.mocked(syncActions.subscribeAppSource).mock.calls.length).toBeGreaterThan(calls));
+  });
+
+  it("cleans up a connection subscription that finishes after unmount", async () => {
+    const registry = createWorkspaceSyncRegistry(createMemoryWorkspaceSyncStore());
+    await configureTestStorageProfile(registry);
+    const syncActions = createSyncActionsStub({ syncRegistry: registry });
+    let resolve!: (unsubscribe: () => void) => void;
+    vi.mocked(syncActions.subscribeStorageConnection).mockImplementation(() => new Promise((done) => { resolve = done; }));
+    const services = { core: createMemoryCore(), aiActions: createAiActionsStub(), syncActions };
+    const { unmount } = renderHook(() => useWorkspace(services));
+    await waitFor(() => expect(syncActions.subscribeStorageConnection).toHaveBeenCalled());
+    unmount();
+    const unsubscribe = vi.fn();
+    await act(async () => resolve(unsubscribe));
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
+    expect(syncActions.subscribeWorkspaceManifest).not.toHaveBeenCalled();
   });
 
   it("drains queued room and source sync when the browser comes online", async () => {

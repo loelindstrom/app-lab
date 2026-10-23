@@ -9,7 +9,7 @@ export function createMemoryCore(): AppLabCore {
 
   async function listApps(): Promise<AppSummary[]> {
     return [...apps.values()]
-      .map(({ appId, name, description, updatedAt }) => ({ appId, name, description, updatedAt }))
+      .map(({ appId, name, description, themeColor, updatedAt }) => ({ appId, name, description, ...(themeColor ? { themeColor } : {}), updatedAt }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }
 
@@ -26,6 +26,7 @@ export function createMemoryCore(): AppLabCore {
       compiledCssSourceHash: input.compiledCssSourceHash,
       name: metadata.name,
       description: metadata.description,
+      themeColor: metadata.themeColor,
       sourceCode: input.sourceCode,
       createdAt: now,
       updatedAt: now,
@@ -74,8 +75,9 @@ export function createMemoryCore(): AppLabCore {
   }
 
   async function upsertApp(record: AppRecord): Promise<AppRecord> {
-    apps.set(record.appId, record);
-    return record;
+    const restored = { ...record, themeColor: readAppHtmlMetadata(record.sourceCode).themeColor };
+    apps.set(record.appId, restored);
+    return restored;
   }
 
   return {

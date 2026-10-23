@@ -172,7 +172,7 @@ module.exports = {
     {
       name: 'use-ui-public-api',
       severity: 'error',
-      comment: 'Production code outside UI must import its public entry point.',
+      comment: 'Production code outside UI must import its public component or style entry points.',
       from: {
         pathNot: [
           '^src/ui/',
@@ -180,7 +180,7 @@ module.exports = {
         ]
       },
       to: {
-        path: '^src/ui/(?!index[.]ts$)'
+        path: '^src/ui/(?!(?:index[.]ts|(?:index|gallery)[.]css)$)'
       }
     }
   ],

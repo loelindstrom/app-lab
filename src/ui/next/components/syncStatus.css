@@ -1,0 +1,15 @@
+.workspace-sync { position: relative; flex-shrink: 0; }
+.workspace-sync-button { --sync-icon-surface: var(--surface); }
+.workspace-sync .workspace-sync-button:hover { background: transparent; color: var(--ink); }
+.workspace-sync .workspace-sync-button[data-kind="synced"], .workspace-sync .workspace-sync-button[data-kind="syncing"], .workspace-sync .workspace-sync-button[data-kind="pending"] { color: var(--muted); }
+.workspace-sync .workspace-sync-button[data-kind="problem"] { color: var(--danger); }
+.sync-status-icon { position: relative; display: inline-block; width: 28px; height: 28px; flex-shrink: 0; }
+.sync-status-mark { position: absolute; right: -4px; bottom: -2px; display: grid; place-items: center; width: 14px; height: 14px; border-radius: 50%; background: var(--sync-icon-surface, var(--surface)); }
+.sync-status-icon[data-kind="syncing"] .sync-status-mark svg { animation: sync-status-spin 1.8s linear infinite; }
+.workspace-sync-popover { position: absolute; top: calc(100% + 8px); right: 0; z-index: 30; width: 272px; max-width: calc(100vw - 80px); padding: 12px 16px 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); box-shadow: var(--shadow-preview); }
+.workspace-sync-popover header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.workspace-sync-popover strong { font-size: 14px; font-weight: 600; }
+.workspace-sync-popover p { font-size: 13px; line-height: 1.6; color: var(--muted); overflow-wrap: anywhere; }
+.workspace-sync-popover .icon-button { margin-right: -10px; }
+@keyframes sync-status-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .sync-status-icon .sync-status-mark svg { animation: none; } }

@@ -75,6 +75,19 @@ describe("createMemoryCore", () => {
     await expect(core.getAppData(app.appId)).resolves.toEqual({ note: "hello" });
   });
 
+  it("derives icon color from source when creating, listing, updating, and restoring", async () => {
+    const core = createMemoryCore();
+    const sourceCode = '<!doctype html><html><head><title>Board</title><meta name="theme-color" content="#ABC"></head><body></body></html>';
+    const app = await core.createApp({ name: "Board", description: "", sourceCode });
+    expect(app.themeColor).toBe("#aabbcc");
+    expect((await core.listApps())[0].themeColor).toBe("#aabbcc");
+    const restoredCore = createMemoryCore();
+    await restoredCore.upsertApp({ ...app, themeColor: undefined });
+    expect((await restoredCore.listApps())[0].themeColor).toBe("#aabbcc");
+    await core.updateApp({ appId: app.appId, sourceCode: sourceCode.replace('content="#ABC"', 'content="url(example.com)"') });
+    expect((await core.listApps())[0].themeColor).toBeUndefined();
+  });
+
   it("upserts restored app records with their original app id", async () => {
     const core = createMemoryCore();
     await core.upsertApp({

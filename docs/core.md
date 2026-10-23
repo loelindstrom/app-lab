@@ -24,6 +24,9 @@ The IndexedDB database `app-lab-v2` contains two object stores:
 
 `createIndexedDbCore()` implements the browser store. `createMemoryCore()` implements the same contract for focused tests.
 
+The launcher derives names from `<title>` and optional icon colors from a hex `<meta name="theme-color" content="#167d70">`.
+Color is cached as optional `themeColor` metadata and rebuilt from source on remote hydration; no database or sync-format migration is needed.
+
 ## Main Flows
 
 1. **Create:** derive title and description from the HTML, assign an app id, and store the complete `AppRecord`.
@@ -48,7 +51,7 @@ src/core/
 ├── types.ts             AppLabCore and record contracts
 ├── indexedDbCore.ts     Browser implementation
 ├── memoryCore.ts        Test implementation
-├── htmlMetadata.ts      Title and description extraction
+├── htmlMetadata.ts      Title, description, and optional icon color extraction
 └── alpineExampleApp.ts  Starter app source
 ```
 

@@ -13,7 +13,8 @@ import { createAuthFirebaseRules, createFirebaseOwnerSetupSecret, type Configure
 import { BuilderProfilesSettings } from "./BuilderProfilesSettings";
 import { SettingsActionBar, SettingsSnackbar } from "./SettingsActions";
 
-interface SettingsDialogProps {
+export interface SettingsDialogProps {
+  embedded?: boolean;
   aiConfig: AiConfig;
   builderPreferences: BuilderPreferences;
   builderProfiles: BuilderProfile[];
@@ -50,6 +51,7 @@ type SetupStepId =
   | "sync";
 
 export function SettingsDialog({
+  embedded = false,
   aiConfig,
   builderPreferences,
   builderProfiles,
@@ -281,9 +283,9 @@ export function SettingsDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-30 bg-app-surface" role="presentation">
-      <section className="grid h-dvh grid-rows-[auto_minmax(0,1fr)] overflow-hidden" role="dialog" aria-modal="true" aria-labelledby="settings-title">
-        <header className="border-b border-app-line bg-white/90">
+    <div className={embedded ? "embedded-settings" : "fixed inset-0 z-30 bg-app-surface"} role="presentation">
+      <section className={embedded ? undefined : "grid h-dvh grid-rows-[auto_minmax(0,1fr)] overflow-hidden"} role={embedded ? undefined : "dialog"} aria-modal={embedded ? undefined : true} aria-labelledby={embedded ? undefined : "settings-title"}>
+        {!embedded && <header className="border-b border-app-line bg-white/90">
           <div className="mx-auto flex w-full max-w-5xl items-center gap-4 px-4 py-3">
             <button
               aria-label={isCompactViewport && mobileSectionOpen ? "Back to Settings" : undefined}
@@ -305,9 +307,9 @@ export function SettingsDialog({
             </button>
             <h2 className="truncate text-xl font-bold leading-tight text-app-ink" id="settings-title">Settings</h2>
           </div>
-        </header>
-        <div className="min-h-0 overflow-auto pb-24">
-          {isCompactViewport && !mobileSectionOpen ? (
+        </header>}
+        <div className={embedded ? "pb-24" : "min-h-0 overflow-auto pb-24"}>
+          {!embedded && isCompactViewport && !mobileSectionOpen ? (
             <MobileSettingsMenu
               onOpen={(nextSection) => {
                 selectSettingsSection(nextSection);
@@ -316,11 +318,11 @@ export function SettingsDialog({
             />
           ) : (
             <div
-              className={`mx-auto grid w-full max-w-5xl px-4 py-5 ${
+              className={embedded ? "min-w-0" : `mx-auto grid w-full max-w-5xl px-4 py-5 ${
                 isCompactViewport ? "grid-cols-1" : "min-h-full grid-cols-[180px_minmax(0,1fr)] gap-8"
               }`}
             >
-            {!isCompactViewport ? (
+            {!embedded && !isCompactViewport ? (
               <nav className="grid content-start border-r border-app-line pr-4" aria-label="Settings sections">
                 <SettingsSectionButton active={section === "storage"} label="Storage" onClick={() => selectSettingsSection("storage")} />
                 <SettingsSectionButton active={section === "ai"} label="AI" onClick={() => selectSettingsSection("ai")} />
@@ -850,7 +852,7 @@ function SetupStep({
       </div>
       <label className="grid h-8 min-h-8 w-8 cursor-pointer place-items-center self-center justify-self-end" title={label}>
         <input aria-label={label} className="peer sr-only" type="checkbox" checked={checked} onChange={onChange} />
-        <span className="grid h-5 min-h-5 w-5 place-items-center rounded-full border-2 border-app-line text-[11px] font-extrabold leading-none text-white peer-checked:border-app-accent peer-checked:bg-app-accent">
+        <span className="setup-step-check grid h-5 min-h-5 w-5 place-items-center rounded-full border-2 border-app-line text-[11px] font-extrabold leading-none text-white peer-checked:border-app-accent peer-checked:bg-app-accent">
           {checked ? "✓" : ""}
         </span>
       </label>

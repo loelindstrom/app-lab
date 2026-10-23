@@ -1,562 +1,60 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  addAiUsage,
-  createEmptyAiUsage,
-  DEFAULT_BUILDER_PREFERENCES,
-  MINIMAL_BOARD_DESCRIPTION,
-  MINIMAL_BUILDER_STARTER_SOURCE,
-  resolveActiveBuilderProfile,
-  type AiActions,
-  type AiChatMessage,
-  type AiConfig,
-  type AiUsage,
-  type BuilderPreferences,
-  type BuilderProfile,
-} from "../../ai";
-import {
-  type AppLabCore,
-  type AppRecord,
-  type AppSummary,
-  type CreateAppInput,
-  type JsonValue,
-} from "../../core";
-import {
-  compileAppStyles,
-  SandboxFrame,
-  type RemoteDataChange,
-  type SandboxConsoleEntry,
-} from "../../runtime";
-import {
-  encodeAppInvite,
-  readInviteFromHash,
-  type AppInvitePayload,
-  type AppInvitePreview,
-  type AppSyncBadge,
-  type ConfigureStorageProfileInput,
-  type PendingSyncOperation,
-  type StorageProfile,
-  type WorkspaceSyncActions,
-} from "../../sync";
-import { SettingsDialog } from "../dialogs/SettingsDialog";
-import { ToolPanelMode, WorkspaceToolPanel } from "../tools/WorkspaceToolPanel";
+import { useEffect, useMemo, useState } from "react";
+import { createEmptyAiUsage } from "../../ai";
+import type { AppLabCore, AppRecord, AppSummary, JsonValue } from "../../core";
+import { SandboxFrame, type RemoteDataChange, type SandboxConsoleEntry } from "../../runtime";
+import { encodeAppInvite, type AppInvitePayload, type AppSyncBadge, type StorageProfile } from "../../sync";
+import { useWorkspace, type AppSyncHealth, type AppSyncHealthKind, type WorkspaceServices } from "./useWorkspace";
+import { WorkspaceSettings } from "./WorkspaceSettings";
+import { InviteImportDialog } from "../dialogs/InviteImportDialog";
+import { WorkspaceToolPanel, type ToolPanelMode } from "../tools/WorkspaceToolPanel";
 
-type WorkspaceMode = "launcher" | "app";
-
-type AppSyncHealthKind = "none" | "offline" | "pending" | "problem" | "synced" | "syncing";
-
-interface AppSyncHealth {
-  kind: AppSyncHealthKind;
-  label: string;
-  title: string;
-  tone: "attention" | "good" | "neutral" | "working";
-}
-
-interface BuilderSessionState {
-  activity: string | null;
-  error: string | null;
-  isRunning: boolean;
-  messages: AiChatMessage[];
-  reasoning: string;
-  reasoningMessageId: string | null;
-  streamingContent: string;
-  usage: AiUsage;
-}
-
-interface WorkspaceShellProps {
-  aiActions: AiActions;
-  core: AppLabCore;
-  syncActions: WorkspaceSyncActions;
-}
-
-export function WorkspaceShell({ aiActions, core, syncActions }: WorkspaceShellProps) {
-  const [aiConfig, setAiConfig] = useState<AiConfig>({ apiKey: "", model: "" });
-  const [builderPreferences, setBuilderPreferences] = useState<BuilderPreferences>({ ...DEFAULT_BUILDER_PREFERENCES });
-  const [builderProfiles, setBuilderProfiles] = useState<BuilderProfile[]>([]);
-  const [builderSessions, setBuilderSessions] = useState<Record<string, BuilderSessionState>>({});
-  const [apps, setApps] = useState<AppSummary[]>([]);
-  const [syncBadges, setSyncBadges] = useState<Record<string, AppSyncBadge>>({});
-  const [syncHealth, setSyncHealth] = useState<Record<string, AppSyncHealth>>({});
-  const [storageProfile, setStorageProfile] = useState<StorageProfile | null>(null);
-  const [workspaceManifestRoomId, setWorkspaceManifestRoomId] = useState<string | null>(null);
-  const [activeApp, setActiveApp] = useState<AppRecord | null>(null);
-  const [mode, setMode] = useState<WorkspaceMode>("launcher");
-  const [activeTool, setActiveTool] = useState<ToolPanelMode | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsInitialAiTab, setSettingsInitialAiTab] = useState<"agent" | "connection" | undefined>();
-  const [settingsInitialSection, setSettingsInitialSection] = useState<"ai" | "storage" | undefined>();
-  const [sharingApp, setSharingApp] = useState<AppSummary | null>(null);
-  const [pendingInvite, setPendingInvite] = useState<AppInvitePayload | null>(null);
-  const [remoteDataChange, setRemoteDataChange] = useState<RemoteDataChange | null>(null);
-  const [aiAttentionKey, setAiAttentionKey] = useState(0);
-  const [aiAttentionDismissed, setAiAttentionDismissed] = useState(true);
-  const [consoleEntries, setConsoleEntries] = useState<SandboxConsoleEntry[]>([]);
-  const [syncStatus, setSyncStatus] = useState<string | null>(null);
-  const [syncStatusOpen, setSyncStatusOpen] = useState(false);
-  const [sandboxReloadKey, setSandboxReloadKey] = useState(0);
-  const activeAppIdRef = useRef<string | null>(null);
-  const builderRunningAppIdsRef = useRef(new Set<string>());
-  const browserOnlineRef = useRef(navigator.onLine);
-  const consoleEntriesRef = useRef<SandboxConsoleEntry[]>([]);
-  const providerOnlineRef = useRef<boolean | null>(null);
-  activeAppIdRef.current = activeApp?.appId ?? null;
-  consoleEntriesRef.current = consoleEntries;
-
-  function isSyncReachable() {
-    return browserOnlineRef.current && providerOnlineRef.current !== false;
-  }
-
-  async function saveAppData(appId: string, data: JsonValue) {
-    setRemoteDataChange(null);
-    syncActions.noteLocalAppDataEdit(appId);
-    await core.saveAppData(appId, data);
-    await trySync("App data saved locally. Remote data sync failed", () => syncActions.pushAppData(appId, data));
-    refreshWhenSettled(syncActions.flushAppDataSyncQueue());
-    await refreshApps();
-  }
-
-  async function importAppData(appId: string, data: JsonValue) {
-    await saveAppData(appId, data);
-    setSandboxReloadKey((key) => key + 1);
-  }
-
-  useEffect(() => {
-    void refreshApps(isSyncReachable());
-  }, []);
-
-  useEffect(() => {
-    void aiActions.getConfig().then(setAiConfig);
-  }, [aiActions]);
-
-  useEffect(() => {
-    void aiActions.listBuilderProfiles().then(setBuilderProfiles);
-  }, [aiActions]);
-
-  useEffect(() => {
-    void aiActions.getBuilderPreferences().then(setBuilderPreferences);
-  }, [aiActions]);
-
-  const activeBuilderProfile = useMemo(
-    () => resolveActiveBuilderProfile(builderProfiles, builderPreferences.activeProfileId),
-    [builderPreferences.activeProfileId, builderProfiles],
-  );
-
-  useEffect(() => {
-    let cancelled = false;
-    let unsubscribeConnection: (() => void) | null = null;
-    let unsubscribeWorkspaceManifest: (() => void) | null = null;
-
-    async function wakePendingSync(online = isSyncReachable()) {
-      try {
-        if (!online) {
-          if (!cancelled) await refreshApps(false);
-          return;
-        }
-        await syncActions.flushRoomLifecycleQueue();
-        await syncActions.flushSourceSyncQueue();
-        await syncActions.flushAppDataSyncQueue();
-        await syncActions.flushOwnedAppDeletionQueue();
-        await syncActions.flushWorkspaceManifestQueue();
-        await syncActions.pullLatestWorkspaceManifest();
-        if (!cancelled) await refreshApps(true);
-      } catch (error) {
-        const detail = error instanceof Error ? error.message : "Unknown sync error.";
-        if (!cancelled) setSyncStatus(`Could not retry pending sync: ${detail}`);
-      }
-    }
-
-    function wakeIfVisible() {
-      if (document.visibilityState === "visible") void wakePendingSync(isSyncReachable());
-    }
-
-    function wakeIfFocused() {
-      void wakePendingSync(isSyncReachable());
-    }
-
-    function markOnline() {
-      browserOnlineRef.current = true;
-      void wakePendingSync(isSyncReachable());
-    }
-
-    function markOffline() {
-      browserOnlineRef.current = false;
-      void refreshApps(false);
-    }
-
-    async function startSyncWakeups() {
-      const { storageConfigured } = await syncActions.initializeWorkspaceSync();
-      if (!storageConfigured) {
-        void wakePendingSync(isSyncReachable());
-        return;
-      }
-
-      unsubscribeConnection = await syncActions.subscribeStorageConnection((connected) => {
-        providerOnlineRef.current = connected;
-        if (connected) void wakePendingSync(isSyncReachable());
-        else void refreshApps(false);
-      });
-      unsubscribeWorkspaceManifest = await syncActions.subscribeWorkspaceManifest(() => {
-        if (!cancelled) void refreshApps(isSyncReachable());
-      });
-    }
-
-    providerOnlineRef.current = null;
-    void startSyncWakeups();
-    window.addEventListener("online", markOnline);
-    window.addEventListener("offline", markOffline);
-    window.addEventListener("focus", wakeIfFocused);
-    document.addEventListener("visibilitychange", wakeIfVisible);
-    return () => {
-      cancelled = true;
-      unsubscribeConnection?.();
-      unsubscribeWorkspaceManifest?.();
-      window.removeEventListener("online", markOnline);
-      window.removeEventListener("offline", markOffline);
-      window.removeEventListener("focus", wakeIfFocused);
-      document.removeEventListener("visibilitychange", wakeIfVisible);
-    };
-  }, [storageProfile?.profileId, storageProfile?.databaseUrl, syncActions, workspaceManifestRoomId]);
-
-  useEffect(() => {
-    function readHashInvite() {
-      try {
-        setPendingInvite(readInviteFromHash(window.location.hash));
-      } catch (_) {
-        setPendingInvite(null);
-      }
-    }
-
-    readHashInvite();
-    window.addEventListener("hashchange", readHashInvite);
-    return () => window.removeEventListener("hashchange", readHashInvite);
-  }, []);
-
-  useEffect(() => {
-    if (!activeApp) return;
-    const subscribedApp = activeApp;
-    let unsubscribe: (() => void) | null = null;
-    let cancelled = false;
-
-    async function subscribe() {
-      const nextUnsubscribe = await syncActions.subscribeAppData(subscribedApp.appId, ({ data, version }) => {
-        if (cancelled) return;
-        setRemoteDataChange({ data, id: crypto.randomUUID(), version });
-      });
-      if (cancelled) nextUnsubscribe();
-      else unsubscribe = nextUnsubscribe;
-    }
-
-    void subscribe();
-    return () => {
-      cancelled = true;
-      unsubscribe?.();
-    };
-  }, [activeApp?.appId, syncActions]);
-
-  useEffect(() => {
-    if (!activeApp) return;
-    const subscribedApp = activeApp;
-    let unsubscribe: (() => void) | null = null;
-    let cancelled = false;
-
-    async function subscribe() {
-      const nextUnsubscribe = await syncActions.subscribeAppSource(
-        subscribedApp.appId,
-        ({ app }) => {
-          if (cancelled) return;
-          setActiveApp(app);
-          setSyncStatus(null);
-          void refreshApps();
-        },
-        () => {
-          if (cancelled) return;
-          setSyncStatus("This shared app was deleted by its owner.");
-          void refreshApps();
-        },
-      );
-      if (cancelled) nextUnsubscribe();
-      else unsubscribe = nextUnsubscribe;
-    }
-
-    void subscribe();
-    return () => {
-      cancelled = true;
-      unsubscribe?.();
-    };
-  }, [activeApp?.appId, syncActions]);
-
-  async function refreshApps(online = isSyncReachable()) {
-    const nextApps = await core.listApps();
-    const syncOverview = await syncActions.getWorkspaceSyncOverview(nextApps.map((app) => app.appId));
-    setApps(nextApps);
-    setSyncBadges(syncOverview.appBadges);
-    setSyncHealth(buildAppSyncHealthMap({ apps: nextApps, badges: syncOverview.appBadges, isOnline: online, queueItems: syncOverview.pendingOperations }));
-    setStorageProfile(syncOverview.storageProfile);
-    setWorkspaceManifestRoomId(syncOverview.workspaceManifestRoomId);
-  }
-
-  async function openApp(appId: string) {
-    const app = await core.getApp(appId);
-    if (!app) return;
-    setActiveApp(app);
-    setMode("app");
-    setActiveTool(null);
-    setConsoleEntries([]);
-    setSyncStatusOpen(false);
-    setAiAttentionKey((key) => key + 1);
-    setAiAttentionDismissed(false);
-    void pullLatestAppRooms(appId);
-  }
-
-  async function createAppFromInput(input: CreateAppInput) {
-    let compiledStyles = {};
-    let compileWarning: string | null = null;
-    try {
-      compiledStyles = await compileAppStyles(input.sourceCode);
-    } catch (error) {
-      const detail = error instanceof Error ? error.message : "Unknown Tailwind compile error.";
-      compileWarning = `${input.name} created without compiled Tailwind CSS: ${detail}`;
-    }
-    const app = await core.createApp({
-      ...input,
-      ...compiledStyles,
-    });
-    if (compileWarning) setSyncStatus(compileWarning);
-    setActiveApp(app);
-    setMode("app");
-    setActiveTool(null);
-    setConsoleEntries([]);
-    setSyncStatusOpen(false);
-    setAiAttentionKey((key) => key + 1);
-    setAiAttentionDismissed(false);
-    void syncActions.ensureAppBackedUp(app, { flush: isSyncReachable() }).then(
-      () => refreshApps(),
-      (error) => {
-        const detail = error instanceof Error ? error.message : "Unknown sync error.";
-        setSyncStatus(`App created locally. Remote backup failed: ${detail}`);
-        void refreshApps(false);
-      },
-    );
-    refreshWhenSettled(syncActions.flushRoomLifecycleQueue());
-    await refreshApps();
-  }
-
-  async function createApp() {
-    const [profiles, preferences] = await Promise.all([
-      aiActions.listBuilderProfiles(),
-      aiActions.getBuilderPreferences(),
-    ]);
-    setBuilderProfiles(profiles);
-    setBuilderPreferences(preferences);
-    const profile = resolveActiveBuilderProfile(profiles, preferences.activeProfileId);
-    const fallbackInput: CreateAppInput = {
-      description: MINIMAL_BOARD_DESCRIPTION,
-      name: "Minimal Board",
-      sourceCode: MINIMAL_BUILDER_STARTER_SOURCE,
-    };
-    await createAppFromInput(
-      profile
-        ? {
-            description: `Created from the ${profile.name} Builder profile.`,
-            name: "New App",
-            sourceCode: profile.starterSource,
-          }
-        : fallbackInput,
-    );
-  }
-
-  async function copyApp(appId: string, includeData: boolean) {
-    const [original, appSummaries] = await Promise.all([core.getApp(appId), core.listApps()]);
-    if (!original) throw new Error("App not found.");
-
-    const appData = includeData ? await core.getAppData(appId) : null;
-    const copyName = createAppCopyName(original.name, appSummaries);
-    const copy = await core.createApp({
-      compiledCss: original.compiledCss,
-      description: original.description,
-      name: copyName,
-      sourceCode: replaceAppTitle(original.sourceCode, copyName),
-    });
-
-    if (includeData) {
-      try {
-        await core.saveAppData(copy.appId, appData);
-      } catch (error) {
-        try {
-          await core.deleteApp(copy.appId);
-        } catch {
-          // Preserve the data-copy error that caused the rollback.
-        }
-        throw error;
-      }
-    }
-
-    setSyncStatus(null);
-    void syncActions.ensureAppBackedUp(copy, { flush: isSyncReachable() }).then(
-      () => refreshApps(),
-      (error) => {
-        const detail = error instanceof Error ? error.message : "Unknown sync error.";
-        setSyncStatus(`App copied locally. Remote backup failed: ${detail}`);
-        void refreshApps(false);
-      },
-    );
-    refreshWhenSettled(syncActions.flushRoomLifecycleQueue());
-    await refreshApps();
-  }
-
-  async function saveAppSource(appId: string, sourceCode: string): Promise<AppRecord> {
-    assertCompleteAppSource(sourceCode);
-
-    let compiledStyles: Pick<AppRecord, "compiledCss" | "compiledCssSourceHash">;
-    let compileWarning: string | null = null;
-    try {
-      compiledStyles = await compileAppStyles(sourceCode);
-    } catch (error) {
-      const detail = error instanceof Error ? error.message : "Unknown Tailwind compile error.";
-      compiledStyles = { compiledCss: undefined, compiledCssSourceHash: undefined };
-      compileWarning = `Source saved without compiled Tailwind CSS: ${detail}`;
-    }
-
-    let syncWarning: string | null = null;
-    const finishLocalEdit = syncActions.beginLocalAppSourceEdit(appId);
-    const updated = await (async () => {
-      try {
-        const nextApp = await core.updateApp({ appId, sourceCode, ...compiledStyles });
-        try {
-          await syncActions.pushAppSource(nextApp);
-        } catch (error) {
-          const detail = error instanceof Error ? error.message : "Unknown sync error.";
-          syncWarning = `Source saved locally. Remote source sync failed: ${detail}`;
-        }
-        return nextApp;
-      } finally {
-        finishLocalEdit();
-      }
-    })();
-
-    refreshWhenSettled(syncActions.flushSourceSyncQueue());
-    if (activeAppIdRef.current === appId) {
-      setActiveApp(updated);
-      setConsoleEntries([]);
-      setSyncStatus([compileWarning, syncWarning].filter(Boolean).join(" ") || null);
-    }
-    await refreshApps();
-    return updated;
-  }
-
-  async function sendBuilderMessage(app: AppRecord, content: string): Promise<void> {
-    const message = content.trim();
-    if (!message || builderRunningAppIdsRef.current.has(app.appId)) return;
-
-    const currentMessages = builderSessions[app.appId]?.messages ?? [];
-    const userMessage = createAiChatMessage(app.appId, "user", message);
-    const requestMessages = [...currentMessages, userMessage];
-    builderRunningAppIdsRef.current.add(app.appId);
-    updateBuilderSession(app.appId, (session) => ({
-      ...session,
-      activity: "Thinking...",
-      error: null,
-      isRunning: true,
-      messages: requestMessages,
-      reasoning: "",
-      reasoningMessageId: null,
-      streamingContent: "",
-    }));
-
-    try {
-      const result = await aiActions.runBuilderTurn({
-        appId: app.appId,
-        appName: app.name,
-        conversationMemory: builderPreferences.conversationMemory,
-        messages: requestMessages,
-        onActivity: (activity) => {
-          updateBuilderSession(app.appId, (session) => ({ ...session, activity }));
-        },
-        onAssistantContent: (streamingContent) => {
-          updateBuilderSession(app.appId, (session) => ({ ...session, streamingContent }));
-        },
-        onReasoning: (reasoning) => {
-          updateBuilderSession(app.appId, (session) => ({ ...session, reasoning }));
-        },
-        onUsage: (usage) => {
-          updateBuilderSession(app.appId, (session) => ({ ...session, usage: addAiUsage(session.usage, usage) }));
-        },
-        profile: activeBuilderProfile ?? undefined,
-        tools: {
-          readCurrentAppSource: async () => {
-            const currentApp = await core.getApp(app.appId);
-            if (!currentApp) throw new Error("The app no longer exists.");
-            return toBuilderAppSource(currentApp);
-          },
-          readRecentConsoleOutput: async () => {
-            if (activeAppIdRef.current !== app.appId) return "The app is no longer active, so recent console output is unavailable.";
-            return formatConsoleForBuilder(consoleEntriesRef.current);
-          },
-          replaceCurrentAppSource: async (sourceCode) => {
-            const updated = await saveAppSource(app.appId, sourceCode);
-            return {
-              name: updated.name,
-              sourceChars: updated.sourceCode.length,
-              success: true,
-            };
-          },
-        },
-      });
-      const assistantMessage = createAiChatMessage(app.appId, "assistant", result.content);
-      updateBuilderSession(app.appId, (session) => ({
-        ...session,
-        messages: [...session.messages, assistantMessage],
-        reasoningMessageId: assistantMessage.messageId,
-        streamingContent: "",
-      }));
-    } catch (error) {
-      updateBuilderSession(app.appId, (session) => ({
-        ...session,
-        error: error instanceof Error ? error.message : "BuilderAI could not complete the request.",
-      }));
-    } finally {
-      builderRunningAppIdsRef.current.delete(app.appId);
-      updateBuilderSession(app.appId, (session) => ({ ...session, activity: null, isRunning: false }));
-    }
-  }
-
-  function clearBuilderConversation(appId: string) {
-    if (builderRunningAppIdsRef.current.has(appId)) return;
-    setBuilderSessions((sessions) => {
-      const nextSessions = { ...sessions };
-      delete nextSessions[appId];
-      return nextSessions;
-    });
-  }
-
-  function updateBuilderSession(appId: string, update: (session: BuilderSessionState) => BuilderSessionState) {
-    setBuilderSessions((sessions) => ({
-      ...sessions,
-      [appId]: update(sessions[appId] ?? createEmptyBuilderSession()),
-    }));
-  }
-
-  function openLauncher() {
-    setMode("launcher");
-    setActiveTool(null);
-    void syncActions
-      .pullLatestWorkspaceManifest()
-      .catch((error) => {
-        const detail = error instanceof Error ? error.message : "Unknown sync error.";
-        setSyncStatus(`Could not pull latest workspace: ${detail}`);
-      })
-      .finally(() => {
-        void refreshApps(isSyncReachable());
-      });
-  }
-
-  function toggleTool(nextTool: ToolPanelMode) {
-    if (nextTool === "builder") {
-      setAiAttentionDismissed(true);
-    }
-
-    setActiveTool((currentTool) => (currentTool === nextTool ? null : nextTool));
-  }
-
+export function WorkspaceShell(services: WorkspaceServices) {
+  const workspace = useWorkspace(services);
+  const {
+    core,
+    syncActions,
+    aiConfig,
+    builderSessions,
+    apps,
+    syncBadges,
+    syncHealth,
+    storageProfile,
+    activeApp,
+    mode,
+    activeTool,
+    setActiveTool,
+    setSettingsOpen,
+    setSettingsInitialAiTab,
+    setSettingsInitialSection,
+    sharingApp,
+    setSharingApp,
+    pendingInvite,
+    setPendingInvite,
+    remoteDataChange,
+    aiAttentionKey,
+    aiAttentionDismissed,
+    consoleEntries,
+    setConsoleEntries,
+    syncStatus,
+    setSyncStatus,
+    syncStatusOpen,
+    setSyncStatusOpen,
+    sandboxReloadKey,
+    setSandboxReloadKey,
+    activeBuilderProfile,
+    refreshApps,
+    openApp,
+    createApp,
+    copyApp,
+    saveAppSource,
+    sendBuilderMessage,
+    clearBuilderConversation,
+    openLauncher,
+    toggleTool,
+    saveAppData,
+    importAppData,
+    deleteApp,
+  } = workspace;
   const title = useMemo(() => {
     if (mode === "launcher") return "App Lab";
     return activeApp?.name ?? "App";
@@ -646,14 +144,7 @@ export function WorkspaceShell({ aiActions, core, syncActions }: WorkspaceShellP
           <LauncherView
             apps={apps}
             onCopyApp={copyApp}
-            onDeleteApp={async (appId) => {
-              await syncActions.deleteSyncedAppRooms(appId);
-              await core.deleteApp(appId);
-              await syncActions.removeLocalAppSync(appId);
-              await syncActions.queueWorkspaceManifestSave();
-              void syncActions.flushWorkspaceManifestQueue();
-              await refreshApps();
-            }}
+            onDeleteApp={deleteApp}
             onOpenApp={openApp}
             onShareApp={(app) => setSharingApp(app)}
             storageProfile={storageProfile}
@@ -729,7 +220,7 @@ export function WorkspaceShell({ aiActions, core, syncActions }: WorkspaceShellP
               className="pointer-events-auto grid h-14 min-h-14 w-14 place-items-center rounded-full border border-app-accent bg-app-accent text-3xl font-light leading-none text-white shadow-panel hover:bg-app-strong"
               type="button"
               aria-label="Create new app"
-              onClick={createApp}
+              onClick={() => void createApp()}
             >
               +
             </button>
@@ -737,63 +228,7 @@ export function WorkspaceShell({ aiActions, core, syncActions }: WorkspaceShellP
         </div>
       ) : null}
 
-      <SettingsDialog
-        aiConfig={aiConfig}
-        builderPreferences={builderPreferences}
-        builderProfiles={builderProfiles}
-        initialAiTab={settingsInitialAiTab}
-        initialSection={settingsInitialSection}
-        isOpen={settingsOpen}
-        storageProfile={storageProfile}
-        onClearAiConfig={async () => {
-          await aiActions.clearConfig();
-          setAiConfig({ apiKey: "", model: "" });
-        }}
-        onClearStorageProfile={async () => {
-          await syncActions.clearStorageProfile();
-          await refreshApps();
-        }}
-        onClose={() => setSettingsOpen(false)}
-        onConfigureStorageProfile={async (input: ConfigureStorageProfileInput) => {
-          await syncActions.configureStorageProfile(input);
-          await trySync("Storage configured locally. Remote backup failed", () => syncActions.backUpLocalApps());
-          await refreshApps();
-        }}
-        onCreateBuilderProfile={async (input) => {
-          const created = await aiActions.createBuilderProfile(input);
-          setBuilderProfiles((profiles) => [...profiles, created]);
-          return created;
-        }}
-        onDeleteBuilderProfile={async (profileId) => {
-          await aiActions.deleteBuilderProfile(profileId);
-          setBuilderProfiles((profiles) => profiles.filter((profile) => profile.profileId !== profileId));
-        }}
-        onSaveAiConfig={async (config) => {
-          const saved = await aiActions.saveConfig(config);
-          setAiConfig(saved);
-          return saved;
-        }}
-        onSaveBuilderPreferences={async (preferences) => {
-          const saved = await aiActions.saveBuilderPreferences(preferences);
-          setBuilderPreferences(saved);
-          return saved;
-        }}
-        onTestAiConnection={aiActions.testConnection}
-        onUpdateBuilderProfile={async (input) => {
-          const updated = await aiActions.updateBuilderProfile(input);
-          setBuilderProfiles((profiles) =>
-            profiles.map((profile) => (profile.profileId === updated.profileId ? updated : profile)),
-          );
-          return updated;
-        }}
-        onExportWorkspaceRecovery={async () => {
-          return syncActions.exportWorkspaceRecovery();
-        }}
-        onRestoreWorkspaceRecovery={async (recoveryText) => {
-          await syncActions.restoreWorkspaceRecovery(recoveryText);
-          window.setTimeout(() => void refreshApps(), 0);
-        }}
-      />
+      <WorkspaceSettings workspace={workspace} />
       <ShareAppDialog
         app={sharingApp}
         onClose={() => setSharingApp(null)}
@@ -827,86 +262,6 @@ export function WorkspaceShell({ aiActions, core, syncActions }: WorkspaceShellP
     </div>
   );
 
-  async function pullLatestAppRooms(appId: string) {
-    await trySync("Could not pull latest shared app", async () => {
-      const result = await syncActions.pullLatestAppRooms(appId);
-      if (result.deletedAt) throw new Error("This shared app was deleted by its owner.");
-      if (result.app) setActiveApp(result.app);
-    });
-    await refreshApps();
-  }
-
-  async function trySync(prefix: string, action: () => Promise<void>): Promise<string | null> {
-    try {
-      await action();
-      setSyncStatus(null);
-      return null;
-    } catch (error) {
-      const detail = error instanceof Error ? error.message : "Unknown sync error.";
-      const message = `${prefix}: ${detail}`;
-      setSyncStatus(message);
-      return message;
-    }
-  }
-
-  function refreshWhenSettled(promise: Promise<void>) {
-    void promise.finally(() => {
-      void refreshApps();
-    });
-  }
-
-}
-
-function assertCompleteAppSource(sourceCode: string): void {
-  const start = sourceCode.trimStart().toLowerCase();
-  if (!/^<!doctype\s+html(?:\s[^>]*)?>/.test(start) && !/^<html(?:\s|>)/.test(start)) {
-    throw new Error("Source must be a complete HTML document starting with <!doctype html> or <html>.");
-  }
-}
-
-function createAppCopyName(originalName: string, apps: AppSummary[]): string {
-  const existingNames = new Set(apps.map((app) => app.name.toLocaleLowerCase()));
-  const baseName = originalName.replace(/ \(copy(?: \d+)?\)$/i, "");
-  let copyNumber = 1;
-  let candidate = `${baseName} (copy)`;
-
-  while (existingNames.has(candidate.toLocaleLowerCase())) {
-    copyNumber += 1;
-    candidate = `${baseName} (copy ${copyNumber})`;
-  }
-
-  return candidate;
-}
-
-function replaceAppTitle(sourceCode: string, title: string): string {
-  const titleMarkup = `<title>${escapeHtmlText(title)}</title>`;
-  const titlePattern = /<title(?:\s[^>]*)?>[\s\S]*?<\/title\s*>/i;
-  const completeHeadPattern = /<head(?:\s[^>]*)?>[\s\S]*?<\/head\s*>/i;
-  const headMatch = completeHeadPattern.exec(sourceCode);
-  if (headMatch) {
-    const updatedHead = titlePattern.test(headMatch[0])
-      ? headMatch[0].replace(titlePattern, titleMarkup)
-      : headMatch[0].replace(/<head(?:\s[^>]*)?>/i, (head) => `${head}\n    ${titleMarkup}`);
-    return `${sourceCode.slice(0, headMatch.index)}${updatedHead}${sourceCode.slice(headMatch.index + headMatch[0].length)}`;
-  }
-
-  const bodyIndex = sourceCode.search(/<body(?:\s|>)/i);
-  const metadataRegion = bodyIndex === -1 ? sourceCode : sourceCode.slice(0, bodyIndex);
-  if (titlePattern.test(metadataRegion)) {
-    return `${metadataRegion.replace(titlePattern, titleMarkup)}${bodyIndex === -1 ? "" : sourceCode.slice(bodyIndex)}`;
-  }
-
-  const headPattern = /<head(?:\s[^>]*)?>/i;
-  if (headPattern.test(sourceCode)) return sourceCode.replace(headPattern, (head) => `${head}\n    ${titleMarkup}`);
-
-  const htmlPattern = /<html(?:\s[^>]*)?>/i;
-  if (htmlPattern.test(sourceCode)) return sourceCode.replace(htmlPattern, (html) => `${html}\n  <head>${titleMarkup}</head>`);
-
-  return `${titleMarkup}\n${sourceCode}`;
-}
-
-function escapeHtmlText(value: string): string {
-  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
 interface LauncherViewProps {
@@ -1140,59 +495,6 @@ function syncBadgeClassName(tone: AppSyncBadge["tone"]): string {
   return "bg-slate-100 text-app-muted";
 }
 
-function buildAppSyncHealthMap(input: {
-  apps: AppSummary[];
-  badges: Record<string, AppSyncBadge>;
-  isOnline: boolean;
-  queueItems: PendingSyncOperation[];
-}): Record<string, AppSyncHealth> {
-  return Object.fromEntries(
-    input.apps.map((app) => {
-      const badge = input.badges[app.appId];
-      const items = input.queueItems.filter((item) => item.appId === app.appId);
-      return [app.appId, describeAppSyncHealth({ badge, isOnline: input.isOnline, items })];
-    }),
-  );
-}
-
-function describeAppSyncHealth(input: { badge?: AppSyncBadge; isOnline: boolean; items: PendingSyncOperation[] }): AppSyncHealth {
-  if (input.badge?.kind === "local-only") return { kind: "none", label: "", title: "", tone: "neutral" };
-  if (input.badge?.kind === "needs-attention") {
-    return {
-      kind: "problem",
-      label: "",
-      title: "This shared app was deleted by its owner. You can remove this local entry from app actions.",
-      tone: "attention",
-    };
-  }
-  if (!input.items.length) return { kind: "synced", label: "☁ ✓", title: "Synced with remote storage.", tone: "good" };
-
-  if (!input.isOnline) {
-    return {
-      kind: "offline",
-      label: "☁ ×",
-      title: "Offline. Local changes are saved and will sync when the browser comes back online.",
-      tone: "attention",
-    };
-  }
-
-  const problem = input.items.find((item) => item.lastError || item.status === "problem");
-  if (problem) {
-    return {
-      kind: "problem",
-      label: "☁ !",
-      title: `Could not sync ${formatQueueKind(problem.kind)}. App Lab will retry when sync wakes up. ${problem.lastError ?? ""}`.trim(),
-      tone: "attention",
-    };
-  }
-
-  if (input.items.some((item) => item.status === "syncing")) {
-    return { kind: "syncing", label: "☁ …", title: "Syncing local changes to remote storage.", tone: "working" };
-  }
-
-  return { kind: "pending", label: "☁ …", title: "Local changes are queued for remote sync.", tone: "working" };
-}
-
 function CloudSyncIndicator({
   health,
   onOpenChange,
@@ -1335,14 +637,6 @@ function CloudSyncIcon({ kind }: { kind: AppSyncHealthKind }) {
   );
 }
 
-function formatQueueKind(kind: PendingSyncOperation["kind"]): string {
-  if (kind === "ensure-app-rooms") return "app rooms";
-  if (kind === "save-source") return "source code";
-  if (kind === "save-app-data") return "app data";
-  if (kind === "delete-owned-app") return "app deletion";
-  return "workspace manifest";
-}
-
 function ShareAppDialog({
   app,
   onClose,
@@ -1442,141 +736,6 @@ function ShareAppDialog({
       </div>
     </div>
   );
-}
-
-function InviteImportDialog({
-  invite,
-  onClose,
-  onImport,
-  onPreview,
-}: {
-  invite: AppInvitePayload | null;
-  onClose: () => void;
-  onImport: (invite: AppInvitePayload) => Promise<void>;
-  onPreview: (invite: AppInvitePayload) => Promise<AppInvitePreview>;
-}) {
-  const [preview, setPreview] = useState<AppInvitePreview | null>(null);
-  const [status, setStatus] = useState("Ready");
-
-  useEffect(() => {
-    setPreview(null);
-    setStatus("Ready");
-  }, [invite]);
-
-  if (!invite) return null;
-
-  async function previewInvite() {
-    if (!invite) return;
-    const currentInvite = invite;
-    setStatus("Loading app preview...");
-    try {
-      setPreview(await onPreview(currentInvite));
-      setStatus("Preview loaded. Review before importing.");
-    } catch (error) {
-      setPreview(null);
-      setStatus(error instanceof Error ? error.message : "Could not load app preview.");
-    }
-  }
-
-  async function importInvite() {
-    if (!invite) return;
-    const currentInvite = invite;
-    setStatus("Importing shared app...");
-    try {
-      await onImport(currentInvite);
-      setStatus("Imported.");
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Could not import invite.");
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-40 grid place-items-center bg-black/35 px-4" role="dialog" aria-modal="true" aria-label="Import shared app">
-      <div className="grid w-full max-w-lg gap-4 rounded-xl border border-app-line bg-app-panel p-4 shadow-panel">
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <p className="mb-1 text-xs font-extrabold uppercase text-app-muted">Shared app invite</p>
-            <h2 className="truncate text-lg font-extrabold">Import shared app</h2>
-          </div>
-          <button
-            className="grid h-8 min-h-8 w-8 place-items-center rounded-full text-xl text-app-muted hover:bg-app-accent/10 hover:text-app-accent"
-            type="button"
-            aria-label="Close invite import"
-            onClick={onClose}
-          >
-            ×
-          </button>
-        </div>
-
-        <p className="text-sm leading-relaxed text-app-muted">
-          This link grants access to a shared app source room and data room. Importing will add the app to this workspace as
-          Shared with me and connect it to live data updates.
-        </p>
-
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm leading-relaxed text-amber-900">
-          Shared app source is executable code from whoever controls the shared source room. Only import apps from people you
-          trust.
-        </div>
-
-        <div className="rounded-lg border border-app-line bg-slate-50 p-3 text-xs text-app-muted">
-          <p>
-            Provider: <span className="font-mono">{invite.provider.databaseUrl}</span>
-          </p>
-          <p>
-            Created: <span className="font-mono">{formatDate(invite.createdAt)}</span>
-          </p>
-        </div>
-
-        {preview ? (
-          <div className="grid gap-2 rounded-lg border border-app-line bg-white p-3">
-            <div className="min-w-0">
-              <p className="mb-1 text-xs font-extrabold uppercase text-app-muted">Preview</p>
-              <h3 className="truncate text-base font-extrabold text-app-ink">{preview.name}</h3>
-              {preview.description ? <p className="mt-1 text-sm leading-relaxed text-app-muted">{preview.description}</p> : null}
-            </div>
-            <div className="grid gap-1 text-xs text-app-muted">
-              <p>
-                App id: <span className="font-mono">{shortFingerprint(preview.appId)}</span>
-              </p>
-              <p>
-                Source room: <span className="font-mono">{shortFingerprint(preview.sourceRoomId)}</span>
-              </p>
-              <p>
-                Data room: <span className="font-mono">{shortFingerprint(preview.dataRoomId)}</span>
-              </p>
-              <p>
-                Updated: <span className="font-mono">{formatDate(preview.updatedAt)}</span>
-              </p>
-            </div>
-          </div>
-        ) : null}
-
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <span className="text-xs font-bold text-app-muted">{status}</span>
-          <div className="flex gap-2">
-            <button className="min-h-9 rounded-md border border-app-line bg-white px-3 text-sm font-bold text-app-ink hover:border-app-accent" type="button" onClick={onClose}>
-              Cancel
-            </button>
-            <button className="min-h-9 rounded-md border border-app-line bg-white px-3 text-sm font-bold text-app-ink hover:border-app-accent" type="button" onClick={previewInvite}>
-              Preview app
-            </button>
-            <button
-              className="min-h-9 rounded-md border border-app-accent bg-app-accent px-3 text-sm font-extrabold text-white hover:bg-app-strong"
-              type="button"
-              onClick={importInvite}
-            >
-              Import
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function shortFingerprint(value: string): string {
-  if (value.length <= 18) return value;
-  return `${value.slice(0, 8)}...${value.slice(-6)}`;
 }
 
 function LauncherAppActionsDialog({
@@ -1773,45 +932,6 @@ function AppView({
       />
     </section>
   );
-}
-
-function createEmptyBuilderSession(): BuilderSessionState {
-  return {
-    activity: null,
-    error: null,
-    isRunning: false,
-    messages: [],
-    reasoning: "",
-    reasoningMessageId: null,
-    streamingContent: "",
-    usage: createEmptyAiUsage(),
-  };
-}
-
-function createAiChatMessage(appId: string, role: AiChatMessage["role"], content: string): AiChatMessage {
-  return {
-    appId,
-    content,
-    createdAt: new Date().toISOString(),
-    messageId: crypto.randomUUID(),
-    role,
-  };
-}
-
-function toBuilderAppSource(app: AppRecord) {
-  return {
-    description: app.description,
-    name: app.name,
-    sourceCode: app.sourceCode,
-  };
-}
-
-function formatConsoleForBuilder(entries: SandboxConsoleEntry[]): string {
-  if (!entries.length) return "No recent console output.";
-  return entries
-    .slice(-50)
-    .map((entry) => `[${entry.timestamp}] ${entry.level.toUpperCase()} ${entry.args.join(" ") || "(empty)"}`)
-    .join("\n");
 }
 
 function formatDate(value: string): string {
