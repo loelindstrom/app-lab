@@ -207,16 +207,16 @@ echo "Building App Lab for GitHub Pages..."
   cd "$SOURCE_DIR"
   pnpm exec tsc -b
   VITE_CONFIG_ARGS=()
-  if [ "$TARGET" = "staging" ] && [ -f vite.staging.config.mjs ]; then
-    VITE_CONFIG_ARGS=(--config vite.staging.config.mjs)
+  if [ -f "vite.$TARGET.config.mjs" ]; then
+    VITE_CONFIG_ARGS=(--config "vite.$TARGET.config.mjs")
   fi
   pnpm exec vite build "${VITE_CONFIG_ARGS[@]}" --base "$BASE_PATH" --outDir "$BUILD_DIR" --emptyOutDir
 )
 touch "$BUILD_DIR/.nojekyll"
 
-if [ "$TARGET" = "staging" ] && [ ! -f "$BUILD_DIR/sw.js" ]; then
-  echo "Adding a retiring worker for staging clients running a newer source ref..."
-  cp "$REPO_ROOT/scripts/retire-staging-worker.js" "$BUILD_DIR/sw.js"
+if [ ! -f "$BUILD_DIR/sw.js" ]; then
+  echo "Adding a retiring worker for $TARGET clients running a newer source ref..."
+  cp "$REPO_ROOT/scripts/retire-pages-worker.js" "$BUILD_DIR/sw.js"
 fi
 
 DEPLOYED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
@@ -230,9 +230,7 @@ node -e 'const fs = require("fs"); const [file, target, version, ref, commit, sh
   "$DEPLOYED_AT" \
   "$BASE_PATH"
 
-node -e 'const fs = require("fs"); const [file, base] = process.argv.slice(1); fs.writeFileSync(file, JSON.stringify({ name: "App Lab", short_name: "App Lab", start_url: base, scope: base, display: "standalone", background_color: "#ffffff", theme_color: "#111827", icons: [{ src: `${base}icons/icon-192.png`, sizes: "192x192", type: "image/png", purpose: "any maskable" }, { src: `${base}icons/icon-512.png`, sizes: "512x512", type: "image/png", purpose: "any maskable" }] }, null, 2) + "\n");' \
-  "$BUILD_DIR/manifest.webmanifest" \
-  "$BASE_PATH"
+node "$REPO_ROOT/scripts/pages-manifest.mjs" "$BUILD_DIR" "$BASE_PATH"
 
 if [ "$DRY_RUN" -eq 1 ]; then
   echo "Dry run complete for $TARGET. Built $TARGET_SHORT${DEPLOY_VERSION:+ as $DEPLOY_VERSION}; no tag or Pages branch was changed."

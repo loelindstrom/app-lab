@@ -5,7 +5,7 @@ self.addEventListener("activate", (event) => {
     const scope = self.registration.scope;
     const names = await caches.keys();
     await Promise.all(names
-      .filter((name) => name.startsWith("app-lab-staging-") && name.endsWith(scope))
+      .filter((name) => name.startsWith("app-lab-") && name.endsWith(scope))
       .map((name) => caches.delete(name)));
     await self.registration.unregister();
   })());
