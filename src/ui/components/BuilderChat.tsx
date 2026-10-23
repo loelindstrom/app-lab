@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useRef } from "react";
 import { ArrowUp, Settings, Trash2 } from "lucide-react";
-import type { WorkspaceController } from "../../shell/useWorkspace";
-import { MarkdownMessage } from "../../tools/MarkdownMessage";
+import type { WorkspaceController } from "../shell/useWorkspace";
+import { MarkdownMessage } from "./MarkdownMessage";
 import { Activity, Button, IconButton } from "./controls";
 
 export function BuilderChat({ workspace, motion, onSettings, draft, onDraftChange }: {

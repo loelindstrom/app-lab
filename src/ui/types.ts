@@ -1,4 +1,4 @@
-import type { AppSummary } from "../../core";
+import type { AppSummary } from "../core";
 
 export interface LauncherApp extends AppSummary {
   id: string;

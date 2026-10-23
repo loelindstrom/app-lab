@@ -87,13 +87,11 @@
 .tool-panel--code { display: flex; flex-direction: column; height: 100%; min-height: 220px; }
 .code-draft { font-family: var(--font-code); font-size: 16px; line-height: 1.7; flex: 1; min-height: 0; resize: none; background: var(--canvas); }
 .external-workflow { display: grid; gap: 32px; padding: 0; margin: 0; list-style: none; }
-.external-workflow > li { position: relative; min-width: 0; padding-left: 28px; }
+.external-workflow > li { min-width: 0; }
 .workflow-heading { display: flex; align-items: center; gap: 8px; min-height: 24px; margin-bottom: 12px; font-size: var(--text-section); line-height: 1.5; font-weight: 600; color: var(--ink); }
 .workflow-heading.editor-label { width: 100%; }
 .workflow-heading .help-tip { flex-shrink: 0; width: 44px; height: 24px; }
 .workflow-heading .help-trigger { position: relative; top: -10px; }
-.workflow-number { position: absolute; top: 0; left: 0; color: var(--faint); font-size: var(--text-caption); line-height: 24px; font-weight: 500; font-variant-numeric: tabular-nums; }
-.workflow-reply > .workflow-number { top: 10px; }
 .workflow-copy { width: 208px; max-width: 100%; }
 .workflow-copy.is-copied { color: var(--accent); background: var(--accent-soft); border-color: transparent; }
 .external-workflow .prompt-draft { height: 104px; min-height: 104px; line-height: 1.55; }

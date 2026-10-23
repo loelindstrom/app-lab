@@ -1,4 +1,5 @@
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
+import { createApp, openApp, openTools, saveSource } from "./ui";
 import { readFirebaseE2eProfile, type FirebaseE2eProfile } from "./firebaseProfile";
 import { addSyncTestItem, createSyncTestApp, SYNC_TEST_APP_TITLE } from "./syncTestApp";
 
@@ -32,16 +33,16 @@ test.describe("local app persistence", () => {
     await shareDragHandle.dragTo(boardViewport, { targetPosition: { x: 2, y: 2 } });
     await expect(frame.locator("article h3").first()).toHaveText("Share live updates");
 
-    await shareDragHandle.dragTo(page.locator("footer").getByRole("group", { name: "App tools" }));
-    await expect(frame.locator("article h3").last()).toHaveText("Share live updates");
+    await shareDragHandle.dragTo(page.locator(".workspace-app-header"));
+    await expect(frame.locator("article h3").first()).toHaveText("Share live updates");
 
     await shareDragHandle.dragTo(boardViewport, { targetPosition: { x: 2, y: 2 } });
     await expect(frame.locator("article h3").first()).toHaveText("Share live updates");
 
     await addBoardNote(page, "Example persisted item", "This description should persist.");
 
-    await page.getByRole("button", { name: "‹ Apps" }).click();
-    await page.getByRole("button", { name: "Open", exact: true }).click();
+    await page.getByRole("button", { name: "Back to workspace" }).click();
+    await openApp(page);
 
     await expect(frame.getByRole("heading", { name: "Active notes" })).toBeVisible();
     await expect(frame.locator("article h3").first()).toHaveText("Example persisted item");
@@ -86,8 +87,8 @@ test.describe("local app persistence", () => {
     await expect(appFrame(page).getByText("Persisted item")).toBeVisible();
     await expect(appFrame(page).locator("#status")).toHaveText("Saved.");
 
-    await page.getByRole("button", { name: "‹ Apps" }).click();
-    await page.getByRole("button", { name: "Open", exact: true }).click();
+    await page.getByRole("button", { name: "Back to workspace" }).click();
+    await openApp(page);
 
     await expect(appFrame(page).getByRole("heading", { name: "Persisted Source" })).toBeVisible();
     await expect(appFrame(page).getByText("Persisted item")).toBeVisible();
@@ -107,12 +108,12 @@ test.describe("local app persistence", () => {
     await appFrame(page).getByLabel("New item").fill("Copied item");
     await appFrame(page).getByRole("button", { name: "Add" }).click();
     await expect(appFrame(page).locator("#status")).toHaveText("Saved.");
-    await page.getByRole("button", { name: "‹ Apps" }).click();
+    await page.getByRole("button", { name: "Back to workspace" }).click();
 
     await copyLauncherApp(page, "Copyable Checklist", "With data");
     await openLauncherApp(page, "Copyable Checklist (copy)");
     await expect(appFrame(page).getByText("Copied item", { exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "‹ Apps" }).click();
+    await page.getByRole("button", { name: "Back to workspace" }).click();
 
     await copyLauncherApp(page, "Copyable Checklist", "Without data");
     await openLauncherApp(page, "Copyable Checklist (copy 2)");
@@ -142,8 +143,8 @@ test.describe("local app persistence", () => {
     await appFrame(page).getByRole("button", { name: "Save" }).click();
     await expect(appFrame(page).getByText("Saved.")).toBeVisible();
 
-    await page.getByRole("button", { name: "‹ Apps" }).click();
-    await page.getByRole("button", { name: "Open", exact: true }).click();
+    await page.getByRole("button", { name: "Back to workspace" }).click();
+    await openApp(page);
 
     await expect(appFrame(page).getByText("Hello Ada")).toBeVisible();
     await expect(appFrame(page).locator("#name-status")).toHaveClass(/ready/);
@@ -162,8 +163,8 @@ test.describe("local app persistence", () => {
     await saveSource(page, htmlWithUnsupportedForm());
     await appFrame(page).getByRole("button", { name: "Submit" }).click();
 
-    await expect(page.getByRole("button", { name: "Toggle console" }).locator("span")).toHaveText("1");
-    await page.getByRole("button", { name: "Toggle console" }).click();
+    await expect(page.locator(".ai-tools-button .attention-dot")).toBeVisible();
+    await openTools(page, "Develop", "Log");
     await expect(page.getByText("Form submission is blocked by the App Lab sandbox", { exact: false })).toBeVisible();
   });
 });
@@ -194,14 +195,14 @@ test.describe("@firebase synced app persistence", () => {
 
       await createSyncTestApp(page);
       await expect(appFrame(page).getByRole("heading", { name: SYNC_TEST_APP_TITLE })).toBeVisible();
-      await page.getByRole("button", { name: "‹ Apps" }).click();
-      await expect(page.getByTitle("Synced with remote storage.")).toBeVisible({ timeout: 15_000 });
-      await page.getByRole("button", { name: "Open", exact: true }).click();
+      await page.getByRole("button", { name: "Back to workspace" }).click();
+      await waitForSyncedWorkspace(page);
+      await openApp(page);
 
       await addSyncTestItem(page, "Synced persisted item");
 
-      await page.getByRole("button", { name: "‹ Apps" }).click();
-      await page.getByRole("button", { name: "Open", exact: true }).click();
+      await page.getByRole("button", { name: "Back to workspace" }).click();
+      await openApp(page);
 
       await expect(appFrame(page).getByRole("heading", { name: SYNC_TEST_APP_TITLE })).toBeVisible();
       await expect(appFrame(page).getByText("Synced persisted item", { exact: true })).toBeVisible();
@@ -224,8 +225,8 @@ test.describe("@firebase synced app persistence", () => {
       await saveSource(page, htmlForChecklistTitle("Synced Source Persisted"));
       await expect(appFrame(page).getByRole("heading", { name: "Synced Source Persisted" })).toBeVisible();
 
-      await page.getByRole("button", { name: "‹ Apps" }).click();
-      await page.getByRole("button", { name: "Open", exact: true }).click();
+      await page.getByRole("button", { name: "Back to workspace" }).click();
+      await openApp(page);
 
       await expect(appFrame(page).getByRole("heading", { name: "Synced Source Persisted" })).toBeVisible();
     } finally {
@@ -243,8 +244,8 @@ test.describe("@firebase synced app persistence", () => {
     try {
       await configureStorage(page, firebaseProfile.config, firebaseProfile);
       await createSyncTestApp(page);
-      await page.getByRole("button", { name: "‹ Apps" }).click();
-      await expect(page.getByTitle("Synced with remote storage.")).toBeVisible({ timeout: 15_000 });
+      await page.getByRole("button", { name: "Back to workspace" }).click();
+      await waitForSyncedWorkspace(page);
       await expect
         .poll(() => readLocalManifestVersion(page), { timeout: 15_000 })
         .toBeGreaterThan(0);
@@ -260,16 +261,16 @@ test.describe("@firebase synced app persistence", () => {
         return state.manifestRoom.lastSeenVersion as number;
       });
 
-      await page.getByRole("button", { name: "Create new app" }).click();
-      await expect(page.getByRole("button", { name: "Toggle source" })).toBeVisible({ timeout: 30_000 });
-      await page.getByRole("button", { name: "‹ Apps" }).click();
-      await expect(page.getByTitle("Synced with remote storage.")).toBeVisible({ timeout: 15_000 });
+      await createApp(page);
+      await expect(page.getByRole("button", { name: "Open app tools" })).toBeVisible({ timeout: 30_000 });
+      await page.getByRole("button", { name: "Back to workspace" }).click();
+      await waitForSyncedWorkspace(page);
       await expect
         .poll(() => readLocalManifestVersion(page), { timeout: 15_000 })
         .toBeLessThan(poisonedVersion);
 
       await page.reload();
-      await expect(page.getByTitle("Synced with remote storage.").first()).toBeVisible({ timeout: 15_000 });
+      await waitForSyncedWorkspace(page);
     } finally {
       await context.setOffline(false);
       await closePages(page);
@@ -287,9 +288,9 @@ test.describe("@firebase synced app persistence", () => {
 
       await createSyncTestApp(page);
       await expect(appFrame(page).getByRole("heading", { name: SYNC_TEST_APP_TITLE })).toBeVisible();
-      await page.getByRole("button", { name: "‹ Apps" }).click();
-      await expect(page.getByTitle("Synced with remote storage.")).toBeVisible({ timeout: 15_000 });
-      await page.getByRole("button", { name: "Open", exact: true }).click();
+      await page.getByRole("button", { name: "Back to workspace" }).click();
+      await waitForSyncedWorkspace(page);
+      await openApp(page);
 
       await context.setOffline(true);
       await page.evaluate(() => window.dispatchEvent(new Event("offline")));
@@ -297,23 +298,23 @@ test.describe("@firebase synced app persistence", () => {
       await addSyncTestItem(page, "Offline first");
       await expect(appFrame(page).getByText("Offline first", { exact: true })).toBeVisible();
 
-      await page.getByRole("button", { name: "‹ Apps" }).click();
-      await expect(page.getByRole("button", { name: /Open sync status: Offline/ })).toBeVisible();
-      await page.getByRole("button", { name: "Open", exact: true }).click();
+      await page.getByRole("button", { name: "Back to workspace" }).click();
+      await openApp(page);
+      await expect(page.getByRole("button", { name: "Sync status: Offline", exact: true })).toBeVisible();
       await expect(appFrame(page).getByText("Offline first", { exact: true })).toBeVisible();
 
       await addSyncTestItem(page, "Offline second");
       await expect(appFrame(page).getByText("Offline second", { exact: true })).toBeVisible();
 
-      await page.getByRole("button", { name: "‹ Apps" }).click();
-      await page.getByRole("button", { name: "Open", exact: true }).click();
+      await page.getByRole("button", { name: "Back to workspace" }).click();
+      await openApp(page);
       await expect(appFrame(page).getByText("Offline first", { exact: true })).toBeVisible();
       await expect(appFrame(page).getByText("Offline second", { exact: true })).toBeVisible();
 
       await context.setOffline(false);
       await page.evaluate(() => window.dispatchEvent(new Event("online")));
-      await page.getByRole("button", { name: "‹ Apps" }).click();
-      await expect(page.getByTitle("Synced with remote storage.")).toBeVisible({ timeout: 15_000 });
+      await page.getByRole("button", { name: "Back to workspace" }).click();
+      await waitForSyncedWorkspace(page);
     } finally {
       await context.setOffline(false);
       await closePages(page);
@@ -331,30 +332,30 @@ test.describe("@firebase synced app persistence", () => {
 
       await createSyncTestApp(page);
       await expect(appFrame(page).getByRole("heading", { name: SYNC_TEST_APP_TITLE })).toBeVisible();
-      await page.getByRole("button", { name: "‹ Apps" }).click();
-      await expect(page.getByTitle("Synced with remote storage.")).toBeVisible({ timeout: 15_000 });
-      await page.getByRole("button", { name: "Open", exact: true }).click();
+      await page.getByRole("button", { name: "Back to workspace" }).click();
+      await waitForSyncedWorkspace(page);
+      await openApp(page);
 
       await context.setOffline(true);
       await page.evaluate(() => window.dispatchEvent(new Event("offline")));
 
       await saveSource(page, htmlForChecklistTitle("Offline Source One"));
       await expect(appFrame(page).getByRole("heading", { name: "Offline Source One" })).toBeVisible();
-      await page.getByRole("button", { name: "‹ Apps" }).click();
-      await expect(page.getByRole("button", { name: /Open sync status: Offline/ })).toBeVisible();
-      await page.getByRole("button", { name: "Open", exact: true }).click();
+      await page.getByRole("button", { name: "Back to workspace" }).click();
+      await openApp(page);
+      await expect(page.getByRole("button", { name: "Sync status: Offline", exact: true })).toBeVisible();
       await expect(appFrame(page).getByRole("heading", { name: "Offline Source One" })).toBeVisible();
 
       await saveSource(page, htmlForChecklistTitle("Offline Source Two"));
       await expect(appFrame(page).getByRole("heading", { name: "Offline Source Two" })).toBeVisible();
-      await page.getByRole("button", { name: "‹ Apps" }).click();
-      await page.getByRole("button", { name: "Open", exact: true }).click();
+      await page.getByRole("button", { name: "Back to workspace" }).click();
+      await openApp(page);
       await expect(appFrame(page).getByRole("heading", { name: "Offline Source Two" })).toBeVisible();
 
       await context.setOffline(false);
       await page.evaluate(() => window.dispatchEvent(new Event("online")));
-      await page.getByRole("button", { name: "‹ Apps" }).click();
-      await expect(page.getByTitle("Synced with remote storage.")).toBeVisible({ timeout: 15_000 });
+      await page.getByRole("button", { name: "Back to workspace" }).click();
+      await waitForSyncedWorkspace(page);
     } finally {
       await context.setOffline(false);
       await closePages(page);
@@ -364,8 +365,8 @@ test.describe("@firebase synced app persistence", () => {
 
 async function createOpinionatedBoard(page: Page) {
   await selectOpinionatedBuilderProfile(page);
-  await page.getByRole("button", { name: "Create new app" }).click();
-  await expect(page.getByRole("button", { name: "Toggle source" })).toBeVisible({ timeout: 30_000 });
+  await createApp(page);
+  await expect(page.getByRole("button", { name: "Open app tools" })).toBeVisible({ timeout: 30_000 });
 }
 
 async function selectOpinionatedBuilderProfile(page: Page) {
@@ -393,17 +394,16 @@ async function archiveBoardNote(page: Page, title: string) {
 }
 
 async function copyLauncherApp(page: Page, appName: string, dataChoice: "With data" | "Without data") {
-  await page.getByRole("button", { name: `Open app actions for ${appName}`, exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "App actions" });
-  await dialog.getByRole("button", { name: "Copy", exact: true }).click();
-  await dialog.getByRole("button", { name: new RegExp(`^${dataChoice}`) }).click();
+  await page.getByRole("button", { name: `Options for ${appName}`, exact: true }).click();
+  await page.getByRole("button", { name: "Copy app", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Copy app" });
+  await dialog.getByRole("checkbox", { name: "Include app data" }).setChecked(dataChoice === "With data");
+  await dialog.getByRole("button", { name: "Copy app", exact: true }).click();
   await expect(dialog).toBeHidden();
 }
 
 async function openLauncherApp(page: Page, appName: string) {
-  const actionsButton = page.getByRole("button", { name: `Open app actions for ${appName}`, exact: true });
-  await expect(actionsButton).toBeVisible();
-  await actionsButton.locator("xpath=ancestor::article").getByRole("button", { name: "Open", exact: true }).click();
+  await openApp(page, appName);
 }
 
 function requireContext(context: BrowserContext | null): BrowserContext {
@@ -466,6 +466,20 @@ async function readLocalManifestVersion(page: Page): Promise<number> {
   });
 }
 
+async function waitForSyncedWorkspace(page: Page) {
+  await expect.poll(() => readLocalManifestVersion(page), { timeout: 15_000 }).toBeGreaterThan(0);
+  await expect.poll(() => page.evaluate(() => new Promise<number>((resolve, reject) => {
+    const open = indexedDB.open("app-lab-sync-queue-v1");
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => {
+      const db = open.result;
+      const count = db.transaction("sync_queue").objectStore("sync_queue").count();
+      count.onsuccess = () => { db.close(); resolve(count.result); };
+      count.onerror = () => { db.close(); reject(count.error); };
+    };
+  })), { timeout: 15_000 }).toBe(0);
+}
+
 async function configureStorage(page: Page, config: Record<string, string>, profile: FirebaseE2eProfile) {
   await page.evaluate(({ firebaseConfig, profile }) => {
     const now = new Date().toISOString();
@@ -496,16 +510,6 @@ async function configureStorage(page: Page, config: Record<string, string>, prof
     );
   }, { firebaseConfig: config, profile });
   await page.reload();
-}
-
-async function saveSource(page: Page, sourceCode: string) {
-  const sourceToggle = page.getByRole("button", { name: "Toggle source" });
-  await sourceToggle.click();
-  const sourcePanel = page.locator('aside[aria-label="Source"]');
-  await sourcePanel.locator("textarea").first().fill(sourceCode);
-  await sourcePanel.getByRole("button", { name: "Save" }).click();
-  await expect(sourcePanel.locator("div.text-xs", { hasText: "Saved." })).toBeVisible();
-  await sourceToggle.click();
 }
 
 function htmlForChecklistTitle(title: string) {

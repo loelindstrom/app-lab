@@ -11,7 +11,6 @@ App Lab is a static Vite application published to GitHub Pages.
 | Local Pages worktree | ignored `dist/` directory |
 | Production URL | `https://loelindstrom.github.io/app-lab/` |
 | Staging URL | `https://loelindstrom.github.io/app-lab/staging/` |
-| Parallel UI | `next/` under either deployment URL |
 | Release identity | committed source ref, optionally tagged `vX.Y.Z` |
 | Metadata | `deploy.json` in each published output |
 
@@ -51,10 +50,9 @@ older commits without it can still be built. When the chosen staging build has n
 `scripts/retire-staging-worker.js` at that URL to unregister an existing worker and delete only its staging caches.
 The staging config rejects base paths outside a trailing `/staging/` directory so an override cannot register it at production's root.
 
-After one online visit finishes installing the worker, staging can reopen offline. The cache includes both the original UI at
-`/app-lab/staging/` and the parallel UI at `/app-lab/staging/next/`, their JavaScript, CSS, fonts, icons, and the local Tailwind
-compiler. Each entry serves its own cached HTML; `/next/` is not redirected to the original shell. Hash navigation keeps working.
-Changing which UI is the main entry later does not require a second worker: the cache follows the build's HTML entries and assets.
+After one online visit finishes installing the worker, staging can reopen offline at `/app-lab/staging/`. The cache includes the
+app shell, JavaScript, CSS, fonts, icons, and the local Tailwind compiler. Hash navigation keeps working. The worker follows the
+build's HTML entry and assets; the old shell and temporary `next/` entry are no longer included.
 
 App records and data remain in the existing shared IndexedDB stores. Source editing and local data changes work offline; Firebase
 and OpenRouter still require connectivity. Existing sync queues retry when the app reconnects. Offline startup requires a completed
@@ -72,7 +70,7 @@ pnpm build:staging
 pnpm exec vite preview --config vite.staging.config.mjs --outDir artifacts/staging --host 127.0.0.1 --port 5187
 ```
 
-Open `http://127.0.0.1:5187/app-lab/staging/` or its `next/` path. The manifest and `deploy.json` are added by the deployment script,
+Open `http://127.0.0.1:5187/app-lab/staging/`. The manifest and `deploy.json` are added by the deployment script,
 so this local preview tests the worker and application rather than installation metadata. Normal `pnpm dev` does not enable a worker.
 
 To remove an installed staging worker during testing, use browser developer tools **Application > Service Workers > Unregister**
@@ -145,10 +143,10 @@ pnpm deploy:pages -- --dry-run --ref HEAD
 pnpm deploy:pages -- --dry-run --target staging --ref HEAD
 ```
 
-`test:pwa` builds both targets into a temporary directory and checks offline persistence, both UI entries, local Tailwind compilation,
+`test:pwa` builds both targets into a temporary directory and checks offline persistence, the main UI, local Tailwind compilation,
 cache boundaries, uncached deployment metadata, updates, and rollback retirement in Chromium. It does not publish anything or modify `dist/`.
 
 After deployment, open the relevant URL and inspect its `deploy.json`. Asset 404s normally mean the build used the wrong base path
 (`/app-lab/` for production or `/app-lab/staging/` for staging) or Pages is not serving the `gh-pages` branch root.
 
-The parallel UI uses hash routing. Add a Pages 404 strategy before introducing additional path-based client routes.
+The UI uses hash routing. Add a Pages 404 strategy before introducing additional path-based client routes.

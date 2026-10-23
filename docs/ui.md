@@ -4,7 +4,7 @@ UI renders the App Lab host and coordinates actions across core, runtime, sync, 
 
 ## Summary
 
-- **Entry points:** `WorkspaceShell` (`/`) and `NextWorkspaceShell` (`/next/`), from `src/ui/index.ts`.
+- **Entry point:** `WorkspaceShell` from `src/ui/index.ts`.
 - **Owns:** React state, launcher and app views, tools, dialogs, and workflow ordering.
 - **Depends on:** public module contracts supplied by the composition root.
 
@@ -17,20 +17,19 @@ owns that ordering so core stays persistence-focused, runtime stays callback-dri
 
 ```text
 App.tsx
-  -> WorkspaceShell or NextWorkspaceShell
+  -> WorkspaceShell
        -> useWorkspace(core, syncActions, aiActions)
-       -> Launcher, SandboxFrame, tools, and settings
+       -> LauncherScreen, SandboxFrame, ToolSheet, and SettingsScreen
 ```
 
-`useWorkspace` owns the shared workflows, AI sessions, and sync subscriptions. Both shells use that controller; neither duplicates
-core, runtime, AI, or sync logic. Smaller components own presentation and transient interaction state.
+`useWorkspace` owns workflows, AI sessions, and sync subscriptions. `WorkspaceShell` handles hash navigation and coordinates the
+screens. Smaller components own presentation and transient interaction state; they do not duplicate core, runtime, AI, or sync logic.
 
-`/next/` is a live, parallel UI, not a separate workspace. On the same browser origin it uses the existing IndexedDB databases,
-provider configuration, and Builder profiles. Refresh or reopen an app when switching between UI tabs. Conversations still live in
-each page's React memory, so they do not transfer between tabs or survive reloads.
+Apps, provider configuration, and Builder profiles use the existing local stores. Conversations live in each page's React memory,
+so they do not transfer between tabs or survive reloads.
 
 `/gallery/` is a development-only catalog of the actual UI components. It uses temporary preview state, no app records or provider
-services, and is excluded from the production build. The earlier app-shaped mock and its duplicate dependencies have been removed.
+services, and is excluded from the production build.
 
 ## Main Flows
 
@@ -70,20 +69,21 @@ services, and is excluded from the production build. The earlier app-shaped mock
 
 ```text
 src/ui/
-├── index.ts / index.css        Public components / new-shell styles
-├── shell/useWorkspace.ts       Shared workflow coordination
-├── shell/WorkspaceShell.tsx    Original shell
-├── shell/WorkspaceSettings.tsx Shared settings actions
-├── next/                      Parallel shell, controls, and theme
+├── index.ts / index.css        Public components and styles
+├── shell/useWorkspace.ts       Workflow coordination
+├── shell/WorkspaceShell.tsx    Navigation and screen composition
+├── shell/WorkspaceSettings.tsx Settings actions
+├── components/                Controls, tools, and overlays
+├── screens/                   Launcher and settings pages
+├── theme/                     Design tokens and appearance
 ├── gallery/                   Development-only component catalog
-├── tools/WorkspaceToolPanel.tsx
 └── dialogs/SettingsDialog.tsx
 ```
 
 ## Verification
 
-`WorkspaceShell.test.tsx` covers orchestration and sync wake-ups. `WorkspaceToolPanel.test.tsx` covers tool behavior.
-`e2e/next-ui.spec.ts` checks both phone and desktop layouts, shared persistence across shells, sandbox execution, data import,
+`useWorkspace.test.tsx` covers orchestration and sync wake-ups. Component tests cover tools and safe Markdown rendering.
+`e2e/workspace.spec.ts` checks both phone and desktop layouts, persistence across reloads, sandbox execution, data import,
 copy/delete, settings, and the agent tool loop with a mocked provider. It needs no credentials or paid API calls.
 `e2e/gallery.spec.ts` checks the shared controls, sync icons, themes, and responsive tool panel.
 

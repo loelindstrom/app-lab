@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Check, Copy, Link, Settings } from "lucide-react";
-import { encodeAppInvite } from "../../../sync";
-import type { WorkspaceController } from "../../shell/useWorkspace";
+import { encodeAppInvite } from "../../sync";
+import type { WorkspaceController } from "../shell/useWorkspace";
 import { Button } from "./controls";
 
 export function SharePanel({ workspace, onSettings }: { workspace: WorkspaceController; onSettings: () => void }) {

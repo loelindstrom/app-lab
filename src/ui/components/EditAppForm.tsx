@@ -1,6 +1,6 @@
 import { useState, type CSSProperties } from "react";
 import { Check, RotateCcw } from "lucide-react";
-import type { AppDetailsInput } from "../../shell/appDetails";
+import type { AppDetailsInput } from "../shell/appDetails";
 import type { LauncherApp } from "../types";
 import { AppIcon } from "./AppIcon";
 import { Button, IconButton } from "./controls";

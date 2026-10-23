@@ -1,13 +1,13 @@
 import { useState } from "react";
 import { ArrowLeft, ArrowUpRight, Code2, Database, FlaskConical } from "lucide-react";
-import { AiToolsButton } from "../next/components/AiToolsButton";
-import { Button, IconButton, Switch, Tabs } from "../next/components/controls";
-import { EditAppForm } from "../next/components/EditAppForm";
-import { FileEditor } from "../next/components/FileEditor";
-import { SyncStatusIndicator } from "../next/components/SyncStatusIndicator";
-import { ToolsPanel } from "../next/components/ToolsPanel";
-import { AppearanceControl, useAppearance } from "../next/theme/appearance";
-import type { LauncherApp } from "../next/types";
+import { AiToolsButton } from "../components/AiToolsButton";
+import { Button, IconButton, Switch, Tabs } from "../components/controls";
+import { EditAppForm } from "../components/EditAppForm";
+import { FileEditor } from "../components/FileEditor";
+import { SyncStatusIndicator } from "../components/SyncStatusIndicator";
+import { ToolsPanel } from "../components/ToolsPanel";
+import { AppearanceControl, useAppearance } from "../theme/appearance";
+import type { LauncherApp } from "../types";
 
 const SYNC_STATES = [
   { kind: "synced", label: "Synced", title: "Synced with remote storage.", tone: "good" },
@@ -30,7 +30,7 @@ export function ComponentGallery() {
     appId: "gallery", id: "gallery", kind: 0, name: "Weekend board", description: "", updatedAt: "", unavailable: false,
   });
   const [notice, setNotice] = useState("");
-  const workspaceUrl = `${import.meta.env.BASE_URL}next/`;
+  const workspaceUrl = import.meta.env.BASE_URL;
 
   return <div className="component-gallery">
     <header className="gallery-header">

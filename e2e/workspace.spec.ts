@@ -12,15 +12,17 @@ console.error('A real sandbox console error');
 </script></body></html>`;
 
 for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 960 }]) {
-  test.describe(`live parallel UI (${viewport.width}px)`, () => {
+  test.describe(`workspace UI (${viewport.width}px)`, () => {
     test.setTimeout(60_000);
     test.use({ viewport });
 
-    test("uses the same apps and data as the original UI, without changing the sandbox boundary", async ({ page }) => {
+    test("persists source and data across reloads without changing the sandbox boundary", async ({ page }) => {
       await page.goto("/");
-      await page.getByRole("button", { name: "Create new app" }).click();
+      await page.getByRole("button", { name: "New app", exact: true }).click();
+      await page.getByLabel("App name", { exact: true }).fill("Opinionated Board");
+      await page.getByRole("button", { name: "Create app", exact: true }).click();
       await expect(page.locator('iframe[sandbox="allow-scripts"]')).toBeVisible();
-      await page.goto("/next/");
+      await page.goto("/");
       await expect(page.locator(".launcher-header-inner")).toHaveCSS("height", "56px");
       await page.getByRole("button", { name: "Open Opinionated Board" }).click();
       await expect(page.locator(".workspace-app-header")).toHaveCSS("height", "56px");
@@ -30,6 +32,10 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 960 
       await page.evaluate(() => Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async (text: string) => { (window as unknown as { copied: string }).copied = text; } } }));
       await page.getByRole("button", { name: "Copy prompt + code" }).click();
       await expect(page.getByRole("button", { name: "Copied", exact: true })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "1. Describe your idea" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "2. Copy the prompt" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "3. Ask your AI" })).toBeVisible();
+      await expect(page.getByText("4. Paste the new code", { exact: true })).toBeVisible();
       const prompt = await page.evaluate(() => (window as unknown as { copied: string }).copied);
       expect(prompt).toContain("AppLab.saveData");
       expect(prompt).toContain("Opinionated Board");
@@ -53,14 +59,15 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 960 
       await page.getByRole("button", { name: "Close tools" }).click();
       await expect(page.locator(".ai-tools-button .attention-dot")).toBeHidden();
       await page.goto("/");
-      await page.getByRole("button", { name: "Open", exact: true }).click();
+      await page.getByRole("button", { name: "Open Shared counter", exact: true }).click();
       await expect(frame(page).locator("#count")).toHaveText("1");
-      await page.getByRole("button", { name: "Toggle source" }).click();
-      await page.locator("aside textarea").first().fill(SOURCE.replaceAll("Shared counter", "Edited in original UI"));
-      await page.getByRole("button", { name: "Save", exact: true }).click();
-      await expect(frame(page).getByRole("heading", { name: "Edited in original UI" })).toBeVisible();
-      await page.goto("/next/");
-      await page.getByRole("button", { name: "Open Edited in original UI" }).click();
+      await page.getByRole("button", { name: "Open app tools" }).click();
+      await page.getByRole("tab", { name: "Develop", exact: true }).click();
+      await page.getByLabel("App source (HTML)").fill(SOURCE.replaceAll("Shared counter", "Edited source"));
+      await page.getByRole("button", { name: "Apply changes" }).click();
+      await expect(frame(page).getByRole("heading", { name: "Edited source" })).toBeVisible();
+      await page.goto("/");
+      await page.getByRole("button", { name: "Open Edited source" }).click();
       await expect(frame(page).locator("#count")).toHaveText("1");
     });
 
@@ -110,7 +117,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 960 
             : { content: "Created a **shared counter**." };
         await route.fulfill({ status: 200, contentType: "text/event-stream", body: `data: ${JSON.stringify({ choices: [{ delta }], usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15, cost: 0.001 } })}\n\ndata: [DONE]\n\n` });
       });
-      await page.goto("/next/");
+      await page.goto("/");
       await page.getByRole("button", { name: "Settings", exact: true }).click();
       await page.getByRole("button", { name: /^AI/ }).click();
       await page.getByLabel("OpenRouter API key").fill("sk-or-test-only");
@@ -118,7 +125,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 960 
       await page.getByRole("button", { name: "Save AI configuration" }).click();
       await expect(page.getByRole("status")).toContainText("AI configuration saved");
       await page.goto("/");
-      await page.getByRole("button", { name: "Open settings" }).click();
+      await page.getByRole("button", { name: "Settings", exact: true }).click();
       await page.getByRole("button", { name: /^AI/ }).click();
       await expect(page.getByLabel("Model id")).toHaveValue("test/model");
       await createApp(page, "AI test");
@@ -205,7 +212,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 960 
     });
 
     test("supports profile settings, system appearance, sharing prerequisites, and browser navigation", async ({ page }) => {
-      await page.goto("/next/");
+      await page.goto("/");
       await page.getByRole("button", { name: "Settings", exact: true }).click();
       await page.getByRole("button", { name: "AI", exact: true }).click();
       await page.getByRole("button", { name: "AI Agent", exact: true }).click();
@@ -288,7 +295,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 960 
 function frame(page: Page) { return page.frameLocator('iframe[sandbox="allow-scripts"]'); }
 
 async function createApp(page: Page, name: string) {
-  await page.goto("/next/");
+  await page.goto("/");
   await page.getByRole("button", { name: "New app", exact: true }).click();
   await page.getByLabel("App name", { exact: true }).fill(name);
   await page.getByRole("button", { name: "Create app", exact: true }).click();

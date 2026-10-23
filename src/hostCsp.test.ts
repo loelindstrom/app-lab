@@ -3,21 +3,19 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { FlaskConical } from "lucide-react";
 import indexHtml from "../index.html?raw";
-import nextHtml from "../next/index.html?raw";
 import galleryHtml from "../gallery/index.html?raw";
 import favicon from "../public/favicon.svg?raw";
 
 describe("host CSP", () => {
-  it("keeps the parallel shell's host security policy identical", () => {
+  it("keeps the gallery's host security policy identical", () => {
     const policy = (html: string) => new DOMParser().parseFromString(html, "text/html")
       .querySelector('meta[http-equiv="Content-Security-Policy"]')?.getAttribute("content");
-    expect(policy(nextHtml)).toBeTruthy();
-    expect(policy(nextHtml)).toBe(policy(indexHtml));
+    expect(policy(indexHtml)).toBeTruthy();
     expect(policy(galleryHtml)).toBe(policy(indexHtml));
   });
 
   it("uses the launcher flask as the favicon in every entry point", () => {
-    for (const html of [indexHtml, nextHtml, galleryHtml]) {
+    for (const html of [indexHtml, galleryHtml]) {
       const doc = new DOMParser().parseFromString(html, "text/html");
       expect(doc.querySelector('link[rel="icon"]')?.getAttribute("href")).toBe("%BASE_URL%favicon.svg");
     }

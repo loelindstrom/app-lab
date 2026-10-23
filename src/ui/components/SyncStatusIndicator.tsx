@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { X } from "lucide-react";
-import type { AppSyncHealth } from "../../shell/useWorkspace";
+import type { AppSyncHealth } from "../shell/useWorkspace";
 import { IconButton } from "./controls";
 import { SyncStatusIcon } from "./SyncStatusIcon";
 import "./syncStatus.css";

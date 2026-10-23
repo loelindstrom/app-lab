@@ -1,3 +1,4 @@
+import { createApp, openApp, openTools } from "./ui";
 import { expect, test, type Page, type Request, type Route } from "@playwright/test";
 
 const CHAT_URL = "https://openrouter.ai/api/v1/chat/completions";
@@ -37,10 +38,10 @@ test.describe("BuilderAI browser workflow", () => {
     });
 
     await configureTestAi(page);
-    await page.getByRole("button", { name: "Create new app" }).click();
-    await page.getByRole("button", { name: "Toggle BuilderAI" }).click();
-    await expect(page.getByText(/Describe how you want to edit Opinionated Board/)).toBeVisible();
-    await expect(page.getByRole("button", { name: "Open AI connection settings for provider/model" })).toBeVisible();
+    await createApp(page);
+    await openTools(page, "AI", "Chat");
+    await expect(page.getByText("What would you like to change?", { exact: true })).toBeVisible();
+    await expect(page.getByText("provider/model", { exact: true })).toBeVisible();
 
     await page.getByLabel("Message", { exact: true }).fill("Replace this with the browser test app");
     await page.getByRole("button", { name: "Send message" }).click();
@@ -73,34 +74,34 @@ test.describe("BuilderAI browser workflow", () => {
       success: true,
     });
     expect(String(writeReceipt?.content)).not.toContain("<!doctype html>");
-    await expect(page.getByLabel("Builder session usage")).toHaveText("Session: $0.0030 · 360 tokens");
+    await expect(page.locator(".live-chat-usage > span")).toHaveText("$0.0030");
 
-    await page.getByRole("button", { name: "‹ Apps" }).click();
-    await page.getByRole("button", { name: "Open", exact: true }).click();
-    await page.getByRole("button", { name: "Toggle BuilderAI" }).click();
+    await page.getByRole("button", { name: "Back to workspace" }).click();
+    await openApp(page);
+    await openTools(page, "AI", "Chat");
     await expect(page.getByText("I rebuilt the app in the sandbox.")).toBeVisible();
   });
 
   test("opens AI settings from the unconfigured Builder panel", async ({ page }) => {
     await page.goto("/");
-    await page.getByRole("button", { name: "Create new app" }).click();
-    await page.getByRole("button", { name: "Toggle BuilderAI" }).click();
-    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await createApp(page);
+    await openTools(page, "AI", "Chat");
+    await page.getByRole("button", { name: "Set up AI", exact: true }).click();
 
-    await expect(page.getByRole("dialog", { name: "Settings" })).toBeVisible();
+    await expect(page.locator(".settings-screen")).toBeVisible();
     await expect(page.getByLabel("OpenRouter API key")).toBeVisible();
   });
 
   test("creates the selected starter and changes profiles without replacing the active app", async ({ page }) => {
     await page.goto("/");
-    await page.getByRole("button", { name: "Open settings" }).click();
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
     await page.getByRole("button", { name: "AI", exact: true }).click();
     await page.getByRole("button", { name: "AI Agent" }).click();
     await page.getByLabel("Active profile").selectOption("builtin-minimal-v1");
     await expect(page.getByLabel("Active profile")).toHaveValue("builtin-minimal-v1");
     await page.getByRole("button", { name: /Back/ }).click();
 
-    await page.getByRole("button", { name: "Create new app" }).click();
+    await createApp(page, "Minimal Board");
     const frame = page.frameLocator('iframe[sandbox="allow-scripts"]');
     await expect(page.getByText("Minimal Board", { exact: true }).first()).toBeVisible();
     await expect(frame.getByText(/This example app shows you \(the user\) and the AI/)).toBeVisible();
@@ -112,14 +113,15 @@ test.describe("BuilderAI browser workflow", () => {
     await frame.getByRole("button", { name: "Delete", exact: true }).click();
     await expect(frame.getByText("Temporary board note", { exact: true })).toBeHidden();
 
-    await page.getByRole("button", { name: "Toggle BuilderAI" }).click();
-    await page.getByRole("button", { name: "Open Builder profile settings for Minimal" }).click();
+    await openTools(page, "AI", "Chat");
+    await page.getByRole("button", { name: /^BuilderAI/ }).click();
+    await page.getByRole("button", { name: "AI Agent", exact: true }).click();
     await expect(page.getByRole("button", { name: "AI Agent" })).toHaveAttribute("aria-current", "page");
     await page.getByLabel("Active profile").selectOption("builtin-opinionated-v1");
     await page.getByRole("button", { name: /Back/ }).click();
 
     await expect(frame.getByLabel("Note", { exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Open Builder profile settings for Opinionated" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "BuilderAI / Opinionated", exact: true })).toBeVisible();
   });
 
   test("stores custom Builder profiles in this browser", async ({ page }) => {
@@ -130,7 +132,7 @@ test.describe("BuilderAI browser workflow", () => {
     });
     await page.setViewportSize({ height: 844, width: 390 });
     await page.goto("/");
-    await page.getByRole("button", { name: "Open settings" }).click();
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
     await page.getByRole("button", { name: /^AI/ }).click();
     await page.getByRole("button", { name: "AI Agent" }).click();
     await page.getByLabel("Conversation memory").selectOption("long");
@@ -167,8 +169,8 @@ test.describe("BuilderAI browser workflow", () => {
     });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 
-    await page.reload();
-    await page.getByRole("button", { name: "Open settings" }).click();
+    await page.goto("/");
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
     await page.getByRole("button", { name: /^AI/ }).click();
     await page.getByRole("button", { name: "AI Agent" }).click();
     await expect(page.getByLabel("Conversation memory")).toHaveValue("long");
@@ -178,10 +180,10 @@ test.describe("BuilderAI browser workflow", () => {
     await page.evaluate(() => {
       localStorage.setItem("app-lab-ai-config-v1", JSON.stringify({ apiKey: "sk-test-browser", model: "provider/model" }));
     });
-    await page.reload();
-    await page.getByRole("button", { name: "Create new app" }).click();
+    await page.goto("/");
+    await createApp(page, "Profile Starter");
     await expect(page.frameLocator('iframe[sandbox="allow-scripts"]').getByRole("heading", { name: "Profile Starter" })).toBeVisible();
-    await page.getByRole("button", { name: "Toggle BuilderAI" }).click();
+    await openTools(page, "AI", "Chat");
     await page.getByLabel("Message", { exact: true }).fill("Use my profile");
     await page.getByRole("button", { name: "Send message" }).click();
     await expect(page.getByText("Used the active profile.")).toBeVisible();

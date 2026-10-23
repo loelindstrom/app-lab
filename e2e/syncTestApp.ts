@@ -1,4 +1,5 @@
 import { expect, type Page } from "@playwright/test";
+import { createApp } from "./ui";
 
 const SYNC_TEST_PROFILE_ID = "e2e-sync-test-profile";
 
@@ -128,8 +129,8 @@ export async function createSyncTestApp(page: Page): Promise<void> {
     { profileId: SYNC_TEST_PROFILE_ID, starterSource: SYNC_TEST_APP_SOURCE },
   );
 
-  await page.getByRole("button", { name: "Create new app" }).click();
-  await expect(page.getByRole("button", { name: "Toggle source" })).toBeVisible({ timeout: 30_000 });
+  await createApp(page, SYNC_TEST_APP_TITLE);
+  await expect(page.getByRole("button", { name: "Open app tools" })).toBeVisible({ timeout: 30_000 });
   await expect(page.frameLocator('iframe[title$=" app"]').getByRole("heading", { name: SYNC_TEST_APP_TITLE })).toBeVisible();
 }
 

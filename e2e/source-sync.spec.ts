@@ -1,4 +1,5 @@
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
+import { createInvite, openApp, saveSource } from "./ui";
 import { readFirebaseE2eProfile, type FirebaseE2eProfile } from "./firebaseProfile";
 import { addSyncTestItem, createSyncTestApp, deleteSyncTestItem, SYNC_TEST_APP_TITLE } from "./syncTestApp";
 
@@ -40,20 +41,20 @@ test.describe("@firebase source sync", () => {
       await joined.goto(inviteUrl);
       await previewAndImportSharedApp(joined);
       await expect(joined.getByText(initialTitle).first()).toBeVisible({ timeout: 15_000 });
-      await joined.getByRole("button", { name: "Open", exact: true }).click();
-      await expect(joined.getByRole("heading", { name: initialTitle })).toBeVisible();
+      await openApp(joined);
+      await expect(joined.locator(".workspace-app-identity").getByText(initialTitle, { exact: true })).toBeVisible();
 
       await ownerBrowserContext.setOffline(true);
       await saveSource(owner, htmlForTitle(offlineTitle));
-      await expect(owner.getByRole("heading", { name: offlineTitle })).toBeVisible();
-      await owner.getByRole("button", { name: "‹ Apps" }).click();
-      await owner.getByRole("button", { name: "Open", exact: true }).click();
-      await expect(owner.getByRole("heading", { name: offlineTitle })).toBeVisible();
+      await expect(owner.locator(".workspace-app-identity").getByText(offlineTitle, { exact: true })).toBeVisible();
+      await owner.getByRole("button", { name: "Back to workspace" }).click();
+      await openApp(owner);
+      await expect(owner.locator(".workspace-app-identity").getByText(offlineTitle, { exact: true })).toBeVisible();
 
       await ownerBrowserContext.setOffline(false);
       await owner.evaluate(() => window.dispatchEvent(new Event("online")));
 
-      await expect(joined.getByRole("heading", { name: offlineTitle })).toBeVisible({ timeout: 15_000 });
+      await expect(joined.locator(".workspace-app-identity").getByText(offlineTitle, { exact: true })).toBeVisible({ timeout: 15_000 });
     } finally {
       await ownerBrowserContext.setOffline(false);
       await closePages(owner, joined);
@@ -79,17 +80,17 @@ test.describe("@firebase source sync", () => {
       await joined.goto(inviteUrl);
       await previewAndImportSharedApp(joined);
       await expect(joined.getByText(initialTitle).first()).toBeVisible({ timeout: 15_000 });
-      await joined.getByRole("button", { name: "Open", exact: true }).click();
+      await openApp(joined);
 
       await ownerBrowserContext.setOffline(true);
       await saveSource(owner, htmlForTitle(offlineTitle));
       await saveSource(joined, htmlForTitle(remoteTitle));
-      await expect(joined.getByRole("heading", { name: remoteTitle })).toBeVisible();
+      await expect(joined.locator(".workspace-app-identity").getByText(remoteTitle, { exact: true })).toBeVisible();
 
       await ownerBrowserContext.setOffline(false);
       await owner.evaluate(() => window.dispatchEvent(new Event("online")));
 
-      await expect(joined.getByRole("heading", { name: offlineTitle })).toBeVisible({ timeout: 15_000 });
+      await expect(joined.locator(".workspace-app-identity").getByText(offlineTitle, { exact: true })).toBeVisible({ timeout: 15_000 });
     } finally {
       await ownerBrowserContext.setOffline(false);
       await closePages(owner, joined);
@@ -112,12 +113,12 @@ test.describe("@firebase source sync", () => {
       await joined.goto(inviteUrl);
       await previewAndImportSharedApp(joined);
       await expect(joined.getByText(initialTitle).first()).toBeVisible({ timeout: 15_000 });
-      await joined.getByRole("button", { name: "Open", exact: true }).click();
-      await expect(joined.getByRole("heading", { name: initialTitle })).toBeVisible();
+      await openApp(joined);
+      await expect(joined.locator(".workspace-app-identity").getByText(initialTitle, { exact: true })).toBeVisible();
 
       for (const title of [`E2E source one ${Date.now()}`, `E2E source two ${Date.now()}`, `E2E source three ${Date.now()}`]) {
         await saveSource(owner, htmlForTitle(title));
-        await expect(joined.getByRole("heading", { name: title })).toBeVisible({ timeout: 15_000 });
+        await expect(joined.locator(".workspace-app-identity").getByText(title, { exact: true })).toBeVisible({ timeout: 15_000 });
       }
     } finally {
       await closePages(owner, joined);
@@ -139,7 +140,7 @@ test.describe("@firebase source sync", () => {
       await joined.goto(inviteUrl);
       await previewAndImportSharedApp(joined);
       await expect(joined.getByText(SYNC_TEST_APP_TITLE).first()).toBeVisible({ timeout: 15_000 });
-      await joined.getByRole("button", { name: "Open", exact: true }).click();
+      await openApp(joined);
       await expect(appFrame(joined).getByRole("heading", { name: SYNC_TEST_APP_TITLE })).toBeVisible();
 
       await addSyncTestItem(owner, "Online item");
@@ -149,8 +150,8 @@ test.describe("@firebase source sync", () => {
       await ownerBrowserContext.setOffline(true);
       await addSyncTestItem(owner, "Offline item");
       await expect(appFrame(owner).getByText("Offline item")).toBeVisible();
-      await owner.getByRole("button", { name: "‹ Apps" }).click();
-      await owner.getByRole("button", { name: "Open", exact: true }).click();
+      await owner.getByRole("button", { name: "Back to workspace" }).click();
+      await openApp(owner);
       await expect(appFrame(owner).getByText("Offline item")).toBeVisible();
 
       await ownerBrowserContext.setOffline(false);
@@ -177,7 +178,7 @@ test.describe("@firebase source sync", () => {
       await joined.goto(inviteUrl);
       await previewAndImportSharedApp(joined);
       await expect(joined.getByText(SYNC_TEST_APP_TITLE).first()).toBeVisible({ timeout: 15_000 });
-      await joined.getByRole("button", { name: "Open", exact: true }).click();
+      await openApp(joined);
       await expect(appFrame(joined).getByRole("heading", { name: SYNC_TEST_APP_TITLE })).toBeVisible();
 
       for (const item of ["Live one", "Live two", "Live three"]) {
@@ -308,27 +309,6 @@ async function configureStorage(page: Page, config: Record<string, string>, prof
     );
   }, { firebaseConfig: config, profile });
   await page.reload();
-}
-
-async function saveSource(page: Page, sourceCode: string) {
-  const sourceToggle = page.getByRole("button", { name: "Toggle source" });
-  await sourceToggle.click();
-  const sourcePanel = page.locator('aside[aria-label="Source"]');
-  await sourcePanel.locator("textarea").first().fill(sourceCode);
-  await sourcePanel.getByRole("button", { name: "Save" }).click();
-  await expect(sourcePanel.getByText("Saved.")).toBeVisible();
-  await sourceToggle.click();
-}
-
-async function createInvite(page: Page): Promise<string> {
-  await page.getByRole("button", { name: /^Share / }).click();
-  const dialog = page.getByRole("dialog", { name: "Share app" });
-  await dialog.getByRole("button", { name: "Create invite" }).click();
-  const inviteText = dialog.getByRole("textbox");
-  await expect.poll(() => inviteText.inputValue()).toContain("#applab-invite=");
-  const inviteUrl = await inviteText.inputValue();
-  await dialog.getByRole("button", { name: "Close share dialog" }).click();
-  return inviteUrl;
 }
 
 async function previewAndImportSharedApp(page: Page) {

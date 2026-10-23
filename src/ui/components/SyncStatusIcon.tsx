@@ -1,5 +1,5 @@
 import { Check, CircleAlert, Clock3, Cloud, RefreshCw, WifiOff } from "lucide-react";
-import type { AppSyncHealthKind } from "../../shell/useWorkspace";
+import type { AppSyncHealthKind } from "../shell/useWorkspace";
 
 const MARKS = { synced: Check, syncing: RefreshCw, pending: Clock3, offline: WifiOff, problem: CircleAlert };
 

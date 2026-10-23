@@ -2,7 +2,6 @@ import { expect, test, type Page } from "@playwright/test";
 import { resolveConfig } from "vite";
 
 const STAGING = "/app-lab/staging/";
-const NEXT = `${STAGING}next/`;
 const SOURCE = `<!doctype html><html><head>
 <meta name="app-lab-tailwind" content="enabled"><title>Offline counter</title>
 </head><body><main class="p-4"><h1>Offline counter</h1><p id="count">Loading</p>
@@ -32,12 +31,12 @@ test("staging refuses a worker scoped to the production base", async () => {
     .rejects.toThrow("The staging worker requires an absolute base path ending in /staging/.");
 });
 
-test("both UI entries reopen offline, compile local Tailwind, and persist edits", async ({ page, context }) => {
+test("the main UI reopens offline, compiles local Tailwind, and persists edits", async ({ page, context }) => {
   await install(page);
-  // The next UI has not been visited: its HTML, fonts and chunks must be precached too.
+  // A fresh offline navigation must load the new shell and its precached assets.
   await context.setOffline(true);
-  await page.goto(NEXT);
-  await expect(page).toHaveTitle("App Lab Next");
+  await page.goto(STAGING);
+  await expect(page).toHaveTitle("App Lab");
   await page.getByRole("button", { name: "New app", exact: true }).click();
   await page.getByLabel("App name", { exact: true }).fill("Offline draft");
   await page.getByRole("button", { name: "Create app", exact: true }).click();
@@ -57,19 +56,19 @@ test("both UI entries reopen offline, compile local Tailwind, and persist edits"
 
   await page.goto(STAGING);
   await expect(page).toHaveTitle("App Lab");
-  await page.getByRole("button", { name: "Open", exact: true }).click();
+  await page.getByRole("button", { name: "Open Offline counter", exact: true }).click();
   await expect(frame.locator("#count")).toHaveText("1");
   await frame.getByRole("button", { name: "Add one" }).click();
   await expect(frame.locator("#count")).toHaveText("2");
-  await page.goto(NEXT);
+  await page.goto(STAGING);
   await page.getByRole("button", { name: "Open Offline counter", exact: true }).click();
   await expect(frame.locator("#count")).toHaveText("2");
 });
 
-test("the new UI can install first; production and live metadata stay outside its cache", async ({ page, context }) => {
-  await install(page, NEXT);
-  const first = await page.evaluate(async () => (await fetch("../deploy.json")).json());
-  const second = await page.evaluate(async () => (await fetch("../deploy.json")).json());
+test("production and live metadata stay outside the staging cache", async ({ page, context }) => {
+  await install(page);
+  const first = await page.evaluate(async () => (await fetch("deploy.json")).json());
+  const second = await page.evaluate(async () => (await fetch("deploy.json")).json());
   expect(second.request).toBeGreaterThan(first.request);
   const cachedUrls = await page.evaluate(async () => {
     const keys = await caches.keys();
@@ -79,11 +78,10 @@ test("the new UI can install first; production and live metadata stay outside it
   expect(cachedUrls.keys.every((key) => key.startsWith("app-lab-staging-"))).toBe(true);
   expect(cachedUrls.urls.every((url) => new URL(url).pathname.startsWith(STAGING))).toBe(true);
   expect(cachedUrls.urls.some((url) => url.includes("deploy.json"))).toBe(false);
+  expect((await page.request.get(`${STAGING}next/`)).status()).toBe(404);
   expect((await page.request.get("/app-lab/sw.js")).status()).toBe(404);
 
   await page.goto("/app-lab/");
-  expect(await page.evaluate(() => navigator.serviceWorker.controller)).toBeNull();
-  await page.goto("/app-lab/next/");
   expect(await page.evaluate(() => navigator.serviceWorker.controller)).toBeNull();
   await context.setOffline(true);
   await page.goto(STAGING);
@@ -95,7 +93,7 @@ test("the new UI can install first; production and live metadata stay outside it
 test("updates wait for all staging tabs to close", async ({ page, context, request }) => {
   await install(page);
   const other = await context.newPage();
-  await other.goto(NEXT);
+  await other.goto(STAGING);
   const update = await request.post("/__pwa_test/update");
   expect(update.ok()).toBe(true);
   const { version } = await update.json();
@@ -113,14 +111,16 @@ test("updates wait for all staging tabs to close", async ({ page, context, reque
   await expect.poll(() => reopened.evaluate(async () => (await navigator.serviceWorker.ready).waiting?.state ?? null)).toBeNull();
   await expect(reopened.locator('meta[name="pwa-test-build"]')).toHaveAttribute("content", version);
   await context.setOffline(true);
-  await reopened.goto(NEXT);
-  await expect(reopened).toHaveTitle("App Lab Next");
+  await reopened.goto(STAGING);
+  await expect(reopened).toHaveTitle("App Lab");
   await expect(reopened.locator('meta[name="pwa-test-build"]')).toHaveAttribute("content", version);
 });
 
 test("rollback retires the worker while preserving app data and unrelated caches", async ({ page, request }) => {
   await install(page);
-  await page.getByRole("button", { name: "Create new app", exact: true }).click();
+  await page.getByRole("button", { name: "New app", exact: true }).click();
+  await page.getByLabel("App name", { exact: true }).fill("Offline board");
+  await page.getByRole("button", { name: "Create app", exact: true }).click();
   await expect(page.locator('iframe[sandbox="allow-scripts"]')).toBeVisible();
   await page.evaluate(async () => {
     const cache = await caches.open("production-cache-sentinel");
@@ -135,6 +135,7 @@ test("rollback retires the worker while preserving app data and unrelated caches
   await page.reload();
   await expect(page.locator('meta[name="pwa-test-build"]')).toHaveAttribute("content", version);
   expect(await page.evaluate(() => navigator.serviceWorker.controller)).toBeNull();
-  await page.getByRole("button", { name: "Open", exact: true }).click();
+  await page.goto(STAGING);
+  await page.getByRole("button", { name: "Open Offline board", exact: true }).click();
   await expect(page.frameLocator('iframe[sandbox="allow-scripts"]').getByRole("heading", { name: "Active notes" })).toBeVisible();
 });

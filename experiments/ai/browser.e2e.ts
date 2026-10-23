@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { createApp, saveSource } from "../../e2e/ui";
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -21,13 +22,8 @@ test.describe("BuilderAI generated-app browser checks", () => {
       page.on("pageerror", (error) => sandboxErrors.push(error.message));
 
       await page.goto("/");
-      await page.getByRole("button", { name: "Create new app" }).click();
-      await page.getByRole("button", { name: "Toggle source" }).click();
-      const sourcePanel = page.locator('aside[aria-label="Source"]');
-      await sourcePanel.locator("textarea").first().fill(generatedApp.sourceCode);
-      await sourcePanel.getByRole("button", { name: "Save" }).click();
-      await expect(sourcePanel.getByText("Saved.")).toBeVisible({ timeout: 20_000 });
-      await page.getByRole("button", { name: "Toggle source" }).click();
+      await createApp(page);
+      await saveSource(page, generatedApp.sourceCode);
 
       const sandbox = page.frameLocator('iframe[sandbox="allow-scripts"]');
       await expect(sandbox.locator("body")).not.toBeEmpty();

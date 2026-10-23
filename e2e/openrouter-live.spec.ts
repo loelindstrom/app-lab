@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { createApp, openTools, saveSource } from "./ui";
 
 const OPENROUTER_LIVE_MODEL = "google/gemini-3-flash-preview";
 const MINIMAL_SOURCE = `<!doctype html>
@@ -27,10 +28,10 @@ test.describe("@openrouter BuilderAI live provider", () => {
       { key: apiKey, model: OPENROUTER_LIVE_MODEL },
     );
     await page.reload();
-    await page.getByRole("button", { name: "Create new app" }).click();
+    await createApp(page);
     await saveSource(page, MINIMAL_SOURCE);
 
-    await page.getByRole("button", { name: "Toggle BuilderAI" }).click();
+    await openTools(page, "AI", "Chat");
     await page.getByLabel("Message", { exact: true }).fill(
       "Use the tools now. First read the current app source. Then replace it with a complete minimal HTML document whose title and visible h1 are exactly OpenRouter Live Test. Do not ask questions.",
     );
@@ -41,13 +42,3 @@ test.describe("@openrouter BuilderAI live provider", () => {
     ).toBeVisible({ timeout: 110_000 });
   });
 });
-
-async function saveSource(page: Page, sourceCode: string) {
-  const sourceToggle = page.getByRole("button", { name: "Toggle source" });
-  await sourceToggle.click();
-  const sourcePanel = page.locator('aside[aria-label="Source"]');
-  await sourcePanel.locator("textarea").first().fill(sourceCode);
-  await sourcePanel.getByRole("button", { name: "Save" }).click();
-  await expect(sourcePanel.getByText("Saved.")).toBeVisible();
-  await sourceToggle.click();
-}

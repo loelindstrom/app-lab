@@ -1,12 +1,12 @@
-import { useMemo, type ComponentType } from "react";
+import { useMemo } from "react";
 import { createBrowserAiActions } from "./ai";
 import { createIndexedDbCore } from "./core";
 import { createBrowserWorkspaceSyncActions } from "./sync";
-import { WorkspaceShell, type WorkspaceServices } from "./ui";
+import { WorkspaceShell } from "./ui";
 
-export function App({ shell: Shell = WorkspaceShell }: { shell?: ComponentType<WorkspaceServices> }) {
+export function App() {
   const aiActions = useMemo(() => createBrowserAiActions(), []);
   const core = useMemo(() => createIndexedDbCore(), []);
   const syncActions = useMemo(() => createBrowserWorkspaceSyncActions(core), [core]);
-  return <Shell aiActions={aiActions} core={core} syncActions={syncActions} />;
+  return <WorkspaceShell aiActions={aiActions} core={core} syncActions={syncActions} />;
 }

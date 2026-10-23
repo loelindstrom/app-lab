@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, Code2, Copy, Database, ExternalLink, MessageSquare, Share2, Sparkles, Terminal, Trash2 } from "lucide-react";
-import { createPromptWithCode } from "../../../ai";
-import type { WorkspaceController } from "../../shell/useWorkspace";
+import { createPromptWithCode } from "../../ai";
+import type { WorkspaceController } from "../shell/useWorkspace";
 import type { ToolAttention } from "../types";
 import { Button, IconButton, Tabs } from "./controls";
 import { BuilderChat } from "./BuilderChat";

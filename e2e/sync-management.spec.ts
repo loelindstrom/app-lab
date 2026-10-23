@@ -1,4 +1,5 @@
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
+import { createInvite, openApp, saveSource, openSettings } from "./ui";
 import { readFirebaseE2eProfile, type FirebaseE2eProfile } from "./firebaseProfile";
 import { createSyncTestApp } from "./syncTestApp";
 
@@ -60,15 +61,15 @@ test.describe("@firebase sync management", () => {
       await joined.goto(inviteUrl);
       await previewAndImportSharedApp(joined);
       await expect(joined.getByText(title).first()).toBeVisible();
-      await joined.getByRole("button", { name: "Open", exact: true }).click();
-      await expect(joined.getByRole("heading", { name: title })).toBeVisible();
+      await openApp(joined);
+      await expect(joined.locator(".workspace-app-identity").getByText(title, { exact: true })).toBeVisible();
 
       await deleteCurrentOwnerApp(owner, title);
 
-      const syncWarning = joined.getByRole("button", { name: /Open sync status: This shared app was deleted by its owner/ });
+      const syncWarning = joined.getByRole("button", { name: "Sync status: App unavailable" });
       await expect(syncWarning).toBeVisible({ timeout: 15_000 });
       await syncWarning.click();
-      await expect(joined.getByText("This shared app was deleted by its owner.")).toBeVisible();
+      await expect(joined.locator(".live-notice")).toContainText("This shared app was deleted by its owner.");
     } finally {
       await closePages(owner, joined);
     }
@@ -100,7 +101,7 @@ test.describe("@firebase workspace sync management", () => {
       await restoreWorkspace(synced, recoveryText);
       await expect(synced.getByText(initialTitle).first()).toBeVisible({ timeout: 15_000 });
 
-      await original.getByRole("button", { name: "‹ Apps" }).click();
+      await original.getByRole("button", { name: "Back to workspace" }).click();
       await createSyncTestApp(original);
       await saveSource(original, htmlForTitle(originalLaterTitle));
 
@@ -109,7 +110,7 @@ test.describe("@firebase workspace sync management", () => {
       await createSyncTestApp(synced);
       await saveSource(synced, htmlForTitle(syncedLaterTitle));
 
-      await original.getByRole("button", { name: "‹ Apps" }).click();
+      await original.getByRole("button", { name: "Back to workspace" }).click();
       await expect(original.getByText(syncedLaterTitle).first()).toBeVisible({ timeout: 20_000 });
     } finally {
       await closePages(original, synced);
@@ -293,7 +294,7 @@ async function configureStorage(page: Page, config: Record<string, string>, prof
 async function returnToLauncher(page: Page) {
   await page.bringToFront();
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
-  const appsButton = page.getByRole("button", { name: "‹ Apps" });
+  const appsButton = page.getByRole("button", { name: "Back to workspace" });
   if (await appsButton.isVisible().catch(() => false)) {
     await appsButton.click();
   }
@@ -301,12 +302,12 @@ async function returnToLauncher(page: Page) {
 
 async function expectLauncherApp(page: Page, title: string, timeout = 20_000) {
   await returnToLauncher(page);
-  await expect(page.locator("article", { hasText: title })).toBeVisible({ timeout });
+  await expect(page.locator(".launcher-tile", { hasText: title })).toBeVisible({ timeout });
 }
 
 async function expectLauncherAppAbsent(page: Page, title: string, timeout = 20_000) {
   await returnToLauncher(page);
-  await expect(page.locator("article", { hasText: title })).toHaveCount(0, { timeout });
+  await expect(page.locator(".launcher-tile", { hasText: title })).toHaveCount(0, { timeout });
 }
 
 async function waitForSyncQueueDrained(page: Page, timeout = 30_000) {
@@ -333,27 +334,6 @@ async function syncQueueItemCount(page: Page): Promise<number> {
   });
 }
 
-async function saveSource(page: Page, sourceCode: string) {
-  const sourceToggle = page.getByRole("button", { name: "Toggle source" });
-  await sourceToggle.click();
-  const sourcePanel = page.locator('aside[aria-label="Source"]');
-  await sourcePanel.locator("textarea").first().fill(sourceCode);
-  await sourcePanel.getByRole("button", { name: "Save" }).click();
-  await expect(sourcePanel.getByText("Saved.")).toBeVisible();
-  await sourceToggle.click();
-}
-
-async function createInvite(page: Page): Promise<string> {
-  await page.getByRole("button", { name: /^Share / }).click();
-  const dialog = page.getByRole("dialog", { name: "Share app" });
-  await dialog.getByRole("button", { name: "Create invite" }).click();
-  const inviteText = dialog.getByRole("textbox");
-  await expect.poll(() => inviteText.inputValue()).toContain("#applab-invite=");
-  const inviteUrl = await inviteText.inputValue();
-  await dialog.getByRole("button", { name: "Close share dialog" }).click();
-  return inviteUrl;
-}
-
 async function previewAndImportSharedApp(page: Page) {
   const dialog = page.getByRole("dialog", { name: "Import shared app" });
   await dialog.getByRole("button", { name: "Preview app" }).click();
@@ -363,7 +343,7 @@ async function previewAndImportSharedApp(page: Page) {
 }
 
 async function exportRecoveryText(page: Page): Promise<string> {
-  await page.getByRole("button", { name: "Open settings" }).click();
+  await openSettings(page, "Storage");
   await page.getByRole("button", { name: "Sync device" }).click();
   await page.getByRole("button", { name: "Generate sync material" }).click();
   await expect(page.getByText("Sync material ready.")).toBeVisible({ timeout: 15_000 });
@@ -375,7 +355,7 @@ async function exportRecoveryText(page: Page): Promise<string> {
 }
 
 async function restoreWorkspace(page: Page, recoveryText: string) {
-  await page.getByRole("button", { name: "Open settings" }).click();
+  await openSettings(page, "Storage");
   await page.getByRole("button", { name: "Sync device" }).click();
   await page.getByPlaceholder("Paste workspace sync material").fill(recoveryText);
   await page.getByRole("button", { name: "Sync this device" }).click();
@@ -384,12 +364,12 @@ async function restoreWorkspace(page: Page, recoveryText: string) {
 }
 
 async function deleteCurrentOwnerApp(page: Page, title: string) {
-  page.once("dialog", (dialog) => dialog.accept());
-  await page.getByRole("button", { name: "‹ Apps" }).click();
-  await page.getByRole("button", { name: `Open app actions for ${title}` }).click();
-  await page.getByRole("dialog", { name: "App actions" }).getByRole("button", { name: "Delete", exact: true }).click();
-  await expect(page.getByRole("dialog", { name: "App actions" })).toBeHidden({ timeout: 15_000 });
-  await expect(page.locator("article", { hasText: title })).toHaveCount(0);
+  await page.getByRole("button", { name: "Back to workspace" }).click();
+  await page.getByRole("button", { name: `Options for ${title}` }).click();
+  await page.getByRole("button", { name: "Delete app", exact: true }).click();
+  await page.getByRole("dialog", { name: "Delete app?" }).getByRole("button", { name: "Delete", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Delete app?" })).toBeHidden({ timeout: 15_000 });
+  await expect(page.locator(".launcher-tile", { hasText: title })).toHaveCount(0);
 }
 
 function htmlForTitle(title: string) {

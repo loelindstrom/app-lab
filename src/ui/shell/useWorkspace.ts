@@ -33,7 +33,6 @@ import {
   type StorageProfile,
   type WorkspaceSyncActions,
 } from "../../sync";
-import type { ToolPanelMode } from "../tools/WorkspaceToolPanel";
 import { updateAppSourceDetails, type AppDetailsInput } from "./appDetails";
 
 type WorkspaceMode = "launcher" | "app";
@@ -76,18 +75,13 @@ export function useWorkspace({ aiActions, core, syncActions }: WorkspaceServices
   const [workspaceManifestRoomId, setWorkspaceManifestRoomId] = useState<string | null>(null);
   const [activeApp, setActiveApp] = useState<AppRecord | null>(null);
   const [mode, setMode] = useState<WorkspaceMode>("launcher");
-  const [activeTool, setActiveTool] = useState<ToolPanelMode | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsInitialAiTab, setSettingsInitialAiTab] = useState<"agent" | "connection" | undefined>();
   const [settingsInitialSection, setSettingsInitialSection] = useState<"ai" | "storage" | undefined>();
-  const [sharingApp, setSharingApp] = useState<AppSummary | null>(null);
   const [pendingInvite, setPendingInvite] = useState<AppInvitePayload | null>(null);
   const [remoteDataChange, setRemoteDataChange] = useState<RemoteDataChange | null>(null);
-  const [aiAttentionKey, setAiAttentionKey] = useState(0);
-  const [aiAttentionDismissed, setAiAttentionDismissed] = useState(true);
   const [consoleEntries, setConsoleEntries] = useState<SandboxConsoleEntry[]>([]);
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
-  const [syncStatusOpen, setSyncStatusOpen] = useState(false);
   const [sandboxReloadKey, setSandboxReloadKey] = useState(0);
   const activeAppIdRef = useRef<string | null>(null);
   const builderRunningAppIdsRef = useRef(new Set<string>());
@@ -311,11 +305,7 @@ export function useWorkspace({ aiActions, core, syncActions }: WorkspaceServices
     if (!app || navigationVersion !== navigationVersionRef.current) return;
     setActiveApp(app);
     setMode("app");
-    setActiveTool(null);
     setConsoleEntries([]);
-    setSyncStatusOpen(false);
-    setAiAttentionKey((key) => key + 1);
-    setAiAttentionDismissed(false);
     void pullLatestAppRooms(appId);
   }
 
@@ -335,11 +325,7 @@ export function useWorkspace({ aiActions, core, syncActions }: WorkspaceServices
     if (compileWarning) setSyncStatus(compileWarning);
     setActiveApp(app);
     setMode("app");
-    setActiveTool(null);
     setConsoleEntries([]);
-    setSyncStatusOpen(false);
-    setAiAttentionKey((key) => key + 1);
-    setAiAttentionDismissed(false);
     void syncActions.ensureAppBackedUp(app, { flush: isSyncReachable() }).then(
       () => refreshApps(),
       (error) => {
@@ -557,7 +543,6 @@ export function useWorkspace({ aiActions, core, syncActions }: WorkspaceServices
   function openLauncher() {
     navigationVersionRef.current += 1;
     setMode("launcher");
-    setActiveTool(null);
     void syncActions
       .pullLatestWorkspaceManifest()
       .catch((error) => {
@@ -567,14 +552,6 @@ export function useWorkspace({ aiActions, core, syncActions }: WorkspaceServices
       .finally(() => {
         void refreshApps(isSyncReachable());
       });
-  }
-
-  function toggleTool(nextTool: ToolPanelMode) {
-    if (nextTool === "builder") {
-      setAiAttentionDismissed(true);
-    }
-
-    setActiveTool((currentTool) => (currentTool === nextTool ? null : nextTool));
   }
 
   async function deleteApp(appId: string) {
@@ -604,27 +581,19 @@ export function useWorkspace({ aiActions, core, syncActions }: WorkspaceServices
     workspaceManifestRoomId,
     activeApp,
     mode,
-    activeTool,
-    setActiveTool,
     settingsOpen,
     setSettingsOpen,
     settingsInitialAiTab,
     setSettingsInitialAiTab,
     settingsInitialSection,
     setSettingsInitialSection,
-    sharingApp,
-    setSharingApp,
     pendingInvite,
     setPendingInvite,
     remoteDataChange,
-    aiAttentionKey,
-    aiAttentionDismissed,
     consoleEntries,
     setConsoleEntries,
     syncStatus,
     setSyncStatus,
-    syncStatusOpen,
-    setSyncStatusOpen,
     sandboxReloadKey,
     setSandboxReloadKey,
     activeBuilderProfile,
@@ -637,7 +606,6 @@ export function useWorkspace({ aiActions, core, syncActions }: WorkspaceServices
     sendBuilderMessage,
     clearBuilderConversation,
     openLauncher,
-    toggleTool,
     saveAppData,
     importAppData,
     trySync,

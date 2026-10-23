@@ -21,7 +21,7 @@ export default (env) => mergeConfig(appConfig(env), {
       workbox: {
         cacheId: "app-lab-staging",
         globPatterns: ["**/*.{html,js,css,svg,png,ico,woff,woff2}"],
-        // Each HTML entry (including next/) has its own cached directory index.
+        // Serve the main shell from its cached directory index.
         navigateFallback: null,
         directoryIndex: "index.html",
         ignoreURLParametersMatching: [/.*/],

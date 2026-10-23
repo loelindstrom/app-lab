@@ -1,8 +1,8 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AppRecord } from "../../../core";
-import type { WorkspaceController } from "../../shell/useWorkspace";
+import type { AppRecord } from "../../core";
+import type { WorkspaceController } from "../shell/useWorkspace";
 import { ToolSheet } from "./ToolSheet";
 
 vi.mock("./ToolsPanel", () => ({ ToolsPanel: ({ children }: { children: ReactNode }) => <div>{children}</div> }));
