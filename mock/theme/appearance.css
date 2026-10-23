@@ -1,0 +1,9 @@
+.appearance-control { display: flex; align-items: stretch; gap: 3px; padding: 4px; margin: 0; border: 0; border-radius: 8px; background: var(--inset); }
+.appearance-control label { flex: 1; min-width: 0; position: relative; cursor: pointer; }
+.appearance-control label > span { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 12px; border-radius: 5px; color: var(--muted); font-size: var(--text-label); }
+.appearance-control label > span > svg { flex-shrink: 0; }
+.appearance-control input:checked + span { color: var(--ink); background: var(--surface); box-shadow: 0 1px 4px rgb(0 0 0 / 5%); }
+.appearance-control input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+.appearance-control--compact { flex-shrink: 0; }
+.appearance-control--compact label > span { width: 44px; padding: 0; }
+@media (max-width: 350px) { .appearance-control:not(.appearance-control--compact) label > span { gap: 6px; padding: 0 8px; } }
