@@ -2,6 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./e2e",
+  testIgnore: "pwa/**",
   timeout: 30_000,
   workers: 1,
   expect: {

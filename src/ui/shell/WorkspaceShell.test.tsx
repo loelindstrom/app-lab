@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AiActions, AiConfig, AiUsage, BuilderProfile } from "../../ai";
 import type { AppLabCore } from "../../core";
 import { createMemoryCore } from "../../core/memoryCore";
+import * as runtime from "../../runtime";
 import { createMemorySyncQueueStore, enqueueSaveSource, resetSyncingQueueItems, type SyncQueueStore } from "../../sync/queue/syncQueue";
 import { createRoomCapability } from "../../sync/rooms/crypto";
 import { encodeAppInvite } from "../../sync/sharing/invites";
@@ -505,7 +506,7 @@ describe("WorkspaceShell sync wake-ups", () => {
   });
 
   it("saves source locally when Tailwind compilation is unavailable", async () => {
-    vi.spyOn(window.navigator, "onLine", "get").mockReturnValue(false);
+    vi.spyOn(runtime, "compileAppStyles").mockRejectedValueOnce(new Error("Compiler unavailable"));
     const syncActions = createSyncActionsStub();
     const core = createMemoryCore();
     const app = await core.createApp({

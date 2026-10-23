@@ -11,6 +11,7 @@ App Lab is a static Vite application published to GitHub Pages.
 | Local Pages worktree | ignored `dist/` directory |
 | Production URL | `https://loelindstrom.github.io/app-lab/` |
 | Staging URL | `https://loelindstrom.github.io/app-lab/staging/` |
+| Parallel UI | `next/` under either deployment URL |
 | Release identity | committed source ref, optionally tagged `vX.Y.Z` |
 | Metadata | `deploy.json` in each published output |
 
@@ -38,8 +39,46 @@ pnpm deploy:pages -- --target staging --ref HEAD
 pnpm deploy:pages -- --target production --ref HEAD --version v0.4.0
 ```
 
-The deployed commit and target are available at `/staging/deploy.json` or `/deploy.json`. Staging intentionally uses the same browser
+The deployed commit and target are available at `/app-lab/staging/deploy.json` or `/app-lab/deploy.json`. Staging intentionally uses the same browser
 origin and therefore the same IndexedDB and local storage as production.
+
+### Offline Staging
+
+Staging builds use `vite.staging.config.mjs`, which extends the normal Vite configuration with a Workbox service worker.
+The worker is served at `/app-lab/staging/sw.js` and controls only `/app-lab/staging/`. Production builds use `vite.config.ts`
+and do not register a worker. The deployment script selects the staging config when it exists in the chosen source commit;
+older commits without it can still be built. When the chosen staging build has no `sw.js`, the script publishes
+`scripts/retire-staging-worker.js` at that URL to unregister an existing worker and delete only its staging caches.
+The staging config rejects base paths outside a trailing `/staging/` directory so an override cannot register it at production's root.
+
+After one online visit finishes installing the worker, staging can reopen offline. The cache includes both the original UI at
+`/app-lab/staging/` and the parallel UI at `/app-lab/staging/next/`, their JavaScript, CSS, fonts, icons, and the local Tailwind
+compiler. Each entry serves its own cached HTML; `/next/` is not redirected to the original shell. Hash navigation keeps working.
+Changing which UI is the main entry later does not require a second worker: the cache follows the build's HTML entries and assets.
+
+App records and data remain in the existing shared IndexedDB stores. Source editing and local data changes work offline; Firebase
+and OpenRouter still require connectivity. Existing sync queues retry when the app reconnects. Offline startup requires a completed
+online installation, and the browser may evict cached files under storage pressure.
+
+Updates download during an online visit and wait until **all staging tabs or installed app windows are closed**. Reopen staging to
+use the new version. Reloading one tab while another is open can keep the previous version active. There is no forced reload.
+This means the running UI can be older than `deploy.json`, which always stays outside the worker cache and reports published source.
+Staging uses an `app-lab-staging` cache prefix; production's files and the shared app databases are not managed by this worker.
+
+Build a local staging preview without writing to the `dist/` Pages worktree:
+
+```bash
+pnpm build:staging
+pnpm exec vite preview --config vite.staging.config.mjs --outDir artifacts/staging --host 127.0.0.1 --port 5187
+```
+
+Open `http://127.0.0.1:5187/app-lab/staging/` or its `next/` path. The manifest and `deploy.json` are added by the deployment script,
+so this local preview tests the worker and application rather than installation metadata. Normal `pnpm dev` does not enable a worker.
+
+To remove an installed staging worker during testing, use browser developer tools **Application > Service Workers > Unregister**
+and delete only the `app-lab-staging` Cache Storage entries. Do not clear site data: the origin's databases are shared with production.
+Close all staging windows before reopening online. For a rollback to a commit without offline support, use the current deployment
+script so it publishes the retiring worker. Deleting `sw.js` alone does not retire workers already installed in browsers.
 
 ## Deploy
 
@@ -92,7 +131,7 @@ An older ref normally reuses this checkout's `node_modules`. Set `DEPLOY_INSTALL
 - Generated output stays in the temporary build directory and `dist/` Pages worktree.
 - The script may reset and clean `dist/` because that worktree contains generated deployment output.
 - `deploy.json` records the ref, commit, version, deploy time, and base path for verification.
-- The app includes a web manifest and mobile standalone metadata. It has no service worker, so browser caching remains straightforward.
+- Both targets include a web manifest and mobile standalone metadata. Only staging currently includes an offline service worker.
 
 ## Verification
 
@@ -101,11 +140,15 @@ Before deployment:
 ```bash
 pnpm check
 pnpm test:e2e
+pnpm test:pwa
 pnpm deploy:pages -- --dry-run --ref HEAD
 pnpm deploy:pages -- --dry-run --target staging --ref HEAD
 ```
 
-After deployment, open the relevant URL and inspect its `deploy.json`. Asset 404s normally mean the build did not use `/app-lab/`
-or Pages is not serving the `gh-pages` branch root.
+`test:pwa` builds both targets into a temporary directory and checks offline persistence, both UI entries, local Tailwind compilation,
+cache boundaries, uncached deployment metadata, updates, and rollback retirement in Chromium. It does not publish anything or modify `dist/`.
 
-App Lab currently has no route-based deep links. Add hash routing or a Pages 404 fallback before introducing them.
+After deployment, open the relevant URL and inspect its `deploy.json`. Asset 404s normally mean the build used the wrong base path
+(`/app-lab/` for production or `/app-lab/staging/` for staging) or Pages is not serving the `gh-pages` branch root.
+
+The parallel UI uses hash routing. Add a Pages 404 strategy before introducing additional path-based client routes.

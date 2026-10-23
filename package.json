@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc -b && vite build",
+    "build:staging": "tsc -b && vite build --config vite.staging.config.mjs --outDir artifacts/staging",
     "deploy:pages": "bash scripts/deploy-github-pages.sh",
     "experiment:ai": "set -a; [ ! -f .env.test.local ] || . ./.env.test.local; set +a; vite-node experiments/ai/run.ts",
     "experiment:ai:browser": "playwright test --config experiments/ai/playwright.config.ts",
@@ -16,6 +17,7 @@
     "hooks:install": "git config core.hooksPath .githooks",
     "test": "vitest run",
     "test:e2e": "playwright test --grep-invert '@firebase|@openrouter'",
+    "test:pwa": "pnpm typecheck && playwright test --config playwright.pwa.config.ts",
     "test:firebase-e2e": "set -a; [ ! -f .env.test.local ] || . ./.env.test.local; set +a; node scripts/require-firebase-test-env.mjs && playwright test --grep @firebase",
     "test:firebase-smoke": "set -a; [ ! -f .env.test.local ] || . ./.env.test.local; set +a; node scripts/require-firebase-test-env.mjs && vitest run --config vitest.firebase-smoke.config.ts",
     "test:openrouter-e2e": "set -a; [ ! -f .env.test.local ] || . ./.env.test.local; set +a; node scripts/require-openrouter-test-env.mjs && playwright test --grep @openrouter",
@@ -53,6 +55,7 @@
     "typescript": "5.6.3",
     "vite": "5.4.11",
     "vite-node": "2.1.8",
+    "vite-plugin-pwa": "1.2.0",
     "vitest": "2.1.8"
   }
 }

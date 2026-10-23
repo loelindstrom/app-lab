@@ -206,9 +206,18 @@ echo "Building App Lab for GitHub Pages..."
 (
   cd "$SOURCE_DIR"
   pnpm exec tsc -b
-  pnpm exec vite build --base "$BASE_PATH" --outDir "$BUILD_DIR" --emptyOutDir
+  VITE_CONFIG_ARGS=()
+  if [ "$TARGET" = "staging" ] && [ -f vite.staging.config.mjs ]; then
+    VITE_CONFIG_ARGS=(--config vite.staging.config.mjs)
+  fi
+  pnpm exec vite build "${VITE_CONFIG_ARGS[@]}" --base "$BASE_PATH" --outDir "$BUILD_DIR" --emptyOutDir
 )
 touch "$BUILD_DIR/.nojekyll"
+
+if [ "$TARGET" = "staging" ] && [ ! -f "$BUILD_DIR/sw.js" ]; then
+  echo "Adding a retiring worker for staging clients running a newer source ref..."
+  cp "$REPO_ROOT/scripts/retire-staging-worker.js" "$BUILD_DIR/sw.js"
+fi
 
 DEPLOYED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 node -e 'const fs = require("fs"); const [file, target, version, ref, commit, shortCommit, deployedAt, base] = process.argv.slice(1); fs.writeFileSync(file, JSON.stringify({ target, version: version || null, ref, commit, shortCommit, deployedAt, base }, null, 2) + "\n");' \

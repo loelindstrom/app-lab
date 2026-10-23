@@ -16,10 +16,6 @@ export async function compileAppStyles(sourceCode: string): Promise<CompiledAppS
   if (!sourceUsesTailwind(sourceCode)) {
     return { compiledCss: undefined, compiledCssSourceHash: undefined };
   }
-  if (isBrowserOffline()) {
-    throw new Error("Tailwind CSS compilation is unavailable while offline.");
-  }
-
   const cached = compileCache.get(compiledCssSourceHash);
   if (cached) return cached;
 
@@ -122,10 +118,6 @@ function isSafeClassCandidate(candidate: string): boolean {
   if (candidate.startsWith("http:") || candidate.startsWith("https:") || candidate.startsWith("data:")) return false;
   if (candidate.startsWith("--")) return false;
   return true;
-}
-
-function isBrowserOffline(): boolean {
-  return typeof navigator !== "undefined" && navigator.onLine === false;
 }
 
 function createCompilerDocument(
