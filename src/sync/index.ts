@@ -7,6 +7,7 @@ import { createWorkspaceSyncActions } from "./workspaceSyncActions";
 
 export { createAuthFirebaseRules, createFirebaseOwnerSetupSecret, encodeAppInvite, readInviteFromHash };
 export type {
+  AppArchiveState,
   AppInvitePayload,
   AppSyncBadge,
   ConfigureStorageProfileInput,

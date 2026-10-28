@@ -14,6 +14,12 @@ Need inspiration? Here is a quick walkthrough of what you can do. It is as easy 
    - **Chat:** Connect your AI from launcher settings, then describe the changes directly in App Lab.
 3. Select the back arrow in the top-left corner. Create another app, or delete this one if the rubber duck didn't tickle your nerve.
 
+## Archive Apps
+
+Open an app's three-dot launcher menu and select **Archive app** to move it out of the active list. Select **Archived** beside
+the launcher search to find it again; the same menu then offers **Unarchive app**. Archiving keeps the app and all its data.
+With workspace sync configured, archive changes also appear on your other devices when they reconnect.
+
 ## 🤜🤛 Share Your App With Friends
 
 1. Open the settings wheel in the top-right corner and follow the instructions under **Storage** > **First-time setup** (don't forget those security steps!).

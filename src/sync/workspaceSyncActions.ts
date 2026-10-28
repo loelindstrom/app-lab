@@ -20,6 +20,7 @@ import { isRemoteAppDeletedError, loadRemoteAppRooms, loadRemoteAppSource, saveR
 import { decryptRoomSnapshot, rememberSnapshotVersion, roomReadToken, roomWriteToken } from "./rooms/crypto";
 import type { RealtimeSyncProvider } from "./rooms/types";
 import type {
+  AppArchiveState,
   AppInvitePayload,
   AppSyncBadge,
   AppSyncRecord,
@@ -28,6 +29,7 @@ import type {
   StorageProfile,
   WorkspaceSyncRegistry,
 } from "./workspace/workspaceSync";
+import { mergeAppArchiveStates } from "./workspace/workspaceSync";
 import {
   createWorkspaceRecoveryMaterial,
   decodeWorkspaceRecoveryMaterial,
@@ -88,6 +90,7 @@ export interface PendingSyncOperation {
 }
 
 export interface WorkspaceSyncOverview {
+  appArchiveStates: Record<string, AppArchiveState>;
   appBadges: Record<string, AppSyncBadge>;
   pendingOperations: PendingSyncOperation[];
   storageProfile: StorageProfile | null;
@@ -126,6 +129,7 @@ export function createWorkspaceSyncActions(input: WorkspaceSyncActionsInput) {
       syncRegistry.getState(),
     ]);
     return {
+      appArchiveStates: syncState.appArchiveStates ?? {},
       appBadges,
       pendingOperations: queueItems.map(({ appId, kind, lastError, status }) => ({ appId, kind, lastError, status })),
       storageProfile: syncState.storageProfile,
@@ -139,6 +143,12 @@ export function createWorkspaceSyncActions(input: WorkspaceSyncActionsInput) {
 
   async function clearStorageProfile(): Promise<void> {
     await syncRegistry.clearStorageProfile();
+  }
+
+  async function setAppArchived(appId: string, archived: boolean): Promise<void> {
+    if (!await core.getApp(appId)) throw new Error("App not found.");
+    await syncRegistry.setAppArchived(appId, archived);
+    await enqueueCurrentWorkspaceManifest();
   }
 
   async function removeLocalAppSync(appId: string): Promise<void> {
@@ -542,11 +552,20 @@ export function createWorkspaceSyncActions(input: WorkspaceSyncActionsInput) {
     const nextState = {
       ...localState,
       apps: { ...localState.apps },
+      appArchiveStates: mergeAppArchiveStates(localState.appArchiveStates, remoteState.appArchiveStates),
       deletedApps: { ...localState.deletedApps },
       manifestRoom: remoteState.manifestRoom,
       storageProfile: remoteState.storageProfile ?? localState.storageProfile,
       updatedAt: remoteState.updatedAt,
     };
+
+    for (const [appId, state] of Object.entries(nextState.appArchiveStates)) {
+      const previous = localState.appArchiveStates?.[appId];
+      if (previous?.archived !== state.archived || previous?.updatedAt !== state.updatedAt) {
+        appIdsChanged.add(appId);
+        stateChanged = true;
+      }
+    }
 
     for (const [appId, tombstone] of Object.entries(remoteState.deletedApps)) {
       if (await hasPendingLocalAppWork(appId)) continue;
@@ -830,6 +849,7 @@ export function createWorkspaceSyncActions(input: WorkspaceSyncActionsInput) {
     pushAppSource,
     queueWorkspaceManifestSave,
     removeLocalAppSync,
+    setAppArchived,
     restoreWorkspaceRecovery,
     subscribeAppData,
     subscribeAppSource,

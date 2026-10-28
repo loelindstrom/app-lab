@@ -37,6 +37,19 @@ function renderWorkspace(input: Partial<WorkspaceServices> = {}) {
 }
 
 describe("workspace workflows", () => {
+  it("archives and unarchives locally while offline without forcing a manifest flush", async () => {
+    const { core, syncActions, result } = renderWorkspace();
+    const app = await core.createBlankApp();
+    await waitFor(() => expect(syncActions.flushWorkspaceManifestQueue).toHaveBeenCalled());
+    act(() => window.dispatchEvent(new Event("offline")));
+    vi.mocked(syncActions.flushWorkspaceManifestQueue).mockClear();
+    await act(() => result.current.setAppArchived(app.appId, true));
+    expect(result.current.appArchiveStates[app.appId].archived).toBe(true);
+    await act(() => result.current.setAppArchived(app.appId, false));
+    expect(result.current.appArchiveStates[app.appId].archived).toBe(false);
+    expect(syncActions.flushWorkspaceManifestQueue).not.toHaveBeenCalled();
+    expect(await core.getApp(app.appId)).toEqual(app);
+  });
   it("ignores a slow app load after a different app has been opened", async () => {
     const core = createMemoryCore();
     const first = await core.createApp({ name: "", description: "", sourceCode: SOURCE });
@@ -436,6 +449,7 @@ function createSyncActionsStub(
         syncRegistry.getState(),
       ]);
       return {
+        appArchiveStates: syncState.appArchiveStates ?? {},
         appBadges,
         pendingOperations: queueItems.map(({ appId, kind, lastError, status }) => ({ appId, kind, lastError, status })),
         storageProfile: syncState.storageProfile,
@@ -456,6 +470,7 @@ function createSyncActionsStub(
     pushAppSource: vi.fn().mockResolvedValue(undefined),
     queueWorkspaceManifestSave: vi.fn().mockResolvedValue(undefined),
     removeLocalAppSync: vi.fn((appId) => syncRegistry.removeLocalAppSync(appId)),
+    setAppArchived: vi.fn((appId, archived) => syncRegistry.setAppArchived(appId, archived)),
     restoreWorkspaceRecovery: vi.fn().mockResolvedValue(undefined),
     subscribeAppData: vi.fn().mockResolvedValue(() => {}),
     subscribeAppSource: vi.fn().mockResolvedValue(() => {}),

@@ -58,6 +58,17 @@ for (const [target, base, otherBase] of [
       await page.goto(base);
       await page.getByRole("button", { name: "Open Offline counter", exact: true }).click();
       await expect(frame.locator("#count")).toHaveText("1");
+      await page.getByRole("button", { name: "Back to workspace" }).click();
+      await page.getByRole("button", { name: "Options for Offline counter", exact: true }).click();
+      await page.getByRole("button", { name: "Archive app", exact: true }).click();
+      await expect(page.getByRole("button", { name: "Open Offline counter", exact: true })).toBeHidden();
+      await page.reload();
+      await page.getByRole("tab", { name: "Archived", exact: true }).click();
+      await page.getByRole("button", { name: "Options for Offline counter", exact: true }).click();
+      await page.getByRole("button", { name: "Unarchive app", exact: true }).click();
+      await page.getByRole("tab", { name: "Active", exact: true }).click();
+      await page.getByRole("button", { name: "Open Offline counter", exact: true }).click();
+      await expect(frame.locator("#count")).toHaveText("1");
     });
 
     test("caches its manifest and flask icons, but keeps deployment metadata live", async ({ page, context }) => {

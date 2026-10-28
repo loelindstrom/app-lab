@@ -16,6 +16,45 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 960 
     test.setTimeout(60_000);
     test.use({ viewport });
 
+    test("archives and unarchives apps from their menu without losing source or data", async ({ page }) => {
+      await createApp(page, "Archive me");
+      await page.getByRole("button", { name: "Open app tools" }).click();
+      await page.getByRole("tab", { name: "Develop", exact: true }).click();
+      await page.getByLabel("App source (HTML)").fill(SOURCE.replaceAll("Shared counter", "Archive me"));
+      await page.getByRole("button", { name: "Apply changes" }).click();
+      await expect(frame(page).locator("#count")).toHaveText("0");
+      await frame(page).getByRole("button", { name: "Add one" }).click();
+      await expect(frame(page).locator("#count")).toHaveText("1");
+      await page.getByRole("button", { name: "Back to workspace" }).click();
+      await page.getByRole("button", { name: "Options for Archive me", exact: true }).click();
+      await page.getByRole("button", { name: "Archive app", exact: true }).click();
+      await expect(page.getByRole("button", { name: "Open Archive me", exact: true })).toBeHidden();
+      await expect(page.getByRole("heading", { name: "No active apps", exact: true })).toBeVisible();
+      await page.reload();
+      await expect(page.getByRole("button", { name: "Open Archive me", exact: true })).toBeHidden();
+      await page.getByRole("tab", { name: "Archived", exact: true }).click();
+      await expect(page.getByRole("button", { name: "Open Archive me", exact: true })).toBeVisible();
+      await page.getByRole("searchbox", { name: "Search apps" }).fill("no match");
+      await expect(page.getByRole("heading", { name: "No apps found", exact: true })).toBeVisible();
+      await page.getByRole("button", { name: "Clear search", exact: true }).first().click();
+      await expect(page.getByRole("button", { name: "Open Archive me", exact: true })).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      await page.screenshot({ path: test.info().outputPath(`launcher-archive-${viewport.width}.png`), fullPage: true, animations: "disabled" });
+      await page.getByRole("button", { name: "Open Archive me", exact: true }).click();
+      await expect(frame(page).locator("#count")).toHaveText("1");
+      await page.getByRole("button", { name: "Back to workspace" }).click();
+      await expect(page.getByRole("tab", { name: "Archived", exact: true })).toHaveAttribute("aria-selected", "true");
+      await page.getByRole("button", { name: "Options for Archive me", exact: true }).click();
+      await expect(page.getByRole("button", { name: "Archive app", exact: true })).toBeHidden();
+      await page.getByRole("button", { name: "Unarchive app", exact: true }).click();
+      await expect(page.getByRole("heading", { name: "No archived apps", exact: true })).toBeVisible();
+      await page.getByRole("tab", { name: "Active", exact: true }).click();
+      await page.getByRole("button", { name: "Open Archive me", exact: true }).click();
+      await expect(frame(page).locator("#count")).toHaveText("1");
+      await page.reload();
+      await expect(frame(page).locator("#count")).toHaveText("1");
+    });
+
     test("persists source and data across reloads without changing the sandbox boundary", async ({ page }) => {
       await page.goto("/");
       await page.getByRole("button", { name: "New app", exact: true }).click();

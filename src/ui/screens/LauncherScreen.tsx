@@ -1,12 +1,16 @@
 import { useState } from "react";
-import { FlaskConical, MoreHorizontal, Plus, Search, Settings, Users, X } from "lucide-react";
+import { Archive, FlaskConical, LayoutGrid, MoreHorizontal, Plus, Search, Settings, Users, X } from "lucide-react";
 import { AppIcon } from "../components/AppIcon";
-import { AttentionBadge, Button, IconButton } from "../components/controls";
+import { AttentionBadge, Button, IconButton, Tabs } from "../components/controls";
 import type { ToolAttention } from "../types";
 import type { LauncherApp } from "../types";
 
-export function LauncherScreen({ apps, attention, onOpenApp, onCreateApp, onSettings, onAppOptions }: {
+const VIEWS = [{ value: "active", label: "Active", icon: LayoutGrid }, { value: "archived", label: "Archived", icon: Archive }] as const;
+
+export function LauncherScreen({ apps, attention, view, onViewChange, onOpenApp, onCreateApp, onSettings, onAppOptions }: {
   apps: LauncherApp[];
+  view: "active" | "archived";
+  onViewChange: (view: "active" | "archived") => void;
   attention: Record<string, ToolAttention>;
   onOpenApp: (id: string) => void;
   onCreateApp: () => void;
@@ -14,7 +18,8 @@ export function LauncherScreen({ apps, attention, onOpenApp, onCreateApp, onSett
   onAppOptions: (app: LauncherApp) => void;
 }) {
   const [query, setQuery] = useState("");
-  const filtered = apps.filter((app) => app.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))
+  const visibleApps = apps.filter((app) => Boolean(app.archived) === (view === "archived"));
+  const filtered = visibleApps.filter((app) => app.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base", numeric: true }));
 
   return <div className="launcher-screen">
@@ -27,10 +32,11 @@ export function LauncherScreen({ apps, attention, onOpenApp, onCreateApp, onSett
       <div className="launcher-search"><Search size={18} aria-hidden="true" /><input aria-label="Search apps" type="search" placeholder="Search apps" value={query} onChange={(event) => setQuery(event.target.value)} />
         {query && <IconButton label="Clear search" onClick={() => setQuery("")}><X size={17} /></IconButton>}
       </div>
+      <div className="launcher-view"><Tabs label="App list" value={view} onChange={onViewChange} items={VIEWS} idPrefix="launcher-view" /></div>
       </div>
     </header>
-    <main className="launcher-main">
-      <h1 className="sr-only">Apps</h1>
+    <main className="launcher-main"><div role="tabpanel" id={`launcher-view-panel-${view}`} aria-labelledby={`launcher-view-tab-${view}`} tabIndex={0}>
+      <h1 className="sr-only">{view === "archived" ? "Archived apps" : "Apps"}</h1>
       {filtered.length ? <ul className="launcher-grid" aria-label="Apps">
         {filtered.map((app) => {
           const unread = attention[app.id];
@@ -47,9 +53,9 @@ export function LauncherScreen({ apps, attention, onOpenApp, onCreateApp, onSett
             <IconButton className="launcher-options" label={`Options for ${app.name}`} onClick={() => onAppOptions(app)}><MoreHorizontal size={18} /></IconButton>
           </li>;
         })}
-      </ul> : <div className="launcher-empty">{apps.length ? <><Search size={25} /><h2>No apps found</h2><Button variant="quiet" onClick={() => setQuery("")}>Clear search</Button></>
-        : <p>Press "+" to create your first app</p>}</div>}
-    </main>
+      </ul> : <div className="launcher-empty">{visibleApps.length && query.trim() ? <><Search size={25} /><h2>No apps found</h2><Button variant="quiet" onClick={() => setQuery("")}>Clear search</Button></>
+        : <>{view === "archived" ? <Archive size={25} /> : <LayoutGrid size={25} />}<h2>{view === "archived" ? "No archived apps" : apps.length ? "No active apps" : "No apps yet"}</h2></>}</div>}
+    </div></main>
     <IconButton className="launcher-fab" label="New app" onClick={onCreateApp}><Plus size={27} strokeWidth={1.8} /></IconButton>
   </div>;
 }

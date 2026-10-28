@@ -4,6 +4,7 @@ import type { FirebaseWebAppConfig } from "../providers/firebase/firebaseConfig"
 import { decryptRoomSnapshot, encryptRoomPayload, rememberSnapshotVersion, roomReadToken, roomWriteToken } from "../rooms/crypto";
 import type { RealtimeSyncProvider, RemoteRoomSnapshot, RoomCapability } from "../rooms/types";
 import type { AppSyncRecord, JoinedAppSyncRecord, OwnedAppSyncRecord, PrivateCopySyncRecord, RemoteProviderReference, StorageProfile, TombstoneRecord, WorkspaceSyncState } from "./workspaceSync";
+import { mergeAppArchiveStates, parseAppArchiveStates } from "./workspaceSync";
 
 const WORKSPACE_RECOVERY_SCHEMA_VERSION = 1;
 
@@ -240,6 +241,7 @@ function mergeWorkspaceManifestStates(primary: WorkspaceSyncState, secondary: Wo
 
   return {
     apps,
+    appArchiveStates: mergeAppArchiveStates(primary.appArchiveStates, secondary.appArchiveStates),
     deletedApps,
     manifestRoom: mergeRoomCapability(primary.manifestRoom, secondary.manifestRoom),
     schemaVersion: primary.schemaVersion,
@@ -365,6 +367,7 @@ function encryptWorkspaceManifest(capability: RoomCapability, state: WorkspaceSy
 function toWorkspaceManifestPayload(state: WorkspaceSyncState): JsonValue {
   return {
     apps: state.apps as unknown as JsonValue,
+    appArchiveStates: (state.appArchiveStates ?? {}) as unknown as JsonValue,
     deletedApps: state.deletedApps as unknown as JsonValue,
     schemaVersion: state.schemaVersion,
     storageProfile: state.storageProfile as unknown as JsonValue,
@@ -383,6 +386,7 @@ function parseWorkspaceManifestPayload(payload: JsonValue): WorkspaceSyncState {
   }
   return {
     apps: isRecord(record.apps) ? (record.apps as unknown as WorkspaceSyncState["apps"]) : {},
+    appArchiveStates: parseAppArchiveStates(record.appArchiveStates),
     deletedApps: isRecord(record.deletedApps) ? (record.deletedApps as unknown as WorkspaceSyncState["deletedApps"]) : {},
     schemaVersion: 1,
     storageProfile: isRecord(record.storageProfile) ? (record.storageProfile as unknown as StorageProfile) : null,

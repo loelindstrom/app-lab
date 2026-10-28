@@ -27,6 +27,7 @@ import {
 } from "../../runtime";
 import {
   readInviteFromHash,
+  type AppArchiveState,
   type AppInvitePayload,
   type AppSyncBadge,
   type PendingSyncOperation,
@@ -69,6 +70,7 @@ export function useWorkspace({ aiActions, core, syncActions }: WorkspaceServices
   const [builderProfiles, setBuilderProfiles] = useState<BuilderProfile[]>([]);
   const [builderSessions, setBuilderSessions] = useState<Record<string, BuilderSessionState>>({});
   const [apps, setApps] = useState<AppSummary[]>([]);
+  const [appArchiveStates, setAppArchiveStates] = useState<Record<string, AppArchiveState>>({});
   const [syncBadges, setSyncBadges] = useState<Record<string, AppSyncBadge>>({});
   const [syncHealth, setSyncHealth] = useState<Record<string, AppSyncHealth>>({});
   const [storageProfile, setStorageProfile] = useState<StorageProfile | null>(null);
@@ -293,6 +295,7 @@ export function useWorkspace({ aiActions, core, syncActions }: WorkspaceServices
     const nextApps = await core.listApps();
     const syncOverview = await syncActions.getWorkspaceSyncOverview(nextApps.map((app) => app.appId));
     setApps(nextApps);
+    setAppArchiveStates(syncOverview.appArchiveStates);
     setSyncBadges(syncOverview.appBadges);
     setSyncHealth(buildAppSyncHealthMap({ apps: nextApps, badges: syncOverview.appBadges, isOnline: online, queueItems: syncOverview.pendingOperations }));
     setStorageProfile(syncOverview.storageProfile);
@@ -448,6 +451,12 @@ export function useWorkspace({ aiActions, core, syncActions }: WorkspaceServices
     return saveAppSource(appId, updateAppSourceDetails(app.sourceCode, input));
   }
 
+  async function setAppArchived(appId: string, archived: boolean) {
+    await syncActions.setAppArchived(appId, archived);
+    await refreshApps();
+    if (isSyncReachable()) refreshWhenSettled(syncActions.flushWorkspaceManifestQueue());
+  }
+
   async function sendBuilderMessage(app: AppRecord, content: string): Promise<void> {
     const message = content.trim();
     if (!message || builderRunningAppIdsRef.current.has(app.appId)) return;
@@ -597,6 +606,8 @@ export function useWorkspace({ aiActions, core, syncActions }: WorkspaceServices
     sandboxReloadKey,
     setSandboxReloadKey,
     activeBuilderProfile,
+    appArchiveStates,
+    setAppArchived,
     refreshApps,
     openApp,
     createApp,

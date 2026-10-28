@@ -4,7 +4,9 @@
 .launcher-brand { display: flex; align-items: center; gap: 10px; font-size: 18px; font-weight: 600; }
 .launcher-brand > svg { color: var(--accent); }
 .launcher-main { max-width: 1600px; margin: 0 auto; padding: 24px 48px 0; }
-.launcher-search-bar { width: 100%; max-width: 1600px; margin: 0 auto; padding: 0 48px 16px; }
+.launcher-search-bar { display: flex; align-items: center; gap: 16px; width: 100%; max-width: 1600px; margin: 0 auto; padding: 0 48px 16px; }
+.launcher-view { flex: 0 0 260px; }
+.launcher-view .tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-radius: 8px; }
 .launcher-search { display: flex; align-items: center; gap: 12px; width: 100%; max-width: 520px; min-width: 0; min-height: 48px; padding: 0 14px; background: var(--inset); border-radius: 8px; color: var(--muted); }
 .launcher-search > svg { flex-shrink: 0; }
 .launcher-search input { width: 100%; min-width: 0; min-height: 48px; padding: 0; border: 0; background: none; outline: none; font-size: 16px; color: var(--ink); }
@@ -12,7 +14,7 @@
 .launcher-search:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
 .launcher-search .icon-button { margin-right: -12px; }
 .launcher-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 28px 24px; list-style: none; padding: 0; margin: 0; }
-.launcher-tile { position: relative; min-width: 0; scroll-margin-block: 160px; }
+.launcher-tile { position: relative; min-width: 0; scroll-margin-block: 200px; }
 .launcher-open { display: flex; flex-direction: column; align-items: center; width: 100%; min-height: 172px; padding: 14px 6px 8px; border: 0; border-radius: 8px; background: none; }
 @media (hover: hover) { .launcher-open:hover { background: var(--surface); } }
 .launcher-icon-wrap { position: relative; display: block; margin-bottom: 15px; }
@@ -93,7 +95,8 @@
 :root[data-theme="dark"] .launcher-app-icon { filter: saturate(.8) brightness(.85); }
 @media (max-width: 760px) {
   .launcher-header-inner { padding: 6px 24px; }
-  .launcher-search-bar { max-width: 520px; padding: 0 24px 16px; }
+  .launcher-search-bar { flex-direction: column; align-items: stretch; gap: 12px; max-width: 520px; padding: 0 24px 16px; }
+  .launcher-view { flex: none; width: 100%; }
   .launcher-main { padding: 12px 24px 0; max-width: 520px; }
   .launcher-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px 24px; }
   .launcher-open { min-height: 158px; padding-top: 8px; }

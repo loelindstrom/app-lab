@@ -28,6 +28,12 @@ screens. Smaller components own presentation and transient interaction state; th
 Apps, provider configuration, and Builder profiles use the existing local stores. Conversations live in each page's React memory,
 so they do not transfer between tabs or survive reloads.
 
+The launcher has Active and Archived views. The app menu offers Archive or Unarchive according to the current state. Archiving hides
+an app from the active list without deleting source or data; archived apps can still be opened, searched, copied, or deleted.
+Creating or copying an app puts the new app in the active list. Archive preferences belong to the workspace, so they follow the same
+workspace across devices without affecting other recipients of a shared app. Changes work locally without a storage provider and
+are queued for workspace sync when one is configured.
+
 `/gallery/` is a development-only catalog of the actual UI components. It uses temporary preview state, no app records or provider
 services, and is excluded from the production build.
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Check, Copy, Pencil, Plus, RotateCw, Share2, Trash2, X } from "lucide-react";
+import { Archive, ArchiveRestore, ArrowLeft, Check, Copy, Pencil, Plus, RotateCw, Share2, Trash2, X } from "lucide-react";
 import { SandboxFrame } from "../../runtime";
 import { InviteImportDialog } from "../dialogs/InviteImportDialog";
 import { useWorkspace, type WorkspaceServices } from "./useWorkspace";
@@ -28,6 +28,7 @@ export function WorkspaceShell(services: WorkspaceServices) {
   const [view, setView] = useState<ToolView | null>(null);
   const [attention, setAttention] = useState<Record<string, ToolAttention>>({});
   const [createOpen, setCreateOpen] = useState(false);
+  const [launcherView, setLauncherView] = useState<"active" | "archived">("active");
   const [name, setName] = useState("");
   const [optionsAppId, setOptionsAppId] = useState<string | null>(null);
   const [action, setAction] = useState<"menu" | "edit" | "copy" | "delete">("menu");
@@ -49,6 +50,7 @@ export function WorkspaceShell(services: WorkspaceServices) {
   const activeAttention = activeApp ? attention[activeApp.appId] ?? NO_ATTENTION : NO_ATTENTION;
   const apps: LauncherApp[] = workspace.apps.map((app) => ({
     ...app, id: app.appId,
+    archived: workspace.appArchiveStates[app.appId]?.archived ?? false,
     kind: Array.from(app.appId).reduce((sum, char) => sum + char.charCodeAt(0), 0) % 6,
     relationship: workspace.syncBadges[app.appId]?.kind === "local-only" ? undefined : workspace.syncBadges[app.appId]?.label,
     unavailable: workspace.syncBadges[app.appId]?.kind === "needs-attention",
@@ -104,7 +106,10 @@ export function WorkspaceShell(services: WorkspaceServices) {
     setToast("");
     focusTarget.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   }
-  function restoreFocus() { if (focusTarget.current?.isConnected) focusTarget.current.focus(); }
+  function restoreFocus() {
+    if (focusTarget.current?.isConnected) focusTarget.current.focus();
+    else document.querySelector<HTMLButtonElement>('.launcher-view [role="tab"][aria-selected="true"]')?.focus();
+  }
   function navigate(params: URLSearchParams) {
     const url = new URL(window.location.href);
     url.hash = params.toString();
@@ -156,7 +161,7 @@ export function WorkspaceShell(services: WorkspaceServices) {
             onConsoleEntry={(entry) => workspace.setConsoleEntries((entries) => [...entries.slice(-199), entry])}
             onUnhandledRemoteDataChange={() => workspace.setSyncStatus("Remote data changed. Reload this app to see it.")} />
         </main>
-      </div> : <LauncherScreen apps={apps} attention={attention} onOpenApp={openApp}
+      </div> : <LauncherScreen apps={apps} attention={attention} view={launcherView} onViewChange={setLauncherView} onOpenApp={openApp}
         onCreateApp={() => { rememberFocus(); setName(""); setError(""); setCreateOpen(true); }} onSettings={() => { rememberFocus(); openSettings(); }}
         onAppOptions={(app) => { rememberFocus(); setOptionsAppId(app.id); setAction("menu"); setIncludeData(true); setError(""); }} />}
       {workspace.syncStatus && <div className="live-notice" role="status"><span>{workspace.syncStatus}</span>
@@ -175,6 +180,7 @@ export function WorkspaceShell(services: WorkspaceServices) {
         event.preventDefault();
         void perform(async () => {
           const app = await workspace.createApp(name.trim() || "Untitled app");
+          setLauncherView("active");
           setCreateOpen(false); openApp(app.appId);
         });
       }}>
@@ -192,11 +198,15 @@ export function WorkspaceShell(services: WorkspaceServices) {
         <button type="button" disabled={workspace.syncBadges[optionsApp.appId]?.kind === "needs-attention"} onClick={() => setAction("edit")}><Pencil size={19} /><span>Edit app details</span></button>
         <button type="button" onClick={() => setAction("copy")}><Copy size={19} /><span>Copy app</span></button>
         <button type="button" disabled={workspace.syncBadges[optionsApp.appId]?.kind === "needs-attention"} onClick={() => { setOptionsAppId(null); openApp(optionsApp.appId, "share"); }}><Share2 size={19} /><span>Share app</span></button>
+        <button type="button" disabled={busy} onClick={() => {
+          const archived = workspace.appArchiveStates[optionsApp.appId]?.archived ?? false;
+          void perform(async () => { await workspace.setAppArchived(optionsApp.appId, !archived); setOptionsAppId(null); }, archived ? "App unarchived" : "App archived");
+        }}>{workspace.appArchiveStates[optionsApp.appId]?.archived ? <ArchiveRestore size={19} /> : <Archive size={19} />}<span>{workspace.appArchiveStates[optionsApp.appId]?.archived ? "Unarchive app" : "Archive app"}</span></button>
         <button type="button" className="danger-action" onClick={() => setAction("delete")}><Trash2 size={19} /><span>Delete app</span></button>
       </div> : action === "edit" ? <EditAppForm key={optionsApp.appId} app={apps.find((app) => app.appId === optionsApp.appId)!} busy={busy}
         onSave={(input) => void perform(async () => { await workspace.updateAppDetails(optionsApp.appId, input); setOptionsAppId(null); }, "App updated")} /> : action === "copy" ? <>
         <label className="copy-data-option"><input type="checkbox" checked={includeData} onChange={(event) => setIncludeData(event.target.checked)} /><span>Include app data</span></label>
-        <Button className="sheet-form-submit" disabled={busy} onClick={() => void perform(async () => { await workspace.copyApp(optionsApp.appId, includeData); setOptionsAppId(null); }, "App copied")}><Copy size={18} />{busy ? "Copying..." : "Copy app"}</Button>
+        <Button className="sheet-form-submit" disabled={busy} onClick={() => void perform(async () => { await workspace.copyApp(optionsApp.appId, includeData); setLauncherView("active"); setOptionsAppId(null); }, "App copied")}><Copy size={18} />{busy ? "Copying..." : "Copy app"}</Button>
       </> : <>
         <p className="delete-description">Delete {optionsApp.name} from this workspace?{["backed-up", "shared-by-me"].includes(workspace.syncBadges[optionsApp.appId]?.kind) ? " Its cloud backup will also be deleted." : ""}</p>
         <div className="confirm-actions"><Button variant="secondary" disabled={busy} onClick={() => setOptionsAppId(null)}>Cancel</Button>

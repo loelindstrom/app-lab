@@ -46,7 +46,7 @@ flowchart LR
 | State owner | Location | Contents |
 | --- | --- | --- |
 | Core | IndexedDB `app-lab-v2` | App records and app-owned JSON. |
-| Sync registry | `localStorage` key `app-lab-workspace-sync-v1` | Storage profile, workspace id, room capabilities, observed versions, and tombstones. |
+| Sync registry | `localStorage` key `app-lab-workspace-sync-v1` | Storage profile, workspace id, room capabilities, observed versions, archive preferences, and tombstones. |
 | Sync queue | IndexedDB `app-lab-sync-queue-v1` | Pending room creation, app-source/data writes, deletion, and manifest writes. |
 | Provider | Remote room records | Encrypted payload, version, timestamp, and access-token hashes. |
 
@@ -54,6 +54,17 @@ Each synced workspace has one `workspace-manifest` room. Each synced app has an 
 and compiled CSS, plus an `app-data` room for JSON. Separate app rooms let data update live without rebuilding the iframe.
 
 ## Main Flows
+
+### Launcher Archive
+
+`setAppArchived` stores a per-app `{ archived, updatedAt }` preference in the workspace registry and queues a workspace-manifest
+write when storage is configured. It does not change app source, app data, or sharing relationships. The manifest carries these
+preferences across devices in the same workspace; importing an individual shared app does not import its owner's archive status.
+
+Archive and unarchive are explicit timestamped records. Manifest conflict resolution merges them per app, choosing the newest
+record (unarchive wins exact timestamp ties). Missing preferences in older manifests do not reset existing state. Local registry
+writes are serialized, and incoming snapshots preserve newer local archive edits while room hydration is in flight. A full workspace
+recovery includes the preferences. Locally created copies start active.
 
 ### App Source
 

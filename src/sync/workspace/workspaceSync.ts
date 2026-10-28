@@ -84,7 +84,13 @@ export interface WorkspaceSyncState {
   storageProfile: StorageProfile | null;
   manifestRoom?: RoomCapability;
   apps: Record<AppId, AppSyncRecord>;
+  appArchiveStates?: Record<AppId, AppArchiveState>;
   deletedApps: Record<AppId, TombstoneRecord>;
+  updatedAt: string;
+}
+
+export interface AppArchiveState {
+  archived: boolean;
   updatedAt: string;
 }
 
@@ -137,23 +143,34 @@ export interface WorkspaceSyncRegistry {
   getAppSyncRecord(appId: AppId): Promise<AppSyncRecord | null>;
   getAppSyncBadge(appId: AppId): Promise<AppSyncBadge>;
   listAppSyncBadges(appIds: AppId[]): Promise<Record<AppId, AppSyncBadge>>;
+  setAppArchived(appId: AppId, archived: boolean): Promise<void>;
   markRemoteAppDeleted(appId: AppId, deletedAt?: string): Promise<void>;
   rememberAppRoomVersions(input: { appId: AppId; dataRoom?: RoomCapability; sourceRoom?: RoomCapability }): Promise<AppSyncRecord>;
   removeLocalAppSync(appId: AppId): Promise<void>;
 }
 
 export function createWorkspaceSyncRegistry(store: WorkspaceSyncStore): WorkspaceSyncRegistry {
+  let writes: Promise<unknown> = Promise.resolve();
+
+  function write<T>(operation: () => Promise<T>): Promise<T> {
+    const result = writes.then(operation);
+    writes = result.catch(() => {});
+    return result;
+  }
+
   async function getState(): Promise<WorkspaceSyncState> {
     return (await store.load()) ?? createEmptyWorkspaceSyncState();
   }
 
   async function saveMutated(mutator: (state: WorkspaceSyncState, now: string) => void): Promise<WorkspaceSyncState> {
-    const state = await getState();
-    const now = new Date().toISOString();
-    mutator(state, now);
-    state.updatedAt = now;
-    await store.save(state);
-    return state;
+    return write(async () => {
+      const state = await getState();
+      const now = new Date().toISOString();
+      mutator(state, now);
+      state.updatedAt = now;
+      await store.save(state);
+      return state;
+    });
   }
 
   async function getStorageProfile(): Promise<StorageProfile | null> {
@@ -222,7 +239,14 @@ export function createWorkspaceSyncRegistry(store: WorkspaceSyncStore): Workspac
   }
 
   async function replaceState(nextState: WorkspaceSyncState): Promise<void> {
-    await store.save(cloneState(nextState));
+    await write(async () => {
+      const current = await store.load();
+      const next = cloneState(nextState);
+      if (current?.workspaceId === next.workspaceId) {
+        next.appArchiveStates = mergeAppArchiveStates(current.appArchiveStates, next.appArchiveStates);
+      }
+      await store.save(next);
+    });
   }
 
   async function ensureOwnedAppRooms(appId: AppId): Promise<OwnedAppSyncRecord> {
@@ -348,6 +372,17 @@ export function createWorkspaceSyncRegistry(store: WorkspaceSyncStore): Workspac
     return Object.fromEntries(appIds.map((appId) => [appId, toAppSyncBadge(state.apps[appId] ?? null)]));
   }
 
+  async function setAppArchived(appId: AppId, archived: boolean): Promise<void> {
+    await saveMutated((state, now) => {
+      state.appArchiveStates ??= {};
+      const previous = state.appArchiveStates[appId];
+      // Explicit unarchive records must survive merges with older offline snapshots.
+      const updatedAt = previous && previous.updatedAt >= now
+        ? new Date(Date.parse(previous.updatedAt) + 1).toISOString() : now;
+      state.appArchiveStates[appId] = { archived, updatedAt };
+    });
+  }
+
   async function rememberAppRoomVersions(input: { appId: AppId; dataRoom?: RoomCapability; sourceRoom?: RoomCapability }): Promise<AppSyncRecord> {
     let record: AppSyncRecord | null = null;
     await saveMutated((state, now) => {
@@ -410,6 +445,7 @@ export function createWorkspaceSyncRegistry(store: WorkspaceSyncStore): Workspac
     rememberWorkspaceManifestVersion,
     removeLocalAppSync,
     replaceState,
+    setAppArchived,
   };
 }
 
@@ -523,12 +559,34 @@ function parseWorkspaceSyncState(raw: string): WorkspaceSyncState | null {
       storageProfile: normalizeStoredStorageProfile(parsed.storageProfile),
       manifestRoom: normalizeRoomCapability(parsed.manifestRoom),
       apps: parsed.apps ?? {},
+      appArchiveStates: parseAppArchiveStates(parsed.appArchiveStates),
       deletedApps: parsed.deletedApps ?? {},
       updatedAt: typeof parsed.updatedAt === "string" ? parsed.updatedAt : new Date().toISOString(),
     };
   } catch (_) {
     return null;
   }
+}
+
+export function parseAppArchiveStates(value: unknown): Record<AppId, AppArchiveState> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value).filter(([, state]) => (
+    state && typeof state === "object" && typeof state.archived === "boolean"
+    && typeof state.updatedAt === "string" && Number.isFinite(Date.parse(state.updatedAt))
+  )).map(([id, state]) => [id, { archived: state.archived, updatedAt: new Date(state.updatedAt).toISOString() }]));
+}
+
+export function mergeAppArchiveStates(
+  primary: Record<AppId, AppArchiveState> = {},
+  secondary: Record<AppId, AppArchiveState> = {},
+): Record<AppId, AppArchiveState> {
+  const result = { ...primary };
+  for (const [id, candidate] of Object.entries(secondary)) {
+    const existing = result[id];
+    if (!existing || candidate.updatedAt > existing.updatedAt
+      || (candidate.updatedAt === existing.updatedAt && !candidate.archived)) result[id] = candidate;
+  }
+  return result;
 }
 
 function cloneState(state: WorkspaceSyncState): WorkspaceSyncState {
