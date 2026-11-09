@@ -19,25 +19,29 @@ test.describe("local app persistence", () => {
     await createOpinionatedBoard(page);
     const frame = appFrame(page);
     await expect(frame.getByRole("heading", { name: "Active notes" })).toBeVisible();
+    await expect(frame.locator("article h3")).toHaveText(["Welcome to AppLab", "Start building", "More"]);
+    await expect(frame.getByText("This is an example app to get started.", { exact: true })).toBeVisible();
+    await expect(frame.getByText("Press the ✦ button in the top-right corner to start editing with AI.", { exact: true })).toBeVisible();
+    await expect(frame.getByText("In the main menu, open Settings to bring your own AI and enable sharing.", { exact: true })).toBeVisible();
 
     const boardViewport = frame.locator("[data-board-scroll]");
-    const shareDragHandle = frame.getByRole("button", { name: "Drag Share live updates to reorder" });
+    const moreDragHandle = frame.getByRole("button", { name: "Drag More to reorder" });
     const viewportBounds = await boardViewport.boundingBox();
     if (!viewportBounds) throw new Error("Board viewport is not visible");
 
-    await shareDragHandle.dragTo(boardViewport, {
+    await moreDragHandle.dragTo(boardViewport, {
       targetPosition: { x: viewportBounds.width - 2, y: viewportBounds.height - 2 }
     });
-    await expect(frame.locator("article h3").last()).toHaveText("Share live updates");
+    await expect(frame.locator("article h3").last()).toHaveText("More");
 
-    await shareDragHandle.dragTo(boardViewport, { targetPosition: { x: 2, y: 2 } });
-    await expect(frame.locator("article h3").first()).toHaveText("Share live updates");
+    await moreDragHandle.dragTo(boardViewport, { targetPosition: { x: 2, y: 2 } });
+    await expect(frame.locator("article h3").first()).toHaveText("More");
 
-    await shareDragHandle.dragTo(page.locator(".workspace-app-header"));
-    await expect(frame.locator("article h3").first()).toHaveText("Share live updates");
+    await moreDragHandle.dragTo(page.locator(".workspace-app-header"));
+    await expect(frame.locator("article h3").first()).toHaveText("More");
 
-    await shareDragHandle.dragTo(boardViewport, { targetPosition: { x: 2, y: 2 } });
-    await expect(frame.locator("article h3").first()).toHaveText("Share live updates");
+    await moreDragHandle.dragTo(boardViewport, { targetPosition: { x: 2, y: 2 } });
+    await expect(frame.locator("article h3").first()).toHaveText("More");
 
     await addBoardNote(page, "Example persisted item", "This description should persist.");
 
@@ -46,7 +50,7 @@ test.describe("local app persistence", () => {
 
     await expect(frame.getByRole("heading", { name: "Active notes" })).toBeVisible();
     await expect(frame.locator("article h3").first()).toHaveText("Example persisted item");
-    await expect(frame.locator("article h3").nth(1)).toHaveText("Share live updates");
+    await expect(frame.locator("article h3").nth(1)).toHaveText("More");
 
     const persistedArticle = frame.locator("article", { hasText: "Example persisted item" });
     const collapseButton = frame.getByRole("button", { name: "Collapse Example persisted item" });
@@ -59,10 +63,10 @@ test.describe("local app persistence", () => {
     await expect(frame.getByText("This description should persist.", { exact: true })).toBeVisible();
 
     await archiveBoardNote(page, "Example persisted item");
-    await archiveBoardNote(page, "Share live updates");
+    await archiveBoardNote(page, "More");
     await frame.getByRole("button", { name: "Archived" }).click();
-    await frame.getByRole("button", { name: "Move Share live updates up" }).click();
-    await expect(frame.locator("article h3").first()).toHaveText("Share live updates");
+    await frame.getByRole("button", { name: "Move More up" }).click();
+    await expect(frame.locator("article h3").first()).toHaveText("More");
     await frame.getByRole("button", { name: "Delete Example persisted item" }).click();
     await frame.getByRole("button", { name: "Delete", exact: true }).click();
     await expect(frame.getByText("Example persisted item", { exact: true })).toBeHidden();
