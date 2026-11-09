@@ -327,8 +327,8 @@ ${t}
               notes: [
                 {
                   id: this.createId(),
-                  title: "Welcome to App Lab",
-                  body: "This board showcases App Lab persistence, live updates, tabs, dialogs, and reusable actions for you (the user) and for the AI which will interact with it.",
+                  title: "Welcome to AppLab",
+                  body: "This is an example app to get started.",
                   status: "active",
                   createdAt: now,
                   updatedAt: now,
@@ -336,8 +336,8 @@ ${t}
                 },
                 {
                   id: this.createId(),
-                  title: "Build with AI",
-                  body: "Press 'AI ✦' to copy the prompt+app source into an external AI chat, or work directly with BuilderAI after connecting your own provider in 'Settings'.",
+                  title: "Start building",
+                  body: "Press the ✦ button in the top-right corner to start editing with AI.",
                   status: "active",
                   createdAt: now,
                   updatedAt: now,
@@ -345,8 +345,8 @@ ${t}
                 },
                 {
                   id: this.createId(),
-                  title: "Share live updates",
-                  body: "Connect a storage provider in 'Settings', then share the app to let other people update this board live.",
+                  title: "More",
+                  body: "In the main menu, open Settings to bring your own AI and enable sharing.",
                   status: "active",
                   createdAt: now,
                   updatedAt: now,
